@@ -30,6 +30,15 @@ DEFAULT_RESEARCH_POST_LIMIT = 50
 MAX_RESEARCH_POST_LIMIT = 500
 DEFAULT_LLM_EVIDENCE_POSTS = 12
 DEFAULT_LLM_COMMENT_SAMPLES_PER_POST = 5
+DEFAULT_AMAZON_PRODUCT_LIMIT = 20
+MAX_AMAZON_PRODUCT_LIMIT = 100
+DEFAULT_AMAZON_KEYWORD_LIMIT = 8
+MAX_AMAZON_KEYWORD_LIMIT = 20
+DEFAULT_AMAZON_DETAIL_LIMIT = 5
+DEFAULT_AMAZON_DISCUSSION_LIMIT = 5
+DEFAULT_AMAZON_REVIEWS_PER_PRODUCT = 5
+DEFAULT_AMAZON_LLM_PRODUCT_LIMIT = 25
+DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT = 5
 
 
 def int_setting(values: dict[str, str], key: str, default: int, minimum: int, maximum: int) -> int:
@@ -103,6 +112,7 @@ def read_settings_values() -> dict[str, str]:
                 "INSIGHT_",
                 "REDDIT_",
                 "AGENT_REACH_",
+                "AMAZON_",
             )
         ):
             values[key] = value
@@ -253,6 +263,57 @@ def build_research_settings_response(values: dict[str, str] | None = None) -> di
             0,
             50,
         ),
+        "amazonProductLimit": int_setting(
+            env_values,
+            "AMAZON_PRODUCT_LIMIT",
+            DEFAULT_AMAZON_PRODUCT_LIMIT,
+            1,
+            MAX_AMAZON_PRODUCT_LIMIT,
+        ),
+        "maxAmazonProductLimit": MAX_AMAZON_PRODUCT_LIMIT,
+        "amazonKeywordLimit": int_setting(
+            env_values,
+            "AMAZON_KEYWORD_LIMIT",
+            DEFAULT_AMAZON_KEYWORD_LIMIT,
+            1,
+            MAX_AMAZON_KEYWORD_LIMIT,
+        ),
+        "maxAmazonKeywordLimit": MAX_AMAZON_KEYWORD_LIMIT,
+        "amazonDetailLimit": int_setting(
+            env_values,
+            "AMAZON_DETAIL_LIMIT",
+            DEFAULT_AMAZON_DETAIL_LIMIT,
+            0,
+            100,
+        ),
+        "amazonDiscussionLimit": int_setting(
+            env_values,
+            "AMAZON_DISCUSSION_LIMIT",
+            DEFAULT_AMAZON_DISCUSSION_LIMIT,
+            0,
+            100,
+        ),
+        "amazonReviewsPerProduct": int_setting(
+            env_values,
+            "AMAZON_REVIEWS_PER_PRODUCT",
+            DEFAULT_AMAZON_REVIEWS_PER_PRODUCT,
+            0,
+            100,
+        ),
+        "amazonLlmProductLimit": int_setting(
+            env_values,
+            "AMAZON_LLM_PRODUCT_LIMIT",
+            DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
+            1,
+            100,
+        ),
+        "amazonLlmReviewSamplesPerProduct": int_setting(
+            env_values,
+            "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
+            DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
+            0,
+            50,
+        ),
         "env_path": ".env",
     }
 
@@ -278,12 +339,49 @@ def update_research_settings(payload: dict[str, Any]) -> dict[str, Any]:
     if llm_comment_samples < 0 or llm_comment_samples > 50:
         raise ValueError("AI comment samples per post must be between 0 and 50")
 
+    amazon_product_limit = int(payload.get("amazonProductLimit", DEFAULT_AMAZON_PRODUCT_LIMIT))
+    if amazon_product_limit < 1 or amazon_product_limit > MAX_AMAZON_PRODUCT_LIMIT:
+        raise ValueError(f"Amazon product limit must be between 1 and {MAX_AMAZON_PRODUCT_LIMIT}")
+
+    amazon_keyword_limit = int(payload.get("amazonKeywordLimit", DEFAULT_AMAZON_KEYWORD_LIMIT))
+    if amazon_keyword_limit < 1 or amazon_keyword_limit > MAX_AMAZON_KEYWORD_LIMIT:
+        raise ValueError(f"Amazon keyword limit must be between 1 and {MAX_AMAZON_KEYWORD_LIMIT}")
+
+    amazon_detail_limit = int(payload.get("amazonDetailLimit", DEFAULT_AMAZON_DETAIL_LIMIT))
+    if amazon_detail_limit < 0 or amazon_detail_limit > 100:
+        raise ValueError("Amazon detail product limit must be between 0 and 100")
+
+    amazon_discussion_limit = int(payload.get("amazonDiscussionLimit", DEFAULT_AMAZON_DISCUSSION_LIMIT))
+    if amazon_discussion_limit < 0 or amazon_discussion_limit > 100:
+        raise ValueError("Amazon discussion product limit must be between 0 and 100")
+
+    amazon_reviews_per_product = int(payload.get("amazonReviewsPerProduct", DEFAULT_AMAZON_REVIEWS_PER_PRODUCT))
+    if amazon_reviews_per_product < 0 or amazon_reviews_per_product > 100:
+        raise ValueError("Amazon reviews per product must be between 0 and 100")
+
+    amazon_llm_product_limit = int(payload.get("amazonLlmProductLimit", DEFAULT_AMAZON_LLM_PRODUCT_LIMIT))
+    if amazon_llm_product_limit < 1 or amazon_llm_product_limit > 100:
+        raise ValueError("Amazon AI product limit must be between 1 and 100")
+
+    amazon_llm_review_samples = int(
+        payload.get("amazonLlmReviewSamplesPerProduct", DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT)
+    )
+    if amazon_llm_review_samples < 0 or amazon_llm_review_samples > 50:
+        raise ValueError("Amazon AI review samples per product must be between 0 and 50")
+
     updates = {
         "INSIGHT_RESEARCH_MODE": mode,
         "INSIGHT_RESEARCH_TIME_RANGE": time_range,
         "INSIGHT_RESEARCH_POST_LIMIT": str(limit),
         "INSIGHT_LLM_EVIDENCE_POSTS": str(llm_evidence_posts),
         "INSIGHT_LLM_COMMENT_SAMPLES_PER_POST": str(llm_comment_samples),
+        "AMAZON_PRODUCT_LIMIT": str(amazon_product_limit),
+        "AMAZON_KEYWORD_LIMIT": str(amazon_keyword_limit),
+        "AMAZON_DETAIL_LIMIT": str(amazon_detail_limit),
+        "AMAZON_DISCUSSION_LIMIT": str(amazon_discussion_limit),
+        "AMAZON_REVIEWS_PER_PRODUCT": str(amazon_reviews_per_product),
+        "AMAZON_LLM_PRODUCT_LIMIT": str(amazon_llm_product_limit),
+        "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT": str(amazon_llm_review_samples),
     }
     write_env_values(updates)
     env_values = read_env_values(ENV_PATH)
@@ -422,6 +520,23 @@ def sync_runtime_env(provider: LLMProvider | None = None, values: dict[str, str]
         "AGENT_REACH_COMMENTS_PER_POST",
         "AGENT_REACH_VENV",
         "AGENT_REACH_BIN_DIR",
+    ):
+        value = env_values.get(key, "")
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+    for key in (
+        "AMAZON_OPENCLI_ENABLED",
+        "AMAZON_OPENCLI_TIMEOUT",
+        "AMAZON_PRODUCT_LIMIT",
+        "AMAZON_KEYWORD_LIMIT",
+        "AMAZON_DETAIL_LIMIT",
+        "AMAZON_DISCUSSION_LIMIT",
+        "AMAZON_REVIEWS_PER_PRODUCT",
+        "AMAZON_LLM_PRODUCT_LIMIT",
+        "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
     ):
         value = env_values.get(key, "")
         if value:

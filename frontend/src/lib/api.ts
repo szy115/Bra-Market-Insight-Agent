@@ -7,6 +7,7 @@ export interface AnalyzeRequest {
   mode: DataMode;
   useLlm: boolean;
   bypassCache?: boolean;
+  amazonKeywordLimit?: number;
 }
 
 export interface EvidencePost {
@@ -121,6 +122,191 @@ export interface AnalysisReport {
   llm_analysis: LlmAnalysis;
 }
 
+export interface AmazonProduct {
+  rank: number | null;
+  asin: string;
+  title: string;
+  brand: string;
+  product_url: string;
+  image_url: string;
+  price_text: string;
+  price_value: number | null;
+  currency: string;
+  rating_text: string;
+  rating_value: number | null;
+  review_count_text: string;
+  review_count: number | null;
+  badges: string[];
+  is_sponsored: boolean;
+  breadcrumbs: string[];
+  bullet_points: string[];
+  availability: string;
+  seller: string;
+  review_samples: Array<{
+    id?: string;
+    title: string;
+    body: string;
+    url?: string;
+    rating_value: number | null;
+    rating_text: string;
+    author: string;
+    date_text: string;
+    verified_purchase: boolean;
+  }>;
+  source_url: string;
+  fetched_at: string;
+}
+
+export interface AmazonReport {
+  category: string;
+  query: string;
+  queries: string[];
+  generated_at: string;
+  source_mode: string;
+  warnings: string[];
+  confidence: string;
+  metrics: {
+    products: number;
+    products_with_price: number;
+    price_min: number | null;
+    price_max: number | null;
+    price_avg: number | null;
+    products_with_rating: number;
+    rating_avg: number | null;
+    total_review_count: number;
+    products_with_review_count: number;
+    sponsored_count: number;
+    review_samples: number;
+    products_with_review_samples: number;
+  };
+  data_volume: {
+    requested_products: number;
+    requested_products_per_query: number;
+    query_count: number;
+    queries: string[];
+    per_query_counts: Array<{ query: string; count: number }>;
+    raw_collected_products: number;
+    collected_products: number;
+    unique_products: number;
+    source_mode: string;
+    detail_product_limit: number;
+    discussion_product_limit: number;
+    products_with_review_samples: number;
+    collected_review_samples: number;
+    llm_requested: boolean;
+    ai_product_limit: number;
+    ai_products: number;
+    ai_review_samples_per_product_limit: number;
+    ai_review_samples: number;
+  };
+  brands: CountItem[];
+  price_bands: CountItem[];
+  products: AmazonProduct[];
+  method: {
+    query: string;
+    notes: string[];
+  };
+  llm_analysis: LlmAnalysis;
+}
+
+export interface InsightCitation {
+  id: string;
+  source: "reddit" | "amazon";
+  kind: "post" | "comment" | "product" | "review";
+  title: string;
+  url: string;
+  excerpt: string;
+  reference: string;
+}
+
+export interface CombinedInsightItem {
+  title: string;
+  detail: string;
+  citations: InsightCitation[];
+}
+
+export interface CombinedEvidenceChainItem {
+  claim: string;
+  detail: string;
+  citations: InsightCitation[];
+}
+
+export interface CombinedInsightReport {
+  category: string;
+  generated_at: string;
+  warnings: string[];
+  data_summary: {
+    reddit_posts: number;
+    reddit_comments: number;
+    amazon_products: number;
+    amazon_review_samples: number;
+    evidence_items: number;
+  };
+  verdict: {
+    text: string;
+    citations: InsightCitation[];
+  };
+  opportunities: CombinedInsightItem[];
+  risks: CombinedInsightItem[];
+  rd_recommendations: CombinedInsightItem[];
+  brand_communication: CombinedInsightItem[];
+  evidence_chain: CombinedEvidenceChainItem[];
+  data_gaps: CombinedInsightItem[];
+  llm_analysis: {
+    enabled: boolean;
+    status: "ok" | "unavailable" | "not_requested";
+    message?: string;
+    provider?: string;
+    model?: string;
+    usage?: Record<string, number>;
+  };
+}
+
+export interface CombinedInsightRequest {
+  category: string;
+  reddit_report?: AnalysisReport | null;
+  amazon_report?: AmazonReport | null;
+  useLlm: boolean;
+  locale: "zh" | "en";
+}
+
+export interface ResearchHistorySummary {
+  id: string;
+  category: string;
+  saved_at: string;
+  summary: string;
+  has_reddit: boolean;
+  has_amazon: boolean;
+  has_combined: boolean;
+  reddit_posts: number;
+  amazon_products: number;
+  evidence_items: number;
+}
+
+export interface ResearchHistoryItem extends ResearchHistorySummary {
+  reddit_report?: AnalysisReport | null;
+  amazon_report?: AmazonReport | null;
+  combined_report?: CombinedInsightReport | null;
+}
+
+export interface ResearchHistoryList {
+  items: ResearchHistorySummary[];
+  storage_path: string;
+  deleted_id?: string;
+}
+
+export interface ResearchHistoryResponse {
+  item: ResearchHistoryItem;
+  storage_path: string;
+}
+
+export interface SaveResearchHistoryRequest {
+  category: string;
+  reddit_report?: AnalysisReport | null;
+  amazon_report?: AmazonReport | null;
+  combined_report?: CombinedInsightReport | null;
+}
+
 export interface LLMProviderOption {
   name: string;
   label: string;
@@ -178,6 +364,15 @@ export interface ResearchDefaults {
   maxPostLimit: number;
   llmEvidencePosts: number;
   llmCommentSamplesPerPost: number;
+  amazonProductLimit: number;
+  maxAmazonProductLimit: number;
+  amazonKeywordLimit: number;
+  maxAmazonKeywordLimit: number;
+  amazonDetailLimit: number;
+  amazonDiscussionLimit: number;
+  amazonReviewsPerProduct: number;
+  amazonLlmProductLimit: number;
+  amazonLlmReviewSamplesPerProduct: number;
   env_path: string;
 }
 
@@ -187,6 +382,13 @@ export interface UpdateResearchDefaultsRequest {
   limit: number;
   llmEvidencePosts: number;
   llmCommentSamplesPerPost: number;
+  amazonProductLimit: number;
+  amazonKeywordLimit: number;
+  amazonDetailLimit: number;
+  amazonDiscussionLimit: number;
+  amazonReviewsPerProduct: number;
+  amazonLlmProductLimit: number;
+  amazonLlmReviewSamplesPerProduct: number;
 }
 
 export interface AgentReachHealth {
@@ -266,6 +468,27 @@ export const api = {
     request<AnalysisReport>("/api/analyze", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  analyzeAmazon: (body: AnalyzeRequest) =>
+    request<AmazonReport>("/api/analyze/amazon", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  analyzeCombined: (body: CombinedInsightRequest) =>
+    request<CombinedInsightReport>("/api/analyze/combined", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getHistory: () => request<ResearchHistoryList>("/api/history"),
+  saveHistory: (body: SaveResearchHistoryRequest) =>
+    request<ResearchHistoryResponse>("/api/history", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getHistoryItem: (id: string) => request<ResearchHistoryResponse>(`/api/history/${encodeURIComponent(id)}`),
+  deleteHistoryItem: (id: string) =>
+    request<ResearchHistoryList>(`/api/history/${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
   getLLMSettings: () => request<LLMSettings>("/api/settings/llm"),
   updateLLMSettings: (body: UpdateLLMSettingsRequest) =>

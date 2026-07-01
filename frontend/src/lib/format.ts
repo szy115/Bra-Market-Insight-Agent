@@ -11,12 +11,14 @@ export function sourceLabel(mode: string, locale: Locale = "en"): string {
       oauth: "Reddit OAuth 实时数据",
       rss: "Reddit RSS 实时数据",
       sample: "示例兜底数据",
+      amazon_opencli: "Amazon OpenCLI 实时数据",
     },
     en: {
       agent_reach: "Agent Reach",
       oauth: "Live Reddit OAuth",
       rss: "Live Reddit RSS",
       sample: "Sample fallback",
+      amazon_opencli: "Amazon OpenCLI",
     },
   };
   return labels[locale][mode] || mode || (locale === "zh" ? "未知来源" : "Unknown source");

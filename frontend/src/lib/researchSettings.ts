@@ -1,7 +1,10 @@
 import type { AnalyzeRequest } from "./api";
 import type { Locale } from "./i18n";
 
-export type ResearchSettings = Pick<AnalyzeRequest, "timeRange" | "limit" | "mode">;
+export type ResearchSettings = Pick<AnalyzeRequest, "timeRange" | "limit" | "mode"> & {
+  amazonProductLimit: number;
+  amazonKeywordLimit: number;
+};
 
 const STORAGE_KEY = "insight-agent.research-settings";
 
@@ -9,6 +12,8 @@ export const defaultResearchSettings: ResearchSettings = {
   timeRange: "year",
   limit: 50,
   mode: "auto",
+  amazonProductLimit: 20,
+  amazonKeywordLimit: 8,
 };
 
 const validTimeRanges = new Set<AnalyzeRequest["timeRange"]>(["day", "week", "month", "year", "all"]);
@@ -26,10 +31,18 @@ export function loadResearchSettings(): ResearchSettings {
       ? (parsed.mode as AnalyzeRequest["mode"])
       : defaultResearchSettings.mode;
     const limit = Number(parsed.limit);
+    const amazonProductLimit = Number(parsed.amazonProductLimit);
+    const amazonKeywordLimit = Number(parsed.amazonKeywordLimit);
     return {
       timeRange,
       mode,
       limit: Number.isFinite(limit) ? Math.max(5, Math.min(500, Math.round(limit))) : defaultResearchSettings.limit,
+      amazonProductLimit: Number.isFinite(amazonProductLimit)
+        ? Math.max(1, Math.min(100, Math.round(amazonProductLimit)))
+        : defaultResearchSettings.amazonProductLimit,
+      amazonKeywordLimit: Number.isFinite(amazonKeywordLimit)
+        ? Math.max(1, Math.min(20, Math.round(amazonKeywordLimit)))
+        : defaultResearchSettings.amazonKeywordLimit,
     };
   } catch {
     return defaultResearchSettings;
@@ -75,4 +88,11 @@ export function describeResearchSettings(settings: ResearchSettings, locale: Loc
   };
   const limitText = locale === "zh" ? `最多 ${settings.limit} 条帖子` : `${settings.limit} posts max`;
   return `${modeLabels[locale][settings.mode]} · ${timeLabels[locale][settings.timeRange]} · ${limitText}`;
+}
+
+export function describeAmazonResearchSettings(settings: ResearchSettings, locale: Locale = "en"): string {
+  if (locale === "zh") {
+    return `Amazon · ${settings.amazonKeywordLimit} 个关键词 × 每词 ${settings.amazonProductLimit} 个商品`;
+  }
+  return `Amazon · ${settings.amazonKeywordLimit} keywords × ${settings.amazonProductLimit} products each`;
 }

@@ -18,9 +18,21 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from .ingestion.agent_reach import agent_reach_health, fetch_reddit_agent_reach, reconnect_opencli_extension
-from .llm import LLMUnavailable, enhance_report_with_llm
+from .ingestion.agent_reach import (
+    agent_reach_health,
+    fetch_reddit_agent_reach,
+    reconnect_opencli_extension,
+)
+from .ingestion.amazon_opencli import amazon_config_from_env, fetch_amazon_opencli
+from .llm import (
+    LLMUnavailable,
+    enhance_amazon_report_with_llm,
+    enhance_combined_insight_with_llm,
+    enhance_report_with_llm,
+)
 from .settings import (
+    DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
+    DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
     DEFAULT_LLM_COMMENT_SAMPLES_PER_POST,
     DEFAULT_LLM_EVIDENCE_POSTS,
     DEFAULT_REDDIT_USER_AGENT,
@@ -42,6 +54,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(os.getenv("INSIGHT_AGENT_HOME", Path.cwd())).resolve()
 STATIC_DIR = PACKAGE_DIR / "static"
 CACHE_DIR = PROJECT_ROOT / ".cache"
+HISTORY_PATH = CACHE_DIR / "research-history.json"
 DATA_DIR = PACKAGE_DIR / "data"
 
 CACHE_VERSION = "v4"
@@ -266,6 +279,120 @@ def write_cache(path: Path, data: Any) -> None:
         json.dumps({"created": time.time(), "data": data}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def read_history_items() -> list[dict[str, Any]]:
+    if not HISTORY_PATH.exists():
+        return []
+    try:
+        payload = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def write_history_items(items: list[dict[str, Any]]) -> None:
+    CACHE_DIR.mkdir(exist_ok=True)
+    HISTORY_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def history_storage_path() -> str:
+    try:
+        return str(HISTORY_PATH.relative_to(PROJECT_ROOT)).replace("\\", "/")
+    except ValueError:
+        return str(HISTORY_PATH)
+
+
+def history_summary(item: dict[str, Any]) -> dict[str, Any]:
+    reddit_report = item.get("reddit_report") if isinstance(item.get("reddit_report"), dict) else None
+    amazon_report = item.get("amazon_report") if isinstance(item.get("amazon_report"), dict) else None
+    combined_report = item.get("combined_report") if isinstance(item.get("combined_report"), dict) else None
+    return {
+        "id": item.get("id", ""),
+        "category": item.get("category", ""),
+        "saved_at": item.get("saved_at", ""),
+        "summary": item.get("summary", ""),
+        "has_reddit": bool(reddit_report),
+        "has_amazon": bool(amazon_report),
+        "has_combined": bool(combined_report),
+        "reddit_posts": int(((reddit_report or {}).get("coverage") or {}).get("posts") or 0),
+        "amazon_products": int(((amazon_report or {}).get("metrics") or {}).get("products") or 0),
+        "evidence_items": int(((combined_report or {}).get("data_summary") or {}).get("evidence_items") or 0),
+    }
+
+
+def list_research_history() -> dict[str, Any]:
+    items = sorted(read_history_items(), key=lambda item: str(item.get("saved_at", "")), reverse=True)
+    return {"items": [history_summary(item) for item in items], "storage_path": history_storage_path()}
+
+
+def save_research_history(payload: dict[str, Any]) -> dict[str, Any]:
+    category = str(payload.get("category") or "").strip()
+    reddit_report = payload.get("reddit_report") if isinstance(payload.get("reddit_report"), dict) else None
+    amazon_report = payload.get("amazon_report") if isinstance(payload.get("amazon_report"), dict) else None
+    combined_report = payload.get("combined_report") if isinstance(payload.get("combined_report"), dict) else None
+    if not category:
+        category = str(((combined_report or reddit_report or amazon_report or {}).get("category")) or "").strip()
+    if not category:
+        raise ValueError("category is required")
+    if not any((reddit_report, amazon_report, combined_report)):
+        raise ValueError("At least one report is required to save history")
+
+    saved_at = now_iso()
+    digest = hashlib.sha256(
+        json.dumps(
+            {
+                "category": category,
+                "saved_at": saved_at,
+                "reddit": bool(reddit_report),
+                "amazon": bool(amazon_report),
+                "combined": bool(combined_report),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()[:10]
+    summary = ""
+    if combined_report:
+        summary = str(((combined_report.get("verdict") or {}).get("text")) or "")
+    if not summary and reddit_report:
+        summary = str(((reddit_report.get("market_signal") or {}).get("summary")) or "")
+    if not summary and amazon_report:
+        metrics = amazon_report.get("metrics") or {}
+        summary = f"{metrics.get('products', 0)} Amazon products collected."
+
+    entry = {
+        "id": f"{dt.datetime.now(dt.UTC).strftime('%Y%m%d%H%M%S')}-{digest}",
+        "category": category,
+        "saved_at": saved_at,
+        "summary": compact_text(summary, 280),
+        "reddit_report": reddit_report,
+        "amazon_report": amazon_report,
+        "combined_report": combined_report,
+    }
+    items = [entry, *read_history_items()]
+    write_history_items(items[:100])
+    return {"item": history_summary(entry), "storage_path": history_storage_path()}
+
+
+def get_research_history_item(item_id: str) -> dict[str, Any]:
+    for item in read_history_items():
+        if item.get("id") == item_id:
+            return {"item": item, "storage_path": history_storage_path()}
+    raise ValueError("History item not found")
+
+
+def delete_research_history_item(item_id: str) -> dict[str, Any]:
+    items = read_history_items()
+    next_items = [item for item in items if item.get("id") != item_id]
+    if len(next_items) == len(items):
+        raise ValueError("History item not found")
+    write_history_items(next_items)
+    result = list_research_history()
+    result["deleted_id"] = item_id
+    return result
 
 
 def clean_text(value: str | None) -> str:
@@ -564,6 +691,36 @@ def parse_date(value: str | None) -> dt.datetime | None:
         return None
 
 
+def add_months(value: dt.date, offset: int) -> dt.date:
+    month_index = value.year * 12 + value.month - 1 + offset
+    return dt.date(month_index // 12, month_index % 12 + 1, 1)
+
+
+def parse_month(value: str) -> dt.date | None:
+    try:
+        year, month = value.split("-", 1)
+        return dt.date(int(year), int(month), 1)
+    except (ValueError, TypeError):
+        return None
+
+
+def build_trend_series(month_counts: Counter[str], minimum_months: int = 6) -> list[dict[str, int | str]]:
+    valid_months = [month for month in (parse_month(item) for item in month_counts) if month]
+    if not valid_months:
+        return []
+    start = min(valid_months)
+    end = max(valid_months)
+    while (end.year - start.year) * 12 + (end.month - start.month) + 1 < minimum_months:
+        start = add_months(start, -1)
+    trend = []
+    current = start
+    while current <= end:
+        label = current.strftime("%Y-%m")
+        trend.append({"month": label, "count": month_counts.get(label, 0)})
+        current = add_months(current, 1)
+    return trend
+
+
 def score_sentiment(text: str) -> str:
     lowered = text.lower()
     positive = sum(1 for word in POSITIVE_WORDS if word in lowered)
@@ -755,7 +912,7 @@ def summarize_posts(category: str, posts: list[dict[str, Any]], source_mode: str
         "pain_points": top_topics,
         "brands": [{"name": name, "count": count} for name, count in brand_counts.most_common(10)],
         "sizes": [{"name": name, "count": count} for name, count in size_counts.most_common(10)],
-        "trend": [{"month": month, "count": count} for month, count in sorted(month_counts.items())],
+        "trend": build_trend_series(month_counts),
         "opportunities": opportunities,
         "posts": posts,
         "method": {
@@ -849,6 +1006,670 @@ def generate_opportunities(
     return opportunities[:5]
 
 
+def collect_amazon(
+    category: str,
+    limit: int,
+    keyword_limit: int,
+    bypass_cache: bool = False,
+) -> tuple[list[dict[str, Any]], list[str], str, list[str], dict[str, int]]:
+    cache_path = cache_key(
+        [
+            CACHE_VERSION,
+            "amazon",
+            category,
+            str(limit),
+            str(keyword_limit),
+            os.getenv("AMAZON_DETAIL_LIMIT", ""),
+            os.getenv("AMAZON_DISCUSSION_LIMIT", ""),
+            os.getenv("AMAZON_REVIEWS_PER_PRODUCT", ""),
+        ]
+    )
+    cached = read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+    if cached and not bypass_cache:
+        return (
+            cached["products"],
+            ["Loaded Amazon input from local cache."],
+            cached["mode"],
+            cached.get("queries") or [category],
+            cached.get("per_query_counts") or {},
+        )
+
+    result = fetch_amazon_opencli(category, limit, keyword_limit=keyword_limit, bypass_cache=bypass_cache)
+    products = result.products
+    queries = result.queries or [category]
+    per_query_counts = result.per_query_counts or {queries[0]: len(products)}
+    warnings = list(result.warnings)
+    if bypass_cache:
+        warnings.append("Bypassed local cache for Amazon analysis.")
+    write_cache(
+        cache_path,
+        {
+            "products": products,
+            "mode": result.source_mode,
+            "queries": queries,
+            "per_query_counts": per_query_counts,
+        },
+    )
+    return products, warnings, result.source_mode, queries, per_query_counts
+
+
+def summarize_amazon(
+    category: str,
+    products: list[dict[str, Any]],
+    source_mode: str,
+    warnings: list[str],
+    queries: list[str],
+) -> dict[str, Any]:
+    brand_counts = Counter(product.get("brand") or brand_from_title(str(product.get("title") or "")) for product in products)
+    brand_counts.pop("", None)
+    prices = [float(product["price_value"]) for product in products if isinstance(product.get("price_value"), int | float)]
+    ratings = [
+        float(product["rating_value"]) for product in products if isinstance(product.get("rating_value"), int | float)
+    ]
+    review_counts = [
+        int(product["review_count"]) for product in products if isinstance(product.get("review_count"), int | float)
+    ]
+    sponsored_count = sum(1 for product in products if product.get("is_sponsored"))
+    review_sample_count = sum(len(product.get("review_samples") or []) for product in products)
+    products_with_reviews = sum(1 for product in products if product.get("review_samples"))
+    price_bands = build_price_bands(prices)
+    confidence = "Medium" if len(products) >= 10 else "Low"
+    if not products:
+        confidence = "Low"
+    metrics = {
+        "products": len(products),
+        "products_with_price": len(prices),
+        "price_min": min(prices) if prices else None,
+        "price_max": max(prices) if prices else None,
+        "price_avg": round(sum(prices) / len(prices), 2) if prices else None,
+        "products_with_rating": len(ratings),
+        "rating_avg": round(sum(ratings) / len(ratings), 2) if ratings else None,
+        "total_review_count": sum(review_counts),
+        "products_with_review_count": len(review_counts),
+        "sponsored_count": sponsored_count,
+        "review_samples": review_sample_count,
+        "products_with_review_samples": products_with_reviews,
+    }
+    return {
+        "category": category,
+        "query": category,
+        "queries": queries,
+        "generated_at": now_iso(),
+        "source_mode": source_mode,
+        "warnings": warnings,
+        "confidence": confidence,
+        "metrics": metrics,
+        "brands": [{"name": name, "count": count} for name, count in brand_counts.most_common(12)],
+        "price_bands": price_bands,
+        "products": products,
+        "method": {
+            "query": category,
+            "notes": [
+                "This MVP uses OpenCLI Amazon search/product/discussion surfaces through a browser-backed provider.",
+                f"Amazon search expanded across {len(queries)} keyword variants; products are deduplicated by ASIN or product URL.",
+                "Amazon true unit sales are not public; review count, search rank, badges, and discussion samples are directional signals only.",
+                "Use third-party Amazon data providers or seller-owned reports for stable sales estimates and historical BSR.",
+            ],
+        },
+    }
+
+
+def build_amazon_data_volume(
+    requested_products_per_query: int,
+    products: list[dict[str, Any]],
+    source_mode: str,
+    llm_requested: bool,
+    queries: list[str],
+    per_query_counts: dict[str, int],
+) -> dict[str, Any]:
+    config = amazon_config_from_env()
+    values = read_settings_values()
+    ai_product_limit = int_setting(
+        values,
+        "AMAZON_LLM_PRODUCT_LIMIT",
+        DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
+        1,
+        100,
+    )
+    ai_review_samples_per_product = int_setting(
+        values,
+        "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
+        DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
+        0,
+        50,
+    )
+    collected_review_samples = sum(len(product.get("review_samples") or []) for product in products)
+    products_with_review_samples = sum(1 for product in products if product.get("review_samples"))
+    ai_products = products[:ai_product_limit] if llm_requested else []
+    ai_review_samples = sum(
+        len((product.get("review_samples") or [])[:ai_review_samples_per_product]) for product in ai_products
+    )
+    per_query = [{"query": query, "count": per_query_counts.get(query, 0)} for query in queries]
+    raw_collected_products = sum(item["count"] for item in per_query)
+    return {
+        "requested_products": requested_products_per_query * max(1, len(queries)),
+        "requested_products_per_query": requested_products_per_query,
+        "query_count": len(queries),
+        "queries": queries,
+        "per_query_counts": per_query,
+        "raw_collected_products": raw_collected_products,
+        "collected_products": len(products),
+        "unique_products": len(products),
+        "source_mode": source_mode,
+        "detail_product_limit": max(0, min(config.detail_limit, len(products))),
+        "discussion_product_limit": max(0, min(config.discussion_limit, len(products))),
+        "products_with_review_samples": products_with_review_samples,
+        "collected_review_samples": collected_review_samples,
+        "llm_requested": llm_requested,
+        "ai_product_limit": ai_product_limit,
+        "ai_products": len(ai_products),
+        "ai_review_samples_per_product_limit": ai_review_samples_per_product,
+        "ai_review_samples": ai_review_samples,
+    }
+
+
+def build_price_bands(prices: list[float]) -> list[dict[str, Any]]:
+    bands = [
+        ("<$20", lambda price: price < 20),
+        ("$20-$29", lambda price: 20 <= price < 30),
+        ("$30-$49", lambda price: 30 <= price < 50),
+        ("$50+", lambda price: price >= 50),
+    ]
+    return [{"name": name, "count": sum(1 for price in prices if predicate(price))} for name, predicate in bands]
+
+
+def brand_from_title(title: str) -> str:
+    words = title.split()
+    return words[0] if words else ""
+
+
+def analyze_amazon_category(payload: dict[str, Any]) -> dict[str, Any]:
+    category = str(payload.get("category") or "").strip()
+    if not category:
+        raise ValueError("category is required")
+    limit = int(payload.get("limit") or os.getenv("AMAZON_PRODUCT_LIMIT", "20") or 20)
+    limit = max(1, min(limit, 100))
+    keyword_limit = int(payload.get("amazonKeywordLimit") or os.getenv("AMAZON_KEYWORD_LIMIT", "8") or 8)
+    keyword_limit = max(1, min(keyword_limit, 20))
+    bypass_cache = bool(payload.get("bypassCache"))
+    use_llm = payload.get("useLlm", True) is not False
+    products, warnings, source_mode, queries, per_query_counts = collect_amazon(
+        category,
+        limit,
+        keyword_limit,
+        bypass_cache=bypass_cache,
+    )
+    result = summarize_amazon(category, products, source_mode, warnings, queries)
+    result["data_volume"] = build_amazon_data_volume(
+        limit,
+        products,
+        source_mode,
+        use_llm,
+        queries,
+        per_query_counts,
+    )
+    result["llm_analysis"] = {
+        "enabled": False,
+        "status": "not_requested",
+        "message": "Enable AI synthesis to call the configured LLM provider.",
+    }
+    if use_llm:
+        try:
+            enhanced = enhance_amazon_report_with_llm(result)
+            result["llm_analysis"] = {
+                "enabled": True,
+                "status": "ok",
+                **enhanced,
+            }
+        except LLMUnavailable as exc:
+            result["llm_analysis"] = {
+                "enabled": True,
+                "status": "unavailable",
+                "message": str(exc),
+            }
+            result["warnings"].append(str(exc))
+    return result
+
+
+def analyze_combined_insight(payload: dict[str, Any]) -> dict[str, Any]:
+    category = str(payload.get("category") or "").strip()
+    reddit_report = payload.get("reddit_report") or payload.get("redditReport") or None
+    amazon_report = payload.get("amazon_report") or payload.get("amazonReport") or None
+    if not category:
+        category = str((reddit_report or amazon_report or {}).get("category") or "").strip()
+    if not category:
+        raise ValueError("category is required")
+    if not reddit_report and not amazon_report:
+        raise ValueError("At least one Reddit or Amazon report is required")
+
+    evidence_pool = build_combined_evidence_pool(reddit_report, amazon_report)
+    if not evidence_pool:
+        raise ValueError("No citable Reddit or Amazon evidence is available")
+
+    context = build_combined_context(category, reddit_report, amazon_report, evidence_pool)
+    use_llm = payload.get("useLlm", True) is not False
+    locale = str(payload.get("locale") or "zh")
+    warnings: list[str] = []
+    llm_analysis = {
+        "enabled": False,
+        "status": "not_requested",
+        "message": "AI synthesis was not requested; generated a rule-based integrated view.",
+    }
+    raw: dict[str, Any] | None = None
+    if use_llm:
+        try:
+            enhanced = enhance_combined_insight_with_llm(context, locale=locale)
+            raw = enhanced.get("result") if isinstance(enhanced.get("result"), dict) else {}
+            llm_analysis = {
+                "enabled": True,
+                "status": "ok",
+                "provider": enhanced.get("provider"),
+                "model": enhanced.get("model"),
+                "usage": enhanced.get("usage") or {},
+            }
+        except LLMUnavailable as exc:
+            warnings.append(str(exc))
+            llm_analysis = {
+                "enabled": True,
+                "status": "unavailable",
+                "message": str(exc),
+            }
+
+    if not raw:
+        raw = build_fallback_combined_raw(category, reddit_report, amazon_report, evidence_pool)
+
+    result = normalize_combined_insight(category, raw, evidence_pool)
+    result.update(
+        {
+            "category": category,
+            "generated_at": now_iso(),
+            "warnings": warnings,
+            "data_summary": {
+                "reddit_posts": int(((reddit_report or {}).get("coverage") or {}).get("posts") or 0),
+                "reddit_comments": int(((reddit_report or {}).get("data_volume") or {}).get("collected_comments") or 0),
+                "amazon_products": int(((amazon_report or {}).get("metrics") or {}).get("products") or 0),
+                "amazon_review_samples": int(((amazon_report or {}).get("metrics") or {}).get("review_samples") or 0),
+                "evidence_items": len(evidence_pool),
+            },
+            "llm_analysis": llm_analysis,
+        }
+    )
+    return result
+
+
+def build_combined_context(
+    category: str,
+    reddit_report: dict[str, Any] | None,
+    amazon_report: dict[str, Any] | None,
+    evidence_pool: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "category": category,
+        "reddit": {
+            "coverage": (reddit_report or {}).get("coverage"),
+            "data_volume": (reddit_report or {}).get("data_volume"),
+            "market_signal": (reddit_report or {}).get("market_signal"),
+            "sentiment": (reddit_report or {}).get("sentiment"),
+            "pain_points": (reddit_report or {}).get("pain_points", [])[:8],
+            "brands": (reddit_report or {}).get("brands", [])[:8],
+            "sizes": (reddit_report or {}).get("sizes", [])[:8],
+            "trend": (reddit_report or {}).get("trend", [])[-12:],
+        },
+        "amazon": {
+            "metrics": (amazon_report or {}).get("metrics"),
+            "data_volume": (amazon_report or {}).get("data_volume"),
+            "brands": (amazon_report or {}).get("brands", [])[:12],
+            "price_bands": (amazon_report or {}).get("price_bands", []),
+            "queries": (amazon_report or {}).get("queries", []),
+        },
+        "evidence_pool": [
+            {
+                "id": item["id"],
+                "source": item["source"],
+                "kind": item["kind"],
+                "title": item["title"],
+                "url": item["url"],
+                "excerpt": item["excerpt"],
+                "reference": item["reference"],
+            }
+            for item in evidence_pool
+        ],
+    }
+
+
+def build_combined_evidence_pool(
+    reddit_report: dict[str, Any] | None,
+    amazon_report: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for index, post in enumerate((reddit_report or {}).get("posts", [])[:30], start=1):
+        url = str(post.get("url") or "")
+        if not url:
+            continue
+        title = str(post.get("title") or f"Reddit post {index}")
+        subreddit = str(post.get("subreddit") or "unknown")
+        evidence.append(
+            {
+                "id": f"R{index}",
+                "source": "reddit",
+                "kind": "post",
+                "title": title,
+                "url": url,
+                "excerpt": compact_text(str(post.get("excerpt") or ""), 520),
+                "reference": f"Reddit r/{subreddit}",
+            }
+        )
+        comments = post.get("comment_items") if isinstance(post.get("comment_items"), list) else []
+        for comment_index, comment in enumerate(comments[:2], start=1):
+            text = compact_text(str(comment.get("text") or ""), 420)
+            if not text:
+                continue
+            evidence.append(
+                {
+                    "id": f"R{index}C{comment_index}",
+                    "source": "reddit",
+                    "kind": "comment",
+                    "title": f"Comment on {title}",
+                    "url": str(comment.get("url") or url),
+                    "excerpt": text,
+                    "reference": f"Reddit comment r/{subreddit}",
+                }
+            )
+
+    for index, product in enumerate((amazon_report or {}).get("products", [])[:35], start=1):
+        url = str(product.get("product_url") or "")
+        if not url:
+            continue
+        title = str(product.get("title") or product.get("asin") or f"Amazon product {index}")
+        reference_bits = [
+            str(product.get("brand") or "").strip(),
+            str(product.get("price_text") or "").strip(),
+            f"{product.get('rating_value')} stars" if product.get("rating_value") else "",
+            f"{product.get('review_count')} reviews" if product.get("review_count") else "",
+        ]
+        reference = " · ".join(bit for bit in reference_bits if bit) or "Amazon product"
+        bullets = product.get("bullet_points") if isinstance(product.get("bullet_points"), list) else []
+        excerpt = " ".join(str(point) for point in bullets[:3]) or reference
+        evidence.append(
+            {
+                "id": f"A{index}",
+                "source": "amazon",
+                "kind": "product",
+                "title": title,
+                "url": url,
+                "excerpt": compact_text(excerpt, 520),
+                "reference": reference,
+            }
+        )
+        reviews = product.get("review_samples") if isinstance(product.get("review_samples"), list) else []
+        for review_index, review in enumerate(reviews[:2], start=1):
+            body = compact_text(
+                f"{review.get('title') or ''}: {review.get('body') or ''}".strip(": "),
+                420,
+            )
+            if not body:
+                continue
+            evidence.append(
+                {
+                    "id": f"A{index}R{review_index}",
+                    "source": "amazon",
+                    "kind": "review",
+                    "title": f"Review for {title}",
+                    "url": amazon_review_url(review, url),
+                    "excerpt": body,
+                    "reference": f"Amazon review · {review.get('rating_value') or '-'} stars",
+                }
+            )
+    return evidence
+
+
+def amazon_review_url(review: dict[str, Any], product_url: str) -> str:
+    review_url = str(review.get("url") or review.get("review_url") or "").strip()
+    if review_url:
+        return absolutize_amazon_url(review_url)
+    review_id = str(review.get("id") or review.get("review_id") or "").strip()
+    if review_id:
+        return f"https://www.amazon.com/gp/customer-reviews/{urllib.parse.quote(review_id)}"
+    base = product_url.split("#", 1)[0]
+    return f"{base}#customerReviews" if base else product_url
+
+
+def absolutize_amazon_url(url: str) -> str:
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    if url.startswith("/"):
+        return f"https://www.amazon.com{url}"
+    return url
+
+
+def compact_text(value: str, limit: int) -> str:
+    value = re.sub(r"\s+", " ", value).strip()
+    return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
+
+
+def build_fallback_combined_raw(
+    category: str,
+    reddit_report: dict[str, Any] | None,
+    amazon_report: dict[str, Any] | None,
+    evidence_pool: list[dict[str, Any]],
+) -> dict[str, Any]:
+    top_pain = ((reddit_report or {}).get("pain_points") or [{}])[0].get("topic") or "fit and comfort signals"
+    amazon_metrics = (amazon_report or {}).get("metrics") or {}
+    price_avg = amazon_metrics.get("price_avg")
+    review_total = amazon_metrics.get("total_review_count") or 0
+    default_ids = [item["id"] for item in evidence_pool[:3]]
+    reddit_ids = [item["id"] for item in evidence_pool if item["source"] == "reddit"][:2] or default_ids[:1]
+    amazon_ids = [item["id"] for item in evidence_pool if item["source"] == "amazon"][:2] or default_ids[:1]
+    mixed_ids = unique_ids([*(reddit_ids[:1]), *(amazon_ids[:1])]) or default_ids[:1]
+    return {
+        "verdict": {
+            "text": f"{category} has usable demand signals, but the current decision should be treated as evidence-led and directional rather than a market-size estimate.",
+            "citation_ids": mixed_ids,
+        },
+        "opportunities": [
+            {
+                "title": "把 Reddit 高频痛点转成商品 claim",
+                "detail": f"Reddit discussion clusters around {top_pain}; use that language to shape feature claims and test-copy.",
+                "citation_ids": reddit_ids or mixed_ids,
+            },
+            {
+                "title": "用 Amazon 货架验证价格与卖点表达",
+                "detail": f"Collected Amazon shelf signals include average price {price_avg or 'unknown'} and {review_total} review/rating signals.",
+                "citation_ids": amazon_ids or mixed_ids,
+            },
+            {
+                "title": "用评论样本寻找可被研发解决的小缺口",
+                "detail": "Amazon review samples and Reddit comments can be paired to identify claim gaps that competitors have not explained clearly.",
+                "citation_ids": mixed_ids,
+            },
+        ],
+        "risks": [
+            {
+                "title": "不能把 review count 等同销量",
+                "detail": "Amazon review/rating signals are historical validation proxies, not true sales volume.",
+                "citation_ids": amazon_ids or mixed_ids,
+            },
+            {
+                "title": "社媒样本可能放大痛点人群",
+                "detail": "Reddit evidence is useful for language and pain points, but it is not representative of the whole US market.",
+                "citation_ids": reddit_ids or mixed_ids,
+            },
+            {
+                "title": "跨平台证据仍缺少时间序列",
+                "detail": "Current MVP compares one collection run, so it cannot yet prove week-over-week demand movement.",
+                "citation_ids": mixed_ids,
+            },
+        ],
+        "rd_recommendations": [
+            {
+                "title": "先做痛点-结构映射",
+                "detail": "Translate fit, support, smoothing, and comfort language into measurable construction requirements.",
+                "citation_ids": mixed_ids,
+            },
+            {
+                "title": "建立竞品 claim checklist",
+                "detail": "For each top Amazon product, compare bullet claims, review complaints, and visible construction choices.",
+                "citation_ids": amazon_ids or mixed_ids,
+            },
+            {
+                "title": "用真实评论补充试穿假设",
+                "detail": "Prioritize prototypes around complaints that appear in both Reddit discussion and Amazon reviews.",
+                "citation_ids": mixed_ids,
+            },
+        ],
+        "brand_communication": [
+            {
+                "title": "用用户原话表达利益点",
+                "detail": "Copy should mirror the shopper's own discomfort and outcome language before introducing technical features.",
+                "citation_ids": reddit_ids or mixed_ids,
+            },
+            {
+                "title": "公开解释差异化证据",
+                "detail": "Position against Amazon shelf claims with visible proof points such as construction, fit range, and review-backed use cases.",
+                "citation_ids": amazon_ids or mixed_ids,
+            },
+            {
+                "title": "避免没有证据的规模化表述",
+                "detail": "Until sales and longitudinal data are added, market communication should avoid claiming category growth or market size.",
+                "citation_ids": mixed_ids,
+            },
+        ],
+        "evidence_chain": [
+            {"claim": item["title"], "detail": item["excerpt"], "citation_ids": [item["id"]]}
+            for item in evidence_pool[:6]
+        ],
+        "data_gaps": [
+            {
+                "title": "真实销量与 BSR 历史",
+                "detail": "Need third-party Amazon estimates, seller data, or BSR history to size the shelf and detect weekly change.",
+                "citation_ids": amazon_ids or mixed_ids,
+            },
+            {
+                "title": "用户画像缺口",
+                "detail": "Need survey, panel, or owned customer data to move beyond platform-specific discussion language.",
+                "citation_ids": reddit_ids or mixed_ids,
+            },
+            {
+                "title": "跨周趋势缺口",
+                "detail": "Need repeated snapshots before using this tool for week-over-week market movement.",
+                "citation_ids": mixed_ids,
+            },
+        ],
+    }
+
+
+def normalize_combined_insight(
+    category: str,
+    raw: dict[str, Any],
+    evidence_pool: list[dict[str, Any]],
+) -> dict[str, Any]:
+    fallback_ids = [item["id"] for item in evidence_pool[:2]]
+    verdict_raw = raw.get("verdict") if isinstance(raw.get("verdict"), dict) else {}
+    verdict = {
+        "text": str(verdict_raw.get("text") or f"{category} has directional evidence, but needs stronger sales and trend data."),
+        "citations": resolve_citations(verdict_raw.get("citation_ids"), evidence_pool, fallback_ids),
+    }
+    return {
+        "verdict": verdict,
+        "opportunities": normalize_insight_items(raw.get("opportunities"), 3, evidence_pool, fallback_ids, "机会"),
+        "risks": normalize_insight_items(raw.get("risks"), 3, evidence_pool, fallback_ids, "风险"),
+        "rd_recommendations": normalize_insight_items(
+            raw.get("rd_recommendations"),
+            3,
+            evidence_pool,
+            fallback_ids,
+            "研发建议",
+        ),
+        "brand_communication": normalize_insight_items(
+            raw.get("brand_communication"),
+            3,
+            evidence_pool,
+            fallback_ids,
+            "品牌沟通建议",
+        ),
+        "evidence_chain": normalize_chain_items(raw.get("evidence_chain"), evidence_pool, fallback_ids),
+        "data_gaps": normalize_insight_items(raw.get("data_gaps"), 3, evidence_pool, fallback_ids, "数据缺口"),
+    }
+
+
+def normalize_insight_items(
+    items: Any,
+    target_count: int,
+    evidence_pool: list[dict[str, Any]],
+    fallback_ids: list[str],
+    fallback_title: str,
+) -> list[dict[str, Any]]:
+    raw_items = items if isinstance(items, list) else []
+    normalized: list[dict[str, Any]] = []
+    for index in range(target_count):
+        item = raw_items[index] if index < len(raw_items) and isinstance(raw_items[index], dict) else {}
+        normalized.append(
+            {
+                "title": str(item.get("title") or f"{fallback_title} {index + 1}"),
+                "detail": str(item.get("detail") or "Needs review against the cited evidence before action."),
+                "citations": resolve_citations(item.get("citation_ids"), evidence_pool, rotate_ids(fallback_ids, index)),
+            }
+        )
+    return normalized
+
+
+def normalize_chain_items(items: Any, evidence_pool: list[dict[str, Any]], fallback_ids: list[str]) -> list[dict[str, Any]]:
+    raw_items = items if isinstance(items, list) else []
+    if not raw_items:
+        raw_items = [
+            {"claim": item["title"], "detail": item["excerpt"], "citation_ids": [item["id"]]}
+            for item in evidence_pool[:6]
+        ]
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_items[:8]):
+        if not isinstance(item, dict):
+            continue
+        normalized.append(
+            {
+                "claim": str(item.get("claim") or item.get("title") or f"Evidence {index + 1}"),
+                "detail": str(item.get("detail") or "Cited source evidence."),
+                "citations": resolve_citations(item.get("citation_ids"), evidence_pool, rotate_ids(fallback_ids, index)),
+            }
+        )
+    return normalized
+
+
+def resolve_citations(ids: Any, evidence_pool: list[dict[str, Any]], fallback_ids: list[str]) -> list[dict[str, Any]]:
+    evidence_by_id = {item["id"]: item for item in evidence_pool}
+    requested_ids = ids if isinstance(ids, list) else []
+    resolved = [evidence_by_id[item_id] for item_id in requested_ids if isinstance(item_id, str) and item_id in evidence_by_id]
+    if not resolved:
+        resolved = [evidence_by_id[item_id] for item_id in fallback_ids if item_id in evidence_by_id]
+    return [
+        {
+            "id": item["id"],
+            "source": item["source"],
+            "kind": item["kind"],
+            "title": item["title"],
+            "url": item["url"],
+            "excerpt": item["excerpt"],
+            "reference": item["reference"],
+        }
+        for item in resolved[:3]
+    ]
+
+
+def unique_ids(ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in ids:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def rotate_ids(ids: list[str], index: int) -> list[str]:
+    if not ids:
+        return []
+    return [ids[index % len(ids)]]
+
+
 def analyze_category(payload: dict[str, Any]) -> dict[str, Any]:
     category = str(payload.get("category") or "").strip()
     if not category:
@@ -862,9 +1683,10 @@ def analyze_category(payload: dict[str, Any]) -> dict[str, Any]:
     if mode not in {"auto", "agent_reach", "oauth", "rss", "sample"}:
         mode = "auto"
     bypass_cache = bool(payload.get("bypassCache"))
+    use_llm = payload.get("useLlm", True) is not False
     posts, warnings, source_mode = collect_reddit(category, limit, time_range, mode, bypass_cache=bypass_cache)
     result = summarize_posts(category, posts, source_mode, warnings)
-    result["data_volume"] = build_data_volume_stats(limit, posts, source_mode, bool(payload.get("useLlm")))
+    result["data_volume"] = build_data_volume_stats(limit, posts, source_mode, use_llm)
     data_volume = result["data_volume"]
     if (
         source_mode == "agent_reach"
@@ -882,7 +1704,7 @@ def analyze_category(payload: dict[str, Any]) -> dict[str, Any]:
         "status": "not_requested",
         "message": "Enable AI synthesis to call the configured LLM provider.",
     }
-    if bool(payload.get("useLlm")):
+    if use_llm:
         try:
             enhanced = enhance_report_with_llm(result)
             result["llm_analysis"] = {
@@ -912,6 +1734,13 @@ class AppHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/health":
             self.send_json({"ok": True, "time": now_iso()})
             return
+        if parsed.path == "/api/history":
+            self.send_json(list_research_history())
+            return
+        if parsed.path.startswith("/api/history/"):
+            item_id = urllib.parse.unquote(parsed.path.removeprefix("/api/history/"))
+            self.send_json(get_research_history_item(item_id))
+            return
         if parsed.path == "/api/settings/llm":
             self.send_json(build_llm_settings_response())
             return
@@ -930,6 +1759,9 @@ class AppHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path not in {
             "/api/analyze",
+            "/api/analyze/amazon",
+            "/api/analyze/combined",
+            "/api/history",
             "/api/settings/llm",
             "/api/settings/reddit",
             "/api/settings/research",
@@ -943,6 +1775,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
             if parsed.path == "/api/settings/agent-reach/reconnect":
                 result = reconnect_opencli_extension()
+            elif parsed.path == "/api/history":
+                result = save_research_history(payload)
             elif parsed.path == "/api/settings/llm":
                 result = update_llm_settings(payload)
             elif parsed.path == "/api/settings/reddit":
@@ -951,6 +1785,10 @@ class AppHandler(SimpleHTTPRequestHandler):
                 result = update_research_settings(payload)
             elif parsed.path == "/api/settings/agent-reach":
                 result = update_agent_reach_settings(payload)
+            elif parsed.path == "/api/analyze/amazon":
+                result = analyze_amazon_category(payload)
+            elif parsed.path == "/api/analyze/combined":
+                result = analyze_combined_insight(payload)
             else:
                 result = analyze_category(payload)
             self.send_json(result)
@@ -958,6 +1796,19 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             self.send_json({"error": f"Analysis failed: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def do_DELETE(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        if not parsed.path.startswith("/api/history/"):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            item_id = urllib.parse.unquote(parsed.path.removeprefix("/api/history/"))
+            self.send_json(delete_research_history_item(item_id))
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
+        except Exception as exc:  # noqa: BLE001
+            self.send_json({"error": f"Delete failed: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def send_json(self, payload: dict[str, Any], status: int = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

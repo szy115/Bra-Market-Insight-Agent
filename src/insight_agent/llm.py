@@ -7,6 +7,8 @@ import urllib.request
 from typing import Any
 
 from .settings import (
+    DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
+    DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
     DEFAULT_LLM_COMMENT_SAMPLES_PER_POST,
     DEFAULT_LLM_EVIDENCE_POSTS,
     build_llm_settings_response,
@@ -120,6 +122,146 @@ def build_prompt(report: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
+def compact_amazon_report_context(report: dict[str, Any]) -> dict[str, Any]:
+    values = read_settings_values()
+    product_limit = int_setting(values, "AMAZON_LLM_PRODUCT_LIMIT", DEFAULT_AMAZON_LLM_PRODUCT_LIMIT, 1, 100)
+    review_sample_limit = int_setting(
+        values,
+        "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
+        DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
+        0,
+        50,
+    )
+    products = report.get("products", [])[:product_limit]
+    return {
+        "category": report.get("category"),
+        "query": report.get("query"),
+        "queries": report.get("queries"),
+        "metrics": report.get("metrics"),
+        "data_volume": report.get("data_volume"),
+        "price_bands": report.get("price_bands"),
+        "brands": report.get("brands", [])[:12],
+        "products": [
+            {
+                "asin": product.get("asin"),
+                "rank": product.get("rank"),
+                "title": product.get("title"),
+                "brand": product.get("brand"),
+                "price_text": product.get("price_text"),
+                "price_value": product.get("price_value"),
+                "rating_value": product.get("rating_value"),
+                "review_count": product.get("review_count"),
+                "badges": product.get("badges"),
+                "is_sponsored": product.get("is_sponsored"),
+                "product_url": product.get("product_url"),
+                "bullet_points": product.get("bullet_points", [])[:5],
+                "review_samples": [
+                    {
+                        "title": review.get("title"),
+                        "body": str(review.get("body", ""))[:500],
+                        "rating_value": review.get("rating_value"),
+                        "verified_purchase": review.get("verified_purchase"),
+                    }
+                    for review in product.get("review_samples", [])[:review_sample_limit]
+                ],
+            }
+            for product in products
+        ],
+        "method": report.get("method"),
+    }
+
+
+def build_amazon_prompt(report: dict[str, Any]) -> list[dict[str, str]]:
+    context = compact_amazon_report_context(report)
+    system = (
+        "You are a senior US intimate-apparel ecommerce market research analyst. "
+        "Use only the provided Amazon-derived product and review-sample evidence. "
+        "Do not invent true sales volume; treat rank, review count, badges, and review growth proxies as directional signals. "
+        "Return strict JSON only."
+    )
+    user = {
+        "task": "Analyze this Amazon category shelf for product and R&D decision-making.",
+        "requirements": [
+            "Write concise executive_summary in English.",
+            "List 3-5 strategic_takeaways about price, competition, claims, and product gaps.",
+            "List opportunity_areas with rationale and evidence_urls.",
+            "List data_gaps and what source would close each gap.",
+            "Include confidence as High, Medium, Low, or Demo only.",
+            "Every claim that depends on Amazon evidence must cite product URLs from the input.",
+        ],
+        "schema": {
+            "executive_summary": "string",
+            "strategic_takeaways": ["string"],
+            "opportunity_areas": [
+                {
+                    "title": "string",
+                    "rationale": "string",
+                    "confidence": "High|Medium|Low|Demo only",
+                    "evidence_urls": ["string"],
+                }
+            ],
+            "evidence_audit": ["string"],
+            "data_gaps": ["string"],
+        },
+        "context": context,
+    }
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+    ]
+
+
+def build_combined_insight_prompt(context: dict[str, Any], locale: str = "zh") -> list[dict[str, str]]:
+    language = "Chinese" if locale == "zh" else "English"
+    system = (
+        "You are a senior US intimate-apparel market insight strategist. "
+        "Use only the provided Reddit and Amazon evidence pool. "
+        "Every conclusion must cite at least one citation_id from the evidence pool. "
+        "Do not invent market size, sales volume, demographics, or trend direction beyond the evidence. "
+        "Return strict JSON only."
+    )
+    user = {
+        "task": f"Create a concise integrated insight report in {language}.",
+        "hard_requirements": [
+            "verdict must be one sentence and cite at least one citation_id.",
+            "Return exactly 3 opportunities.",
+            "Return exactly 3 risks.",
+            "Return 2-4 R&D recommendations.",
+            "Return 2-4 brand communication recommendations.",
+            "Return 4-8 evidence_chain items.",
+            "Return 2-4 data_gaps.",
+            "Every item in verdict, opportunities, risks, rd_recommendations, brand_communication, and data_gaps must include citation_ids.",
+            "Only use citation_ids that exist in context.evidence_pool.",
+        ],
+        "schema": {
+            "verdict": {"text": "string", "citation_ids": ["R1|A1|A1R1"]},
+            "opportunities": [
+                {"title": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+            "risks": [
+                {"title": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+            "rd_recommendations": [
+                {"title": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+            "brand_communication": [
+                {"title": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+            "evidence_chain": [
+                {"claim": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+            "data_gaps": [
+                {"title": "string", "detail": "string", "citation_ids": ["string"]}
+            ],
+        },
+        "context": context,
+    }
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+    ]
+
+
 def extract_json(text: str) -> dict[str, Any]:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -185,6 +327,24 @@ def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
 def enhance_report_with_llm(report: dict[str, Any]) -> dict[str, Any]:
     previous_provider = os.environ.get("INSIGHT_LLM_PROVIDER")
     messages = build_prompt(report)
+    enhanced = call_openai_compatible(messages)
+    if previous_provider:
+        os.environ["INSIGHT_LLM_PROVIDER"] = previous_provider
+    return enhanced
+
+
+def enhance_amazon_report_with_llm(report: dict[str, Any]) -> dict[str, Any]:
+    previous_provider = os.environ.get("INSIGHT_LLM_PROVIDER")
+    messages = build_amazon_prompt(report)
+    enhanced = call_openai_compatible(messages)
+    if previous_provider:
+        os.environ["INSIGHT_LLM_PROVIDER"] = previous_provider
+    return enhanced
+
+
+def enhance_combined_insight_with_llm(context: dict[str, Any], locale: str = "zh") -> dict[str, Any]:
+    previous_provider = os.environ.get("INSIGHT_LLM_PROVIDER")
+    messages = build_combined_insight_prompt(context, locale)
     enhanced = call_openai_compatible(messages)
     if previous_provider:
         os.environ["INSIGHT_LLM_PROVIDER"] = previous_provider

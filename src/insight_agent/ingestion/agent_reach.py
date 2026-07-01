@@ -243,7 +243,7 @@ def coerce_items(payload: Any) -> list[dict[str, Any]]:
 def first_value(item: dict[str, Any], keys: tuple[str, ...], default: Any = "") -> Any:
     for key in keys:
         value = item.get(key)
-        if value not in {None, ""}:
+        if value is not None and value != "":
             return value
     return default
 

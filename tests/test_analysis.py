@@ -1,11 +1,23 @@
 import os
+from collections import Counter
 
 from insight_agent import server as server_module
 from insight_agent import settings as settings_module
 from insight_agent.ingestion import agent_reach as agent_reach_module
 from insight_agent.ingestion.agent_reach import normalize_opencli_read_items
+from insight_agent.ingestion.amazon_opencli import AmazonResult, build_amazon_queries
 from insight_agent.ingestion.schema import EvidenceItem, ProviderResult
-from insight_agent.server import analyze_category, build_reddit_query
+from insight_agent.server import (
+    amazon_review_url,
+    analyze_amazon_category,
+    analyze_category,
+    analyze_combined_insight,
+    build_reddit_query,
+    build_trend_series,
+    delete_research_history_item,
+    list_research_history,
+    save_research_history,
+)
 from insight_agent.settings import (
     build_llm_settings_response,
     build_reddit_settings_response,
@@ -30,6 +42,7 @@ def test_sample_analysis_returns_report_sections() -> None:
             "mode": "sample",
             "limit": 8,
             "timeRange": "year",
+            "useLlm": False,
         }
     )
 
@@ -40,6 +53,14 @@ def test_sample_analysis_returns_report_sections() -> None:
     assert result["pain_points"]
     assert result["opportunities"]
     assert result["posts"]
+
+
+def test_trend_series_fills_single_month_context() -> None:
+    trend = build_trend_series(Counter({"2026-06": 5}))
+
+    assert len(trend) == 6
+    assert trend[-1] == {"month": "2026-06", "count": 5}
+    assert trend[0]["count"] == 0
 
 
 def test_agent_reach_analysis_uses_provider(monkeypatch) -> None:
@@ -76,6 +97,7 @@ def test_agent_reach_analysis_uses_provider(monkeypatch) -> None:
             "mode": "agent_reach",
             "limit": 10,
             "timeRange": "year",
+            "useLlm": False,
         }
     )
 
@@ -85,6 +107,167 @@ def test_agent_reach_analysis_uses_provider(monkeypatch) -> None:
     assert result["data_volume"]["ai_comment_samples"] == 0
     assert result["posts"][0]["comment_items"]
     assert "Top comments" in result["posts"][0]["excerpt"]
+
+
+def test_amazon_query_expansion_maps_large_bust_minimizer_terms() -> None:
+    queries = build_amazon_queries("美国大胸显小内衣", 5)
+
+    assert queries[0] == "美国大胸显小内衣"
+    assert "minimizer bra" in queries
+    assert "minimizer bras for large breasts" in queries
+
+
+def test_amazon_analysis_uses_opencli_provider(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+
+    def fake_fetch(
+        _query: str,
+        _limit: int,
+        keyword_limit: int | None = None,
+        bypass_cache: bool = False,
+    ) -> AmazonResult:
+        return AmazonResult(
+            [
+                {
+                    "rank": 1,
+                    "asin": "B0058LXNF0",
+                    "title": "Vanity Fair Women's Beauty Back Smoothing Minimizer Bra",
+                    "brand": "Vanity Fair",
+                    "product_url": "https://www.amazon.com/dp/B0058LXNF0",
+                    "price_text": "$29.99",
+                    "price_value": 29.99,
+                    "currency": "USD",
+                    "rating_value": 4.3,
+                    "review_count": 34856,
+                    "badges": ["Overall Pick"],
+                    "is_sponsored": False,
+                    "bullet_points": ["Minimizes bust line up to 1.5 inches"],
+                    "review_samples": [
+                        {
+                            "title": "Comfortable minimizer",
+                            "body": "Smooths under shirts without uniboob.",
+                            "rating_value": 5,
+                            "verified_purchase": True,
+                        }
+                    ],
+                }
+            ],
+            ["Bypassed local cache for Amazon collection."] if bypass_cache else [],
+            queries=["minimizer bra", "full coverage minimizer bra"][: keyword_limit or 2],
+            per_query_counts={"minimizer bra": 1, "full coverage minimizer bra": 1},
+        )
+
+    monkeypatch.setattr("insight_agent.server.fetch_amazon_opencli", fake_fetch)
+
+    result = analyze_amazon_category(
+        {
+            "category": "minimizer bra",
+            "limit": 10,
+            "bypassCache": True,
+            "useLlm": False,
+        }
+    )
+
+    assert result["source_mode"] == "amazon_opencli"
+    assert result["metrics"]["products"] == 1
+    assert result["metrics"]["total_review_count"] == 34856
+    assert result["data_volume"]["collected_review_samples"] == 1
+    assert result["data_volume"]["query_count"] == 2
+    assert result["data_volume"]["requested_products_per_query"] == 10
+    assert result["products"][0]["asin"] == "B0058LXNF0"
+
+
+def test_combined_insight_returns_fixed_cited_sections() -> None:
+    reddit_report = {
+        "category": "minimizer bra",
+        "coverage": {"posts": 1},
+        "data_volume": {"collected_comments": 1},
+        "pain_points": [{"topic": "Fit and sizing"}],
+        "posts": [
+            {
+                "title": "Looking for a minimizer bra that does not hurt",
+                "url": "https://www.reddit.com/r/ABraThatFits/comments/test/minimizer/",
+                "subreddit": "ABraThatFits",
+                "excerpt": "Need smoothing under shirts without shoulder pain.",
+                "comment_items": [{"text": "Side support and wire shape matter most."}],
+            }
+        ],
+    }
+    amazon_report = {
+        "category": "minimizer bra",
+        "metrics": {"products": 1, "review_samples": 1, "total_review_count": 1200, "price_avg": 29.99},
+        "products": [
+            {
+                "title": "Smoothing Minimizer Bra",
+                "brand": "Example",
+                "product_url": "https://www.amazon.com/dp/B000000001",
+                "price_text": "$29.99",
+                "rating_value": 4.3,
+                "review_count": 1200,
+                "bullet_points": ["Minimizes bust line and smooths back."],
+                "review_samples": [{"title": "Good shape", "body": "Fits well under button-down shirts.", "rating_value": 5}],
+            }
+        ],
+    }
+
+    result = analyze_combined_insight(
+        {
+            "category": "minimizer bra",
+            "reddit_report": reddit_report,
+            "amazon_report": amazon_report,
+            "useLlm": False,
+        }
+    )
+
+    assert result["verdict"]["citations"]
+    assert len(result["opportunities"]) == 3
+    assert len(result["risks"]) == 3
+    assert len(result["data_gaps"]) == 3
+    for section in (
+        result["opportunities"],
+        result["risks"],
+        result["rd_recommendations"],
+        result["brand_communication"],
+        result["data_gaps"],
+    ):
+        assert all(item["citations"] for item in section)
+    assert all(item["citations"] for item in result["evidence_chain"])
+
+
+def test_amazon_review_url_prefers_review_id_and_falls_back_to_review_anchor() -> None:
+    assert (
+        amazon_review_url({"id": "R123ABC"}, "https://www.amazon.com/dp/B000000001")
+        == "https://www.amazon.com/gp/customer-reviews/R123ABC"
+    )
+    assert (
+        amazon_review_url({}, "https://www.amazon.com/dp/B000000001?th=1")
+        == "https://www.amazon.com/dp/B000000001?th=1#customerReviews"
+    )
+
+
+def test_research_history_save_list_delete(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "HISTORY_PATH", tmp_path / "research-history.json")
+
+    saved = save_research_history(
+        {
+            "category": "minimizer bra",
+            "combined_report": {
+                "category": "minimizer bra",
+                "verdict": {"text": "Directional demand signal."},
+                "data_summary": {"evidence_items": 3},
+            },
+        }
+    )
+
+    item_id = saved["item"]["id"]
+    listed = list_research_history()
+    assert listed["storage_path"].endswith("research-history.json")
+    assert listed["items"][0]["id"] == item_id
+    assert listed["items"][0]["has_combined"] is True
+
+    deleted = delete_research_history_item(item_id)
+    assert deleted["deleted_id"] == item_id
+    assert deleted["items"] == []
 
 
 def test_bypass_cache_forces_fresh_collection(monkeypatch, tmp_path) -> None:
@@ -151,6 +334,7 @@ def test_bypass_cache_forces_fresh_collection(monkeypatch, tmp_path) -> None:
             "mode": "agent_reach",
             "limit": 10,
             "timeRange": "year",
+            "useLlm": False,
         }
     )
     fresh = analyze_category(
@@ -160,6 +344,7 @@ def test_bypass_cache_forces_fresh_collection(monkeypatch, tmp_path) -> None:
             "limit": 10,
             "timeRange": "year",
             "bypassCache": True,
+            "useLlm": False,
         }
     )
 
@@ -221,6 +406,7 @@ def test_explicit_agent_reach_does_not_fallback_to_rss_or_sample(monkeypatch, tm
             "limit": 10,
             "timeRange": "year",
             "bypassCache": True,
+            "useLlm": False,
         }
     )
 
@@ -333,6 +519,13 @@ def test_update_research_settings_writes_data_volume_defaults(monkeypatch, tmp_p
         "INSIGHT_RESEARCH_POST_LIMIT",
         "INSIGHT_LLM_EVIDENCE_POSTS",
         "INSIGHT_LLM_COMMENT_SAMPLES_PER_POST",
+        "AMAZON_PRODUCT_LIMIT",
+        "AMAZON_KEYWORD_LIMIT",
+        "AMAZON_DETAIL_LIMIT",
+        "AMAZON_DISCUSSION_LIMIT",
+        "AMAZON_REVIEWS_PER_PRODUCT",
+        "AMAZON_LLM_PRODUCT_LIMIT",
+        "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -343,13 +536,25 @@ def test_update_research_settings_writes_data_volume_defaults(monkeypatch, tmp_p
             "limit": 120,
             "llmEvidencePosts": 30,
             "llmCommentSamplesPerPost": 10,
+            "amazonProductLimit": 60,
+            "amazonKeywordLimit": 9,
+            "amazonDetailLimit": 12,
+            "amazonDiscussionLimit": 8,
+            "amazonReviewsPerProduct": 15,
+            "amazonLlmProductLimit": 40,
+            "amazonLlmReviewSamplesPerProduct": 6,
         }
     )
 
     assert result["limit"] == 120
     assert result["llmEvidencePosts"] == 30
+    assert result["amazonProductLimit"] == 60
+    assert result["amazonKeywordLimit"] == 9
     assert os.environ["INSIGHT_RESEARCH_POST_LIMIT"] == "120"
+    assert os.environ["AMAZON_PRODUCT_LIMIT"] == "60"
+    assert os.environ["AMAZON_KEYWORD_LIMIT"] == "9"
     assert "INSIGHT_LLM_COMMENT_SAMPLES_PER_POST=10" in env_path.read_text(encoding="utf-8")
+    assert "AMAZON_DISCUSSION_LIMIT=8" in env_path.read_text(encoding="utf-8")
 
 
 def test_research_settings_clamps_defaults() -> None:
@@ -360,12 +565,45 @@ def test_research_settings_clamps_defaults() -> None:
             "INSIGHT_RESEARCH_POST_LIMIT": "999",
             "INSIGHT_LLM_EVIDENCE_POSTS": "0",
             "INSIGHT_LLM_COMMENT_SAMPLES_PER_POST": "99",
+            "AMAZON_PRODUCT_LIMIT": "999",
+            "AMAZON_KEYWORD_LIMIT": "99",
+            "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT": "99",
         }
     )
 
     assert settings["limit"] == 500
     assert settings["llmEvidencePosts"] == 1
     assert settings["llmCommentSamplesPerPost"] == 50
+    assert settings["amazonProductLimit"] == 100
+    assert settings["amazonKeywordLimit"] == 20
+    assert settings["amazonLlmReviewSamplesPerProduct"] == 50
+
+
+def test_llm_analysis_is_requested_by_default(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+
+    def fake_enhance(_report: dict[str, object]) -> dict[str, object]:
+        return {
+            "provider": "test",
+            "model": "test-model",
+            "result": {"executive_summary": "Default AI synthesis ran."},
+        }
+
+    monkeypatch.setattr("insight_agent.server.enhance_report_with_llm", fake_enhance)
+
+    result = analyze_category(
+        {
+            "category": "wireless bras for large bust",
+            "mode": "sample",
+            "limit": 6,
+            "timeRange": "year",
+        }
+    )
+
+    assert result["data_volume"]["llm_requested"] is True
+    assert result["llm_analysis"]["enabled"] is True
+    assert result["llm_analysis"]["status"] == "ok"
+    assert result["llm_analysis"]["result"]["executive_summary"] == "Default AI synthesis ran."
 
 
 def test_llm_analysis_fails_closed_without_key(monkeypatch) -> None:
