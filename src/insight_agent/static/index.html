@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Insight Agent Reddit MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Analysis controls">
+        <div class="brand-row">
+          <div class="mark">IA</div>
+          <div>
+            <h1>Reddit Insight MVP</h1>
+            <p>Early category signal for bra market research</p>
+          </div>
+        </div>
+
+        <form id="analysisForm" class="control-form">
+          <label for="category">Bra subcategory</label>
+          <input
+            id="category"
+            name="category"
+            type="text"
+            value="wireless bras for large bust"
+            autocomplete="off"
+            required
+          />
+
+          <div class="field-row">
+            <div>
+              <label for="timeRange">Time range</label>
+              <select id="timeRange" name="timeRange">
+                <option value="year" selected>Past year</option>
+                <option value="month">Past month</option>
+                <option value="week">Past week</option>
+                <option value="all">All time</option>
+              </select>
+            </div>
+            <div>
+              <label for="limit">Posts</label>
+              <input id="limit" name="limit" type="number" min="5" max="50" value="25" />
+            </div>
+          </div>
+
+          <label for="mode">Data mode</label>
+          <select id="mode" name="mode">
+            <option value="auto" selected>Auto live + fallback</option>
+            <option value="rss">RSS only</option>
+            <option value="oauth">OAuth only</option>
+            <option value="sample">Sample data</option>
+          </select>
+
+          <label class="toggle-row">
+            <input id="useLlm" name="useLlm" type="checkbox" />
+            <span>AI synthesis</span>
+          </label>
+
+          <label class="toggle-row">
+            <input id="bypassCache" name="bypassCache" type="checkbox" />
+            <span>Bypass cache</span>
+          </label>
+
+          <button type="submit" id="runButton">Analyze Reddit</button>
+        </form>
+
+        <section class="settings-panel">
+          <button id="settingsToggle" class="ghost-button" type="button">LLM Settings</button>
+          <form id="llmForm" class="llm-form hidden">
+            <label for="provider">Provider</label>
+            <select id="provider" name="provider"></select>
+
+            <label for="model_name">Model</label>
+            <input id="model_name" name="model_name" type="text" autocomplete="off" />
+
+            <label for="base_url">Base URL</label>
+            <input id="base_url" name="base_url" type="url" autocomplete="off" />
+
+            <label for="api_key">API key</label>
+            <input id="api_key" name="api_key" type="password" placeholder="Leave blank to keep saved key" autocomplete="off" />
+
+            <div class="field-row">
+              <label>
+                Temperature
+                <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label>
+                Timeout
+                <input id="timeout_seconds" name="timeout_seconds" type="number" min="1" max="600" step="1" />
+              </label>
+            </div>
+
+            <label class="toggle-row">
+              <input id="clear_api_key" name="clear_api_key" type="checkbox" />
+              <span>Clear saved API key</span>
+            </label>
+
+            <button id="saveLlmButton" type="submit">Save LLM settings</button>
+            <p id="llmStatus" class="settings-status"></p>
+          </form>
+        </section>
+
+        <div class="note">
+          <strong>Live access:</strong>
+          Set Reddit OAuth keys in <code>.env</code> for richer data. LLM synthesis uses the provider saved above.
+        </div>
+      </aside>
+
+      <section class="workspace" aria-live="polite">
+        <div class="toolbar">
+          <div>
+            <p class="eyebrow">Minimum viable report</p>
+            <h2 id="reportTitle">Ready to analyze</h2>
+          </div>
+          <div id="sourceBadge" class="source-badge">No run yet</div>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <h3>Enter a subcategory and run the Reddit analysis.</h3>
+          <p>The demo will return signal strength, pain-point clusters, sentiment, cited posts, and data gaps.</p>
+        </div>
+
+        <div id="loadingState" class="loading-state hidden">
+          <div class="spinner"></div>
+          <p>Collecting Reddit posts and building the report...</p>
+        </div>
+
+        <div id="errorState" class="error-state hidden"></div>
+
+        <div id="report" class="report hidden">
+          <section class="summary-grid">
+            <div class="metric-panel">
+              <span>Market signal</span>
+              <strong id="signalScore">0</strong>
+              <p id="signalSummary"></p>
+            </div>
+            <div class="metric-panel">
+              <span>Coverage</span>
+              <strong id="coveragePosts">0 posts</strong>
+              <p id="coverageText"></p>
+            </div>
+            <div class="metric-panel">
+              <span>Sentiment</span>
+              <strong id="sentimentHeadline">0%</strong>
+              <p id="sentimentText"></p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h3>Pain-point clusters</h3>
+              <p>Recurring themes detected in titles and snippets</p>
+            </div>
+            <div id="painPoints" class="cluster-list"></div>
+          </section>
+
+          <section class="split">
+            <div class="panel">
+              <div class="section-heading">
+                <h3>Discussion trend</h3>
+                <p>Post count by visible month</p>
+              </div>
+              <div id="trendChart" class="chart-box"></div>
+            </div>
+            <div class="panel">
+              <div class="section-heading">
+                <h3>Sentiment mix</h3>
+                <p>Heuristic title/snippet scoring</p>
+              </div>
+              <div id="sentimentChart" class="sentiment-chart"></div>
+            </div>
+          </section>
+
+          <section class="split">
+            <div class="panel">
+              <div class="section-heading">
+                <h3>Top subreddits</h3>
+                <p>Where the discussion is concentrated</p>
+              </div>
+              <div id="subreddits" class="bar-list"></div>
+            </div>
+            <div class="panel">
+              <div class="section-heading">
+                <h3>Brand and size mentions</h3>
+                <p>Directional, not exhaustive</p>
+              </div>
+              <div id="mentions" class="mention-list"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h3>Opportunity hypotheses</h3>
+              <p>Generated from repeated Reddit language</p>
+            </div>
+            <div id="opportunities" class="opportunity-list"></div>
+          </section>
+
+          <section id="llmPanel" class="panel hidden">
+            <div class="section-heading">
+              <h3>AI synthesis</h3>
+              <p>LLM analysis grounded in the Reddit evidence above</p>
+            </div>
+            <div id="llmAnalysis" class="llm-analysis"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h3>Evidence posts</h3>
+              <p>Open links to inspect the raw Reddit context</p>
+            </div>
+            <div id="posts" class="post-list"></div>
+          </section>
+
+          <section class="panel method-panel">
+            <div class="section-heading">
+              <h3>Method and caveats</h3>
+              <p>What this demo can and cannot prove</p>
+            </div>
+            <ul id="methodNotes"></ul>
+            <div id="warnings" class="warnings"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

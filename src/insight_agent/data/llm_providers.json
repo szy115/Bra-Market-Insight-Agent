@@ -1,0 +1,56 @@
+[
+  {
+    "name": "openai",
+    "label": "OpenAI",
+    "api_key_env": "OPENAI_API_KEY",
+    "base_url_env": "OPENAI_BASE_URL",
+    "default_model": "gpt-5.5",
+    "default_base_url": "https://api.openai.com/v1",
+    "api_key_required": true
+  },
+  {
+    "name": "openrouter",
+    "label": "OpenRouter",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "base_url_env": "OPENROUTER_BASE_URL",
+    "default_model": "deepseek/deepseek-v4-pro",
+    "default_base_url": "https://openrouter.ai/api/v1",
+    "api_key_required": true
+  },
+  {
+    "name": "deepseek",
+    "label": "DeepSeek",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "base_url_env": "DEEPSEEK_BASE_URL",
+    "default_model": "deepseek-v4-pro",
+    "default_base_url": "https://api.deepseek.com/v1",
+    "api_key_required": true
+  },
+  {
+    "name": "qwen",
+    "label": "Qwen / DashScope",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "base_url_env": "DASHSCOPE_BASE_URL",
+    "default_model": "qwen-plus-latest",
+    "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "api_key_required": true
+  },
+  {
+    "name": "gemini",
+    "label": "Gemini OpenAI-compatible",
+    "api_key_env": "GEMINI_API_KEY",
+    "base_url_env": "GEMINI_BASE_URL",
+    "default_model": "gemini-3.5-flash",
+    "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "api_key_required": true
+  },
+  {
+    "name": "ollama",
+    "label": "Ollama Local",
+    "api_key_env": null,
+    "base_url_env": "OLLAMA_BASE_URL",
+    "default_model": "qwen2.5:32b",
+    "default_base_url": "http://localhost:11434/v1",
+    "api_key_required": false
+  }
+]

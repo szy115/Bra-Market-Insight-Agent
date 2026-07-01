@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/components/chart.tsx","./src/components/charts.tsx","./src/lib/api.ts","./src/lib/format.ts","./src/lib/i18n.ts","./src/lib/researchsettings.ts"],"version":"5.9.3"}
