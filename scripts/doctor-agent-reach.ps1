@@ -21,12 +21,23 @@ foreach ($NodePath in @("$env:ProgramFiles\nodejs", "${env:ProgramFiles(x86)}\no
 }
 
 Write-Host "Command availability:"
-foreach ($Name in @("node", "npm", "agent-reach", "opencli", "rdt")) {
+foreach ($Name in @("node", "npm", "agent-reach", "mcporter", "opencli", "rdt")) {
   $Command = Get-Command $Name -ErrorAction SilentlyContinue
   if ($Command) {
     Write-Host "  OK  $Name -> $($Command.Source)"
   } else {
     Write-Host "  MISS $Name"
+  }
+}
+
+if (Get-Command mcporter -ErrorAction SilentlyContinue) {
+  $McporterConfig = Join-Path $env:USERPROFILE ".agent-reach\mcporter.json"
+  Write-Host ""
+  Write-Host "Project mcporter config:"
+  if (Test-Path $McporterConfig) {
+    mcporter --config $McporterConfig config list --json
+  } else {
+    Write-Host "  MISS $McporterConfig"
   }
 }
 

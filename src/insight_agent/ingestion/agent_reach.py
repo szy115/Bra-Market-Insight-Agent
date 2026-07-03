@@ -5,11 +5,18 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .schema import EvidenceItem, ProviderResult
+
+CURRENT_RUN_ID: ContextVar[str] = ContextVar("agent_reach_current_run_id", default="")
+_RUN_LOCK = threading.Lock()
+_CANCELLED_RUN_IDS: set[str] = set()
+_ACTIVE_RUN_PROCESSES: dict[str, set[subprocess.Popen[str]]] = {}
 
 
 @dataclass(frozen=True)
@@ -62,18 +69,141 @@ def resolve_command(name: str) -> str | None:
     return shutil.which(name, path=command_search_path())
 
 
+def set_current_run_id(run_id: str):
+    return CURRENT_RUN_ID.set(run_id.strip())
+
+
+def reset_current_run_id(token: Any) -> None:
+    CURRENT_RUN_ID.reset(token)
+
+
+def is_run_cancelled(run_id: str) -> bool:
+    if not run_id:
+        return False
+    with _RUN_LOCK:
+        return run_id in _CANCELLED_RUN_IDS
+
+
+def clear_run_cancel(run_id: str) -> None:
+    if not run_id:
+        return
+    with _RUN_LOCK:
+        _CANCELLED_RUN_IDS.discard(run_id)
+
+
+def _register_run_process(run_id: str, process: subprocess.Popen[str]) -> None:
+    if not run_id:
+        return
+    with _RUN_LOCK:
+        _ACTIVE_RUN_PROCESSES.setdefault(run_id, set()).add(process)
+
+
+def _unregister_run_process(run_id: str, process: subprocess.Popen[str]) -> None:
+    if not run_id:
+        return
+    with _RUN_LOCK:
+        processes = _ACTIVE_RUN_PROCESSES.get(run_id)
+        if not processes:
+            return
+        processes.discard(process)
+        if not processes:
+            _ACTIVE_RUN_PROCESSES.pop(run_id, None)
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+        else:
+            process.terminate()
+    except Exception:  # noqa: BLE001 - cancellation should be best effort.
+        try:
+            process.kill()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def request_run_cancel(run_id: str) -> dict[str, Any]:
+    run_id = run_id.strip()
+    if not run_id:
+        return {"ok": False, "run_id": "", "terminated_processes": 0}
+    with _RUN_LOCK:
+        _CANCELLED_RUN_IDS.add(run_id)
+        processes = list(_ACTIVE_RUN_PROCESSES.get(run_id, set()))
+    terminated = 0
+    for process in processes:
+        if process.poll() is None:
+            _terminate_process_tree(process)
+            terminated += 1
+    return {"ok": True, "run_id": run_id, "terminated_processes": terminated}
+
+
+def mcporter_config_path() -> str:
+    return os.path.join(os.path.expanduser("~"), ".agent-reach", "mcporter.json")
+
+
+def mcporter_exa_configured(path: str | None = None) -> tuple[bool, str]:
+    config_path = path or mcporter_config_path()
+    if not os.path.exists(config_path):
+        return False, ""
+    try:
+        with open(config_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return False, ""
+
+    mcp_servers = payload.get("mcpServers") if isinstance(payload, dict) else {}
+    exa_server = mcp_servers.get("exa") if isinstance(mcp_servers, dict) else None
+    if isinstance(exa_server, dict):
+        base_url = str(exa_server.get("baseUrl") or exa_server.get("url") or "")
+        if "mcp.exa.ai" in base_url:
+            return True, base_url
+
+    servers = payload.get("servers") if isinstance(payload, dict) else []
+    if isinstance(servers, list):
+        for server in servers:
+            if not isinstance(server, dict) or server.get("name") != "exa":
+                continue
+            base_url = str(server.get("baseUrl") or server.get("url") or "")
+            if "mcp.exa.ai" in base_url:
+                return True, base_url
+    return False, ""
+
+
 def agent_reach_health() -> dict[str, Any]:
     opencli = resolve_command("opencli")
     rdt = resolve_command("rdt")
     agent_reach = resolve_command("agent-reach")
+    node = resolve_command("node")
+    npm = resolve_command("npm")
+    mcporter = resolve_command("mcporter")
+    exa_configured, exa_mcp_url = mcporter_exa_configured()
     opencli_connected = opencli_daemon_connected() if opencli else False
     ready = opencli_connected or bool(rdt)
+    web_search_ready = bool(mcporter) and exa_configured
     return {
         "agent_reach_installed": bool(agent_reach),
+        "node_installed": bool(node),
+        "npm_installed": bool(npm),
+        "mcporter_installed": bool(mcporter),
+        "mcporter_exa_configured": exa_configured,
+        "web_search_ready": web_search_ready,
         "opencli_installed": bool(opencli),
         "opencli_connected": opencli_connected,
         "rdt_installed": bool(rdt),
         "agent_reach_path": agent_reach or "",
+        "node_path": node or "",
+        "npm_path": npm or "",
+        "mcporter_path": mcporter or "",
+        "mcporter_config_path": mcporter_config_path(),
+        "exa_mcp_url": exa_mcp_url,
         "opencli_path": opencli or "",
         "rdt_path": rdt or "",
         "ready": ready,
@@ -84,18 +214,32 @@ def agent_reach_health() -> dict[str, Any]:
 def run_command(args: list[str], timeout_seconds: int) -> tuple[int, str, str]:
     resolved = resolve_command(args[0])
     final_args = [resolved or args[0], *args[1:]]
+    run_id = CURRENT_RUN_ID.get()
+    if is_run_cancelled(run_id):
+        return 130, "", "Run cancelled by user."
     env = os.environ.copy()
     env["PATH"] = command_search_path()
-    completed = subprocess.run(
+    process = subprocess.Popen(
         final_args,
-        capture_output=True,
-        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
         encoding="utf-8",
         errors="replace",
         env=env,
-        timeout=timeout_seconds,
     )
-    return completed.returncode, completed.stdout, completed.stderr
+    _register_run_process(run_id, process)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        stdout, stderr = process.communicate()
+        return process.returncode or 124, stdout, stderr or f"Command timed out after {timeout_seconds} seconds."
+    finally:
+        _unregister_run_process(run_id, process)
+    if is_run_cancelled(run_id) and process.returncode != 0:
+        stderr = stderr or "Run cancelled by user."
+    return process.returncode or 0, stdout, stderr
 
 
 def opencli_daemon_connected() -> bool:
@@ -380,8 +524,29 @@ def subreddit_from_url(url: str) -> str:
     return match.group(1) if match else ""
 
 
-def fetch_reddit_agent_reach(query: str, limit: int, time_range: str) -> ProviderResult:
+def bounded_config_int(value: int | None, fallback: int, minimum: int, maximum: int) -> int:
+    if value is None:
+        return fallback
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        numeric = fallback
+    return max(minimum, min(maximum, numeric))
+
+
+def fetch_reddit_agent_reach(
+    query: str,
+    limit: int,
+    time_range: str,
+    detail_limit: int | None = None,
+    comments_per_post: int | None = None,
+) -> ProviderResult:
     config = agent_reach_config_from_env()
+    config = replace(
+        config,
+        detail_limit=bounded_config_int(detail_limit, config.detail_limit, 0, 100),
+        comments_per_post=bounded_config_int(comments_per_post, config.comments_per_post, 0, 200),
+    )
     if not config.enabled:
         return ProviderResult([], ["Agent Reach provider is disabled."], "agent_reach")
 

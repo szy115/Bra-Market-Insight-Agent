@@ -39,6 +39,7 @@ DEFAULT_AMAZON_DISCUSSION_LIMIT = 5
 DEFAULT_AMAZON_REVIEWS_PER_PRODUCT = 5
 DEFAULT_AMAZON_LLM_PRODUCT_LIMIT = 25
 DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT = 5
+DEFAULT_WEB_SEARCH_PROVIDER = "agent_reach"
 
 
 def int_setting(values: dict[str, str], key: str, default: int, minimum: int, maximum: int) -> int:
@@ -58,6 +59,24 @@ class LLMProvider:
     default_model: str
     default_base_url: str
     api_key_required: bool = True
+
+
+@dataclass(frozen=True)
+class WebSearchProvider:
+    name: str
+    label: str
+    api_key_env: str = ""
+    requires_search_engine_id: bool = False
+    search_engine_id_env: str | None = None
+
+
+WEB_SEARCH_PROVIDERS = [
+    WebSearchProvider("agent_reach", "Agent Reach / Exa Search"),
+    WebSearchProvider("brave", "Brave Search API", "BRAVE_SEARCH_API_KEY"),
+    WebSearchProvider("tavily", "Tavily Search API", "TAVILY_API_KEY"),
+    WebSearchProvider("google_cse", "Google Programmable Search", "GOOGLE_CSE_API_KEY", True, "GOOGLE_CSE_ID"),
+]
+WEB_SEARCH_PROVIDER_BY_NAME = {provider.name: provider for provider in WEB_SEARCH_PROVIDERS}
 
 
 def load_llm_providers() -> list[LLMProvider]:
@@ -108,6 +127,9 @@ def read_settings_values() -> dict[str, str]:
                 "DEEPSEEK_",
                 "DASHSCOPE_",
                 "GEMINI_",
+                "BRAVE_",
+                "TAVILY_",
+                "GOOGLE_CSE_",
                 "OLLAMA_",
                 "INSIGHT_",
                 "REDDIT_",
@@ -169,6 +191,12 @@ def selected_provider(values: dict[str, str] | None = None) -> LLMProvider:
     return LLM_PROVIDER_BY_NAME.get(name, LLM_PROVIDER_BY_NAME["openai"])
 
 
+def selected_web_search_provider(values: dict[str, str] | None = None) -> WebSearchProvider:
+    env_values = values or read_settings_values()
+    name = env_values.get("INSIGHT_WEB_SEARCH_PROVIDER", DEFAULT_WEB_SEARCH_PROVIDER).strip().lower()
+    return WEB_SEARCH_PROVIDER_BY_NAME.get(name, WEB_SEARCH_PROVIDER_BY_NAME[DEFAULT_WEB_SEARCH_PROVIDER])
+
+
 def build_llm_settings_response(values: dict[str, str] | None = None) -> dict[str, Any]:
     env_values = values or read_settings_values()
     provider = selected_provider(env_values)
@@ -185,6 +213,62 @@ def build_llm_settings_response(values: dict[str, str] | None = None) -> dict[st
         "env_path": ".env",
         "providers": [asdict(provider) for provider in LLM_PROVIDERS],
     }
+
+
+def build_web_search_settings_response(values: dict[str, str] | None = None) -> dict[str, Any]:
+    env_values = values or read_settings_values()
+    provider = selected_web_search_provider(env_values)
+    api_key = env_values.get(provider.api_key_env, "") if provider.api_key_env else ""
+    search_engine_id = env_values.get(provider.search_engine_id_env or "", "") if provider.search_engine_id_env else ""
+    return {
+        "provider": provider.name,
+        "api_key_env": provider.api_key_env,
+        "api_key_configured": True if not provider.api_key_env else configured_secret(api_key),
+        "api_key_required": bool(provider.api_key_env),
+        "requires_search_engine_id": provider.requires_search_engine_id,
+        "search_engine_id_env": provider.search_engine_id_env,
+        "search_engine_id": search_engine_id if configured_secret(search_engine_id) else "",
+        "search_engine_id_configured": configured_secret(search_engine_id) if provider.requires_search_engine_id else True,
+        "env_path": ".env",
+        "providers": [asdict(provider) for provider in WEB_SEARCH_PROVIDERS],
+    }
+
+
+def update_web_search_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    provider_name = str(payload.get("provider") or DEFAULT_WEB_SEARCH_PROVIDER).strip().lower()
+    provider = WEB_SEARCH_PROVIDER_BY_NAME.get(provider_name)
+    if provider is None:
+        raise ValueError("Unsupported web search provider")
+
+    current = read_settings_values()
+    updates = {
+        "INSIGHT_WEB_SEARCH_PROVIDER": provider.name,
+    }
+
+    clear_api_key = bool(payload.get("clear_api_key"))
+    api_key = str(payload.get("api_key") or "").strip()
+    if provider.api_key_env:
+        if clear_api_key:
+            updates[provider.api_key_env] = ""
+        elif api_key:
+            updates[provider.api_key_env] = api_key if configured_secret(api_key) else ""
+        elif configured_secret(current.get(provider.api_key_env)):
+            updates[provider.api_key_env] = current[provider.api_key_env]
+
+    if provider.search_engine_id_env:
+        clear_search_engine_id = bool(payload.get("clear_search_engine_id"))
+        search_engine_id = str(payload.get("search_engine_id") or "").strip()
+        if clear_search_engine_id:
+            updates[provider.search_engine_id_env] = ""
+        elif search_engine_id:
+            updates[provider.search_engine_id_env] = search_engine_id
+        elif configured_secret(current.get(provider.search_engine_id_env)):
+            updates[provider.search_engine_id_env] = current[provider.search_engine_id_env]
+
+    write_env_values(updates)
+    env_values = read_env_values(ENV_PATH)
+    sync_runtime_env(values=env_values)
+    return build_web_search_settings_response(env_values)
 
 
 def update_llm_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -537,6 +621,19 @@ def sync_runtime_env(provider: LLMProvider | None = None, values: dict[str, str]
         "AMAZON_REVIEWS_PER_PRODUCT",
         "AMAZON_LLM_PRODUCT_LIMIT",
         "AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT",
+    ):
+        value = env_values.get(key, "")
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+    for key in (
+        "INSIGHT_WEB_SEARCH_PROVIDER",
+        "BRAVE_SEARCH_API_KEY",
+        "TAVILY_API_KEY",
+        "GOOGLE_CSE_API_KEY",
+        "GOOGLE_CSE_ID",
     ):
         value = env_values.get(key, "")
         if value:

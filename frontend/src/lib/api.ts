@@ -8,6 +8,12 @@ export interface AnalyzeRequest {
   useLlm: boolean;
   bypassCache?: boolean;
   amazonKeywordLimit?: number;
+  redditDetailLimit?: number;
+  redditCommentsPerPost?: number;
+  youtubeTranscriptVideoLimit?: number;
+  youtubeCommentVideoLimit?: number;
+  youtubeCommentsPerVideo?: number;
+  tiktokCommentsPerVideo?: number;
 }
 
 export interface EvidencePost {
@@ -209,10 +215,308 @@ export interface AmazonReport {
   llm_analysis: LlmAnalysis;
 }
 
+export interface ArticleAnalyzeRequest {
+  category: string;
+  urls: string[];
+  limit?: number;
+  bypassCache?: boolean;
+}
+
+export interface ArticleItem {
+  title: string;
+  url: string;
+  domain: string;
+  source_type: "media_article" | "media_review" | "public_ranking" | "industry_report" | string;
+  authority_score: number;
+  authority_level: "High" | "Medium" | "Low" | string;
+  authority_evidence: string[];
+  cautions: string[];
+  brand_mentions: string[];
+  product_signals: string[];
+  evidence_snippets: string[];
+  readable_chars: number;
+  fetched_at: string;
+}
+
+export interface ArticleReport {
+  category: string;
+  generated_at: string;
+  source_mode: string;
+  source: {
+    source_name: string;
+    source_type: string;
+    status: "ready" | "partial" | "unavailable" | "failed";
+    collected_items_count: number;
+    evidence_items_count: number;
+    last_run_at: string;
+    failure_reason: string;
+    next_action: string;
+  };
+  data_volume: {
+    requested_articles: number;
+    collected_articles: number;
+    failed_articles: number;
+    high_authority_articles: number;
+    medium_authority_articles: number;
+    low_authority_articles: number;
+    evidence_snippets: number;
+  };
+  summary: {
+    top_domains: CountItem[];
+    top_brands: CountItem[];
+    top_signals: CountItem[];
+    source_types: CountItem[];
+  };
+  articles: ArticleItem[];
+  warnings: string[];
+  method: {
+    query: string;
+    notes: string[];
+  };
+}
+
+export interface YouTubeCommentSample {
+  id: string;
+  author: string;
+  text: string;
+  like_count: number | null;
+  timestamp: number | null;
+}
+
+export interface YouTubeVideo {
+  id: string;
+  title: string;
+  url: string;
+  channel: string;
+  channel_url: string;
+  duration_seconds: number | null;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  upload_date: string;
+  description: string;
+  thumbnail: string;
+  tags: string[];
+  transcript: string;
+  transcript_chars: number;
+  comment_samples: YouTubeCommentSample[];
+  fetched_at: string;
+}
+
+export interface YouTubeReport {
+  category: string;
+  generated_at: string;
+  source_mode: string;
+  warnings: string[];
+  confidence: string;
+  source: {
+    source_name: string;
+    source_type: string;
+    status: "ready" | "partial" | "unavailable" | "failed" | string;
+    collected_items_count: number;
+    evidence_items_count: number;
+    last_run_at: string;
+    failure_reason: string;
+    next_action: string;
+  };
+  data_volume: {
+    requested_videos: number;
+    collected_videos: number;
+    transcript_video_limit: number;
+    videos_with_transcripts: number;
+    transcript_chars: number;
+    comment_video_limit: number;
+    comments_per_video_limit: number;
+    comment_samples: number;
+  };
+  metrics: {
+    videos: number;
+    channels: number;
+    total_views: number;
+    videos_with_view_count: number;
+    average_views: number | null;
+    total_likes: number;
+    videos_with_like_count: number;
+    total_comment_count: number;
+    videos_with_comment_count: number;
+  };
+  market_signal: {
+    score: number;
+    summary: string;
+  };
+  sentiment: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    positive_share: number;
+    negative_share: number;
+  };
+  channels: CountItem[];
+  pain_points: PainPoint[];
+  brands: CountItem[];
+  product_signals: CountItem[];
+  videos: YouTubeVideo[];
+  method: {
+    query: string;
+    notes: string[];
+  };
+  llm_analysis: LlmAnalysis;
+}
+
+export interface TikTokCommentSample {
+  id: string;
+  author: string;
+  text: string;
+  like_count: number | null;
+  created_at: string;
+}
+
+export interface TikTokVideo {
+  id: string;
+  title: string;
+  url: string;
+  caption: string;
+  author: string;
+  author_url: string;
+  cover_url: string;
+  hashtags: string[];
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  share_count: number | null;
+  save_count: number | null;
+  published_at: string;
+  comment_samples: TikTokCommentSample[];
+  fetched_at: string;
+}
+
+export interface TikTokReport {
+  category: string;
+  generated_at: string;
+  source_mode: string;
+  warnings: string[];
+  confidence: string;
+  source: {
+    source_name: string;
+    source_type: string;
+    status: "ready" | "partial" | "unavailable" | "failed" | string;
+    collected_items_count: number;
+    evidence_items_count: number;
+    last_run_at: string;
+    failure_reason: string;
+    next_action: string;
+  };
+  data_volume: {
+    requested_videos: number;
+    collected_videos: number;
+    detail_pages_visited: number;
+    comments_per_video_limit: number;
+    comment_samples: number;
+    videos_with_comment_samples: number;
+  };
+  metrics: {
+    videos: number;
+    authors: number;
+    total_views: number;
+    videos_with_view_count: number;
+    average_views: number | null;
+    total_likes: number;
+    videos_with_like_count: number;
+    total_comment_count: number;
+    videos_with_comment_count: number;
+    total_shares: number;
+    videos_with_share_count: number;
+  };
+  market_signal: {
+    score: number;
+    summary: string;
+  };
+  sentiment: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    positive_share: number;
+    negative_share: number;
+  };
+  authors: CountItem[];
+  hashtags: CountItem[];
+  pain_points: PainPoint[];
+  brands: CountItem[];
+  product_signals: CountItem[];
+  videos: TikTokVideo[];
+  method: {
+    query: string;
+    notes: string[];
+  };
+  llm_analysis: LlmAnalysis;
+}
+
+export interface TikTokLoginBrowserResponse {
+  ok: boolean;
+  status: string;
+  profile_dir: string;
+  chrome_path: string;
+  url?: string;
+  message: string;
+}
+
+export interface ArticleDiscoveryRequest {
+  category: string;
+  queryLimit?: number;
+  resultsPerQuery?: number;
+  candidateLimit?: number;
+  includeIndustryReports?: boolean;
+  bypassCache?: boolean;
+}
+
+export interface ArticleDiscoveryCandidate {
+  title: string;
+  url: string;
+  domain: string;
+  snippet: string;
+  provider: string;
+  query: string;
+  rank: number;
+  score: number;
+  source_type: "media_article" | "media_review" | "public_ranking" | "industry_report" | string;
+  reasons: string[];
+  published: string;
+}
+
+export interface ArticleDiscoveryReport {
+  category: string;
+  generated_at: string;
+  source_mode: string;
+  source: {
+    source_name: string;
+    source_type: string;
+    status: "ready" | "partial" | "unavailable" | "failed";
+    collected_items_count: number;
+    evidence_items_count: number;
+    last_run_at: string;
+    failure_reason: string;
+    next_action: string;
+  };
+  data_volume: {
+    query_count: number;
+    results_per_query: number;
+    raw_results: number;
+    unique_results: number;
+    candidate_count: number;
+    per_query_counts: Array<{ query: string; count: number }>;
+  };
+  queries: string[];
+  candidates: ArticleDiscoveryCandidate[];
+  warnings: string[];
+  method: {
+    notes: string[];
+  };
+}
+
 export interface InsightCitation {
   id: string;
-  source: "reddit" | "amazon";
-  kind: "post" | "comment" | "product" | "review";
+  source: "reddit" | "amazon" | "web";
+  kind: "post" | "comment" | "product" | "review" | string;
   title: string;
   url: string;
   excerpt: string;
@@ -262,6 +566,298 @@ export interface CombinedInsightReport {
   };
 }
 
+export interface CompetitorDiscoveryBrief {
+  brand: string;
+  market: string;
+  category: string;
+  coreKeywords: string;
+  targetPriceBand: string;
+  upgradePriceBand: string;
+  coreSizes: string;
+  coreUsers: string;
+  brandDirection: string;
+}
+
+export interface CompetitorScoreWeights {
+  briefMatch: number;
+  priceFit: number;
+  sizeMatch: number;
+  marketProof: number;
+  reviewEvidence: number;
+  queryCoverage: number;
+  tiktokProof: number;
+}
+
+export interface CompetitorDiscoveryRequest {
+  query?: string;
+  brief?: CompetitorDiscoveryBrief;
+  scoreWeights?: CompetitorScoreWeights;
+  limit: number;
+  amazonKeywordLimit: number;
+  candidateLimit?: number;
+  bypassCache?: boolean;
+}
+
+export interface CompetitorCandidate {
+  id: string;
+  platform: string;
+  brand: string;
+  title: string;
+  price_text: string;
+  price_value: number | null;
+  rating_value: number | null;
+  review_count: number | null;
+  badges: string[];
+  is_sponsored: boolean;
+  product_url: string;
+  image_url: string;
+  asin: string;
+  matched_queries: string[];
+  score: number;
+  score_breakdown?: Array<{
+    key: string;
+    raw_points: number;
+    weight: number;
+    points: number;
+  }>;
+  priority: "High" | "Medium" | "Low";
+  breakout_tier?: "strong_breakout" | "needs_tiktok_validation" | "watchlist" | "low_evidence" | string;
+  breakout_label?: string;
+  breakout_reasons?: string[];
+  tiktok_validation?: CompetitorTikTokValidation | null;
+  why_worth_tracking: string[];
+  risks: string[];
+  claim_evidence: string[];
+  review_evidence: Array<{
+    text: string;
+    rating_value: number | null;
+    verified_purchase: boolean;
+  }>;
+  suggested_status: string;
+}
+
+export interface CompetitorTikTokValidation {
+  status: "verified" | "directional" | "weak" | "no_signal" | string;
+  label: string;
+  score: number;
+  query: string;
+  source_mode: string;
+  generated_at: string;
+  requested_videos: number;
+  comments_per_video_limit: number;
+  video_count: number;
+  relevant_video_count: number;
+  total_views: number;
+  total_likes: number;
+  comment_samples: number;
+  matched_terms: string[];
+  video_evidence: Array<{
+    title: string;
+    url: string;
+    author: string;
+    view_count: number | null;
+    like_count: number | null;
+    comment_count: number | null;
+    matched_terms: string[];
+    snippet: string;
+    comment_samples: Array<{
+      author: string;
+      text: string;
+      like_count: number | null;
+    }>;
+  }>;
+  reasons: string[];
+  risks: string[];
+  warnings: string[];
+}
+
+export interface CompetitorDiscoveryReport {
+  query: string;
+  brief?: CompetitorDiscoveryBrief;
+  score_weights?: CompetitorScoreWeights;
+  generated_at: string;
+  source_mode: string;
+  source: {
+    source_name: string;
+    source_type: string;
+    status: "ready" | "partial" | "unavailable" | "failed";
+    collected_items_count: number;
+    evidence_items_count: number;
+    last_run_at: string;
+    failure_reason: string;
+    next_action: string;
+  };
+  data_volume: {
+    requested_products: number;
+    requested_products_per_query: number;
+    query_count: number;
+    queries: string[];
+    per_query_counts: Array<{ query: string; count: number }>;
+    raw_collected_products: number;
+    unique_products: number;
+    excluded_products?: number;
+    candidate_count: number;
+    strong_breakout_candidates?: number;
+    needs_tiktok_validation_candidates?: number;
+    low_evidence_candidates?: number;
+  };
+  summary: {
+    candidate_count: number;
+    high_priority: number;
+    medium_priority: number;
+    strong_breakout?: number;
+    needs_tiktok_validation?: number;
+    low_evidence?: number;
+    brands: CountItem[];
+  };
+  candidates: CompetitorCandidate[];
+  warnings: string[];
+  method: {
+    notes: string[];
+  };
+}
+
+export interface CompetitorTikTokVerifyRequest {
+  candidate: CompetitorCandidate;
+  brief?: CompetitorDiscoveryBrief;
+  scoreWeights?: CompetitorScoreWeights;
+  limit?: number;
+  tiktokCommentsPerVideo?: number;
+  bypassCache?: boolean;
+}
+
+export interface CompetitorTikTokVerifyResponse {
+  candidate: CompetitorCandidate;
+  validation: CompetitorTikTokValidation;
+  videos: TikTokVideo[];
+  warnings: string[];
+  method: {
+    query: string;
+    notes: string[];
+  };
+}
+
+export interface CompetitorDeepDiveRequest {
+  candidate: CompetitorCandidate;
+  runId?: string;
+  category?: string;
+  brief?: CompetitorDiscoveryBrief;
+  redditLimit?: number;
+  redditDetailLimit?: number;
+  redditCommentsPerPost?: number;
+  amazonReviewLimit?: number;
+  webCandidateLimit?: number;
+  aiReviewLimit?: number;
+  aiRedditPostLimit?: number;
+  timeRange?: AnalyzeRequest["timeRange"];
+  mode?: DataMode;
+  useLlm: boolean;
+  locale: "zh" | "en";
+  bypassCache?: boolean;
+}
+
+export interface CompetitorCancelRequest {
+  runId: string;
+}
+
+export interface CompetitorCancelResponse {
+  ok: boolean;
+  run_id: string;
+  terminated_processes: number;
+  message: string;
+}
+
+export interface CompetitorDeepDiveItem {
+  title: string;
+  detail: string;
+  citations: InsightCitation[];
+}
+
+export interface CompetitorDeepDiveEvidenceChainItem {
+  claim: string;
+  detail: string;
+  citations: InsightCitation[];
+}
+
+export interface CompetitorDeepDiveReport {
+  category: string;
+  generated_at: string;
+  source_mode: string;
+  source_status: {
+    amazon: "ready" | "partial" | "unavailable" | "failed" | string;
+    reddit: "ready" | "partial" | "unavailable" | "failed" | string;
+    web: "ready" | "partial" | "unavailable" | "failed" | string;
+  };
+  warnings: string[];
+  product: AmazonProduct & Partial<CompetitorCandidate>;
+  data_volume: {
+    amazon_reviews_requested: number;
+    amazon_reviews_collected: number;
+    reddit_posts_requested: number;
+    reddit_posts_collected: number;
+    reddit_detail_posts_requested?: number;
+    reddit_comments_per_post_requested?: number;
+    reddit_comments_collected: number;
+    web_candidates: number;
+    web_sources_read: number;
+    ai_review_limit: number;
+    ai_reviews: number;
+    ai_reddit_post_limit: number;
+    ai_reddit_posts: number;
+    ai_evidence_items: number;
+  };
+  sales_proxy: {
+    signals: Array<{ name: string; value: string; interpretation: string }>;
+    confidence: string;
+    caveats: string[];
+  };
+  amazon: {
+    product: AmazonProduct & Partial<CompetitorCandidate>;
+    review_samples: AmazonProduct["review_samples"];
+    warnings: string[];
+  };
+  reddit: AnalysisReport;
+  web: {
+    source_mode: string;
+    queries: string[];
+    candidates: ArticleDiscoveryCandidate[];
+    articles: ArticleItem[];
+    warnings: string[];
+    data_volume: {
+      query_count: number;
+      raw_results: number;
+      candidate_count: number;
+      readable_sources: number;
+      failed_sources: number;
+      per_query_counts: Array<{ query: string; count: number }>;
+    };
+  };
+  evidence_pool: InsightCitation[];
+  verdict: { text: string; citations: InsightCitation[] };
+  breakout_assessment: CompetitorDeepDiveItem[];
+  why_it_sells: CompetitorDeepDiveItem[];
+  user_love: CompetitorDeepDiveItem[];
+  user_complaints: CompetitorDeepDiveItem[];
+  rd_teardown: CompetitorDeepDiveItem[];
+  brand_communication: CompetitorDeepDiveItem[];
+  sales_proxy_interpretation: CompetitorDeepDiveItem[];
+  risks: CompetitorDeepDiveItem[];
+  evidence_chain: CompetitorDeepDiveEvidenceChainItem[];
+  data_gaps: CompetitorDeepDiveItem[];
+  llm_analysis: {
+    enabled: boolean;
+    status: "ok" | "unavailable" | "not_requested";
+    message?: string;
+    provider?: string;
+    model?: string;
+    usage?: Record<string, number>;
+  };
+  method: {
+    query: string;
+    notes: string[];
+  };
+}
+
 export interface CombinedInsightRequest {
   category: string;
   reddit_report?: AnalysisReport | null;
@@ -277,16 +873,25 @@ export interface ResearchHistorySummary {
   summary: string;
   has_reddit: boolean;
   has_amazon: boolean;
+  has_youtube: boolean;
+  has_tiktok: boolean;
   has_combined: boolean;
+  has_articles: boolean;
   reddit_posts: number;
   amazon_products: number;
+  youtube_videos: number;
+  tiktok_videos: number;
+  article_count: number;
   evidence_items: number;
 }
 
 export interface ResearchHistoryItem extends ResearchHistorySummary {
   reddit_report?: AnalysisReport | null;
   amazon_report?: AmazonReport | null;
+  youtube_report?: YouTubeReport | null;
+  tiktok_report?: TikTokReport | null;
   combined_report?: CombinedInsightReport | null;
+  article_report?: ArticleReport | null;
 }
 
 export interface ResearchHistoryList {
@@ -304,7 +909,10 @@ export interface SaveResearchHistoryRequest {
   category: string;
   reddit_report?: AnalysisReport | null;
   amazon_report?: AmazonReport | null;
+  youtube_report?: YouTubeReport | null;
+  tiktok_report?: TikTokReport | null;
   combined_report?: CombinedInsightReport | null;
+  article_report?: ArticleReport | null;
 }
 
 export interface LLMProviderOption {
@@ -393,10 +1001,20 @@ export interface UpdateResearchDefaultsRequest {
 
 export interface AgentReachHealth {
   agent_reach_installed: boolean;
+  node_installed: boolean;
+  npm_installed: boolean;
+  mcporter_installed: boolean;
+  mcporter_exa_configured: boolean;
+  web_search_ready: boolean;
   opencli_installed: boolean;
   opencli_connected: boolean;
   rdt_installed: boolean;
   agent_reach_path: string;
+  node_path: string;
+  npm_path: string;
+  mcporter_path: string;
+  mcporter_config_path: string;
+  exa_mcp_url: string;
   opencli_path: string;
   rdt_path: string;
   ready: boolean;
@@ -411,6 +1029,35 @@ export interface AgentReachSettings {
   comments_per_post: number;
   env_path: string;
   health: AgentReachHealth;
+}
+
+export interface WebSearchProviderOption {
+  name: "brave" | "tavily" | "google_cse" | string;
+  label: string;
+  api_key_env: string;
+  requires_search_engine_id: boolean;
+  search_engine_id_env?: string | null;
+}
+
+export interface WebSearchSettings {
+  provider: "brave" | "tavily" | "google_cse" | string;
+  api_key_env: string;
+  api_key_configured: boolean;
+  api_key_required: boolean;
+  requires_search_engine_id: boolean;
+  search_engine_id_env?: string | null;
+  search_engine_id: string;
+  search_engine_id_configured: boolean;
+  env_path: string;
+  providers: WebSearchProviderOption[];
+}
+
+export interface UpdateWebSearchSettingsRequest {
+  provider: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  search_engine_id?: string;
+  clear_search_engine_id?: boolean;
 }
 
 export interface AgentReachReconnectResult {
@@ -435,6 +1082,59 @@ export interface UpdateAgentReachSettingsRequest {
   timeout_seconds: number;
   detail_limit: number;
   comments_per_post: number;
+}
+
+export interface AgentRunRequest {
+  prompt: string;
+  agentMode: "market" | "competitor";
+  category?: string;
+  locale?: "zh" | "en";
+  useLlm?: boolean;
+  bypassCache?: boolean;
+  agentToolTimeoutSeconds?: number;
+}
+
+export interface AgentToolResult {
+  name: string;
+  label: string;
+  status: "ok" | "error";
+  summary: string;
+  duration_ms: number;
+  data: Record<string, unknown>;
+}
+
+export interface AgentRunResponse {
+  run_id: string;
+  generated_at: string;
+  mode: "market" | "competitor";
+  category: string;
+  prompt: string;
+  planner: {
+    enabled: boolean;
+    status: "ok" | "unavailable" | "not_requested";
+    message?: string;
+    provider?: string;
+    model?: string;
+    usage?: Record<string, number>;
+  };
+  tools: AgentToolResult[];
+  artifact: {
+    title: string;
+    executive_summary: string;
+    key_findings: string[];
+    opportunities: string[];
+    risks: string[];
+    next_steps: string[];
+    prompt?: string;
+  };
+  llm_analysis: {
+    enabled: boolean;
+    status: "ok" | "unavailable" | "not_requested";
+    message?: string;
+    provider?: string;
+    model?: string;
+    usage?: Record<string, number>;
+  };
 }
 
 class ApiError extends Error {
@@ -464,6 +1164,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  runAgent: (body: AgentRunRequest) =>
+    request<AgentRunResponse>("/api/agent/run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   analyze: (body: AnalyzeRequest) =>
     request<AnalysisReport>("/api/analyze", {
       method: "POST",
@@ -474,8 +1179,54 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  analyzeYoutube: (body: AnalyzeRequest) =>
+    request<YouTubeReport>("/api/analyze/youtube", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  analyzeTikTok: (body: AnalyzeRequest) =>
+    request<TikTokReport>("/api/analyze/tiktok", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  openTikTokLoginBrowser: () =>
+    request<TikTokLoginBrowserResponse>("/api/tiktok/login-browser", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  analyzeArticles: (body: ArticleAnalyzeRequest) =>
+    request<ArticleReport>("/api/analyze/articles", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  discoverArticles: (body: ArticleDiscoveryRequest) =>
+    request<ArticleDiscoveryReport>("/api/articles/discover", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   analyzeCombined: (body: CombinedInsightRequest) =>
     request<CombinedInsightReport>("/api/analyze/combined", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  discoverCompetitors: (body: CompetitorDiscoveryRequest) =>
+    request<CompetitorDiscoveryReport>("/api/competitors/discover", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  analyzeCompetitor: (body: CompetitorDeepDiveRequest, options?: Pick<RequestInit, "signal">) =>
+    request<CompetitorDeepDiveReport>("/api/competitors/analyze", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    }),
+  verifyCompetitorTikTok: (body: CompetitorTikTokVerifyRequest) =>
+    request<CompetitorTikTokVerifyResponse>("/api/competitors/tiktok-verify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelCompetitorAnalysis: (body: CompetitorCancelRequest) =>
+    request<CompetitorCancelResponse>("/api/competitors/cancel", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -511,6 +1262,12 @@ export const api = {
   getAgentReachSettings: () => request<AgentReachSettings>("/api/settings/agent-reach"),
   updateAgentReachSettings: (body: UpdateAgentReachSettingsRequest) =>
     request<AgentReachSettings>("/api/settings/agent-reach", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getWebSearchSettings: () => request<WebSearchSettings>("/api/settings/web-search"),
+  updateWebSearchSettings: (body: UpdateWebSearchSettingsRequest) =>
+    request<WebSearchSettings>("/api/settings/web-search", {
       method: "POST",
       body: JSON.stringify(body),
     }),

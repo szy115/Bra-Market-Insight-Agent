@@ -12,6 +12,11 @@ export function sourceLabel(mode: string, locale: Locale = "en"): string {
       rss: "Reddit RSS 实时数据",
       sample: "示例兜底数据",
       amazon_opencli: "Amazon OpenCLI 实时数据",
+      agent_reach_web: "Agent Reach 网页阅读",
+      youtube_ytdlp: "YouTube yt-dlp 实时数据",
+      youtube_unavailable: "YouTube 数据源不可用",
+      tiktok_playwright: "TikTok Playwright 浏览器数据",
+      tiktok_unavailable: "TikTok 数据源不可用",
     },
     en: {
       agent_reach: "Agent Reach",
@@ -19,6 +24,11 @@ export function sourceLabel(mode: string, locale: Locale = "en"): string {
       rss: "Live Reddit RSS",
       sample: "Sample fallback",
       amazon_opencli: "Amazon OpenCLI",
+      agent_reach_web: "Agent Reach Web",
+      youtube_ytdlp: "YouTube yt-dlp",
+      youtube_unavailable: "YouTube unavailable",
+      tiktok_playwright: "TikTok Playwright",
+      tiktok_unavailable: "TikTok unavailable",
     },
   };
   return labels[locale][mode] || mode || (locale === "zh" ? "未知来源" : "Unknown source");

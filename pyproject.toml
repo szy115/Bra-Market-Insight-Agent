@@ -9,7 +9,9 @@ description = "Reddit-first bra market insight MVP"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "playwright>=1.45",
   "PyYAML>=6.0",
+  "yt-dlp>=2025.1.15",
 ]
 
 [project.optional-dependencies]

@@ -262,6 +262,76 @@ def build_combined_insight_prompt(context: dict[str, Any], locale: str = "zh") -
     ]
 
 
+def build_competitor_deep_dive_prompt(context: dict[str, Any], locale: str = "zh") -> list[dict[str, str]]:
+    language = "Chinese" if locale == "zh" else "English"
+    compact_context = {
+        "category": context.get("category"),
+        "product": context.get("product"),
+        "amazon": {
+            "review_samples_collected": (context.get("amazon") or {}).get("review_samples_collected"),
+            "review_samples": (context.get("amazon") or {}).get("review_samples", [])[:40],
+        },
+        "reddit": context.get("reddit"),
+        "web": context.get("web"),
+        "sales_proxy": context.get("sales_proxy"),
+        "evidence_pool": [
+            {
+                "id": item.get("id"),
+                "source": item.get("source"),
+                "kind": item.get("kind"),
+                "title": item.get("title"),
+                "url": item.get("url"),
+                "excerpt": str(item.get("excerpt") or "")[:900],
+                "reference": item.get("reference"),
+            }
+            for item in context.get("evidence_pool", [])[:90]
+            if isinstance(item, dict)
+        ],
+    }
+    system = (
+        "You are a senior US intimate-apparel competitor intelligence analyst. "
+        "Use only the provided Amazon, Reddit, and web evidence. "
+        "Do not invent true sales, revenue, demographics, BSR history, or trend direction. "
+        "Every conclusion must cite at least one citation_id from context.evidence_pool. "
+        "Return strict JSON only."
+    )
+    user = {
+        "task": f"Create a competitor deep-dive / breakout-product teardown report in {language}.",
+        "hard_requirements": [
+            "verdict must be one sentence and cite at least one citation_id.",
+            "Return exactly 3 breakout_assessment items.",
+            "Return 2-4 why_it_sells items.",
+            "Return 2-4 user_love items.",
+            "Return 2-4 user_complaints items.",
+            "Return 2-4 rd_teardown items.",
+            "Return 2-4 brand_communication items.",
+            "Return 1-3 sales_proxy_interpretation items and clearly say proxies are not true sales.",
+            "Return exactly 3 risks.",
+            "Return 5-8 evidence_chain items.",
+            "Return exactly 3 data_gaps.",
+            "Only cite citation_ids that exist in context.evidence_pool.",
+        ],
+        "schema": {
+            "verdict": {"text": "string", "citation_ids": ["A1|A1R1|R1|R1C1|W1"]},
+            "breakout_assessment": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "why_it_sells": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "user_love": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "user_complaints": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "rd_teardown": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "brand_communication": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "sales_proxy_interpretation": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "risks": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+            "evidence_chain": [{"claim": "string", "detail": "string", "citation_ids": ["string"]}],
+            "data_gaps": [{"title": "string", "detail": "string", "citation_ids": ["string"]}],
+        },
+        "context": compact_context,
+    }
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+    ]
+
+
 def extract_json(text: str) -> dict[str, Any]:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -345,6 +415,15 @@ def enhance_amazon_report_with_llm(report: dict[str, Any]) -> dict[str, Any]:
 def enhance_combined_insight_with_llm(context: dict[str, Any], locale: str = "zh") -> dict[str, Any]:
     previous_provider = os.environ.get("INSIGHT_LLM_PROVIDER")
     messages = build_combined_insight_prompt(context, locale)
+    enhanced = call_openai_compatible(messages)
+    if previous_provider:
+        os.environ["INSIGHT_LLM_PROVIDER"] = previous_provider
+    return enhanced
+
+
+def enhance_competitor_deep_dive_with_llm(context: dict[str, Any], locale: str = "zh") -> dict[str, Any]:
+    previous_provider = os.environ.get("INSIGHT_LLM_PROVIDER")
+    messages = build_competitor_deep_dive_prompt(context, locale)
     enhanced = call_openai_compatible(messages)
     if previous_provider:
         os.environ["INSIGHT_LLM_PROVIDER"] = previous_provider

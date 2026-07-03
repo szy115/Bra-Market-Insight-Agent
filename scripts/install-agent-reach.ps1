@@ -32,6 +32,7 @@ $BundledBin = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-ru
 $NodeInstallBin = "$env:ProgramFiles\nodejs"
 $UserNpmBin = Join-Path $env:APPDATA "npm"
 $AgentReachBin = Join-Path $env:USERPROFILE ".agent-reach\bin"
+$McporterConfig = Join-Path $env:USERPROFILE ".agent-reach\mcporter.json"
 
 New-Item -ItemType Directory -Force -Path $AgentReachBin | Out-Null
 Set-Content -Path (Join-Path $AgentReachBin "true.cmd") -Value "@echo off`r`nexit /b 0" -Encoding ASCII
@@ -110,12 +111,31 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
 Write-Host "Installing OpenCLI npm package..."
 & npm.cmd install -g @jackwener/opencli
 
-Write-Host "Installing Agent Reach channels: opencli,reddit"
-& (Join-Path $AgentReachScripts "agent-reach.exe") install --env=auto --channels=opencli,reddit
+$AgentReachExe = Join-Path $AgentReachScripts "agent-reach.exe"
+
+Write-Host "Installing Agent Reach core channels: web, search, GitHub, YouTube, RSS, V2EX, Bilibili basic"
+& $AgentReachExe install --env=auto
+
+Write-Host "Installing Agent Reach optional channels: opencli,reddit"
+& $AgentReachExe install --env=auto --channels=opencli,reddit
+
+$env:PATH = "$NodeInstallBin;$UserNpmBin;$env:PATH"
+if (-not (Get-Command mcporter -ErrorAction SilentlyContinue)) {
+  Write-Host "Installing mcporter manually through npm..."
+  & npm.cmd install -g mcporter
+}
+if (Get-Command mcporter -ErrorAction SilentlyContinue) {
+  Write-Host "Configuring mcporter Exa MCP at: $McporterConfig"
+  New-Item -ItemType Directory -Force -Path (Split-Path $McporterConfig) | Out-Null
+  & mcporter --config $McporterConfig config add exa https://mcp.exa.ai/mcp
+  Set-LocalEnvValue -Name "AGENT_REACH_BIN_DIR" -Value $UserNpmBin
+} else {
+  Write-Host "mcporter is still unavailable. Check Node/npm installation, then rerun this script."
+}
 
 Write-Host ""
 Write-Host "Agent Reach install finished. Running doctor..."
-& (Join-Path $AgentReachScripts "agent-reach.exe") doctor
+& $AgentReachExe doctor
 
 Write-Host ""
 Write-Host "Next manual step if OpenCLI reports extension missing:"
