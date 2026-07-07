@@ -1092,20 +1092,56 @@ export interface AgentRunRequest {
   useLlm?: boolean;
   bypassCache?: boolean;
   agentToolTimeoutSeconds?: number;
+  continueRunId?: string;
+  skillId?: string;
+  params?: Record<string, unknown>;
 }
 
 export interface AgentToolResult {
   name: string;
   label: string;
-  status: "ok" | "error";
+  status:
+    | "ok"
+    | "partial_ok"
+    | "empty"
+    | "retryable_error"
+    | "retry_exhausted"
+    | "timeout"
+    | "fatal_error"
+    | "needs_user_action"
+    | "needs_input"
+    | "blocked"
+    | "error";
+  outcome?: string;
   summary: string;
   duration_ms: number;
+  input?: Record<string, unknown>;
   data: Record<string, unknown>;
+  recovery?: Record<string, unknown>;
+  file_path?: string;
+}
+
+export interface AgentRunEvent {
+  id: string;
+  seq: number;
+  type: "input" | "planner" | "skill" | "tool" | "artifact" | "message";
+  status: "ok" | "error" | "skipped" | "running" | "needs_input";
+  title: string;
+  message: string;
+  timestamp: string;
+  tool?: string;
+  duration_ms?: number;
+  data?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  file_path?: string;
 }
 
 export interface AgentRunResponse {
   run_id: string;
   generated_at: string;
+  status?: "ok" | "needs_input";
+  response_type?: "artifact" | "message" | "needs_input";
   mode: "market" | "competitor";
   category: string;
   prompt: string;
@@ -1117,15 +1153,31 @@ export interface AgentRunResponse {
     model?: string;
     usage?: Record<string, number>;
   };
+  events: AgentRunEvent[];
   tools: AgentToolResult[];
-  artifact: {
+  evidence_gaps?: Array<{
+    evidence_id: string;
+    tool: string;
+    required_when: string;
+    min_success: number;
+    observed_success: number;
+    severity: string;
+    if_missing: string;
+    artifact_requirement: string;
+  }>;
+  artifact?: {
     title: string;
     executive_summary: string;
     key_findings: string[];
     opportunities: string[];
     risks: string[];
     next_steps: string[];
+    evidence_gaps?: Array<Record<string, unknown>>;
     prompt?: string;
+  };
+  message?: {
+    role: "assistant";
+    content: string;
   };
   llm_analysis: {
     enabled: boolean;
@@ -1135,6 +1187,49 @@ export interface AgentRunResponse {
     model?: string;
     usage?: Record<string, number>;
   };
+  file_path?: string;
+  output_files?: AgentOutputFileMeta[];
+  skill?: {
+    skill_id?: string | null;
+    name?: string | null;
+    status?: string;
+    params?: Record<string, unknown>;
+    missing_params?: string[];
+    file_path?: string;
+  };
+  pending?: {
+    continue_run_id?: string;
+    skill_id?: string | null;
+    resolved_params?: Record<string, unknown>;
+    missing_params?: string[];
+    questions?: Array<{
+      field: string;
+      label: string;
+      question: string;
+      suggestions?: string[];
+    }>;
+    message?: string;
+  };
+}
+
+export interface AgentRunStreamHandlers {
+  onEvent?: (event: AgentRunEvent) => void;
+  onResult?: (result: AgentRunResponse) => void;
+}
+
+export interface AgentOutputFileMeta {
+  type: "skill" | "tool" | "artifact" | "events" | "run" | string;
+  label: string;
+  name: string;
+  path: string;
+  summary?: string;
+}
+
+export interface AgentOutputFileResponse {
+  name: string;
+  path: string;
+  format?: "json" | "markdown" | "html";
+  content: unknown;
 }
 
 class ApiError extends Error {
@@ -1163,116 +1258,84 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
+async function runAgentStream(body: AgentRunRequest, handlers: AgentRunStreamHandlers = {}): Promise<AgentRunResponse> {
+  const response = await fetch("/api/agent/run/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : {};
+    throw new ApiError(data.error || data.detail || `HTTP ${response.status}`, response.status);
+  }
+  if (!response.body) {
+    throw new ApiError("Streaming response is not available in this browser.", response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: AgentRunResponse | null = null;
+
+  function handleBlock(block: string) {
+    const lines = block.split(/\r?\n/);
+    let eventName = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trimStart());
+      }
+    }
+    if (!dataLines.length) return;
+    const payload = JSON.parse(dataLines.join("\n"));
+    if (eventName === "event") {
+      handlers.onEvent?.(payload as AgentRunEvent);
+      return;
+    }
+    if (eventName === "result") {
+      finalResult = payload as AgentRunResponse;
+      handlers.onResult?.(finalResult);
+      return;
+    }
+    if (eventName === "error") {
+      throw new ApiError(payload.error || "Agent stream failed", response.status);
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      if (block.trim()) handleBlock(block);
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) handleBlock(buffer);
+  if (!finalResult) {
+    throw new ApiError("Agent stream ended without a final result.", response.status);
+  }
+  return finalResult;
+}
+
 export const api = {
   runAgent: (body: AgentRunRequest) =>
     request<AgentRunResponse>("/api/agent/run", {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  analyze: (body: AnalyzeRequest) =>
-    request<AnalysisReport>("/api/analyze", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  analyzeAmazon: (body: AnalyzeRequest) =>
-    request<AmazonReport>("/api/analyze/amazon", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  analyzeYoutube: (body: AnalyzeRequest) =>
-    request<YouTubeReport>("/api/analyze/youtube", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  analyzeTikTok: (body: AnalyzeRequest) =>
-    request<TikTokReport>("/api/analyze/tiktok", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  openTikTokLoginBrowser: () =>
-    request<TikTokLoginBrowserResponse>("/api/tiktok/login-browser", {
-      method: "POST",
-      body: JSON.stringify({}),
-    }),
-  analyzeArticles: (body: ArticleAnalyzeRequest) =>
-    request<ArticleReport>("/api/analyze/articles", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  discoverArticles: (body: ArticleDiscoveryRequest) =>
-    request<ArticleDiscoveryReport>("/api/articles/discover", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  analyzeCombined: (body: CombinedInsightRequest) =>
-    request<CombinedInsightReport>("/api/analyze/combined", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  discoverCompetitors: (body: CompetitorDiscoveryRequest) =>
-    request<CompetitorDiscoveryReport>("/api/competitors/discover", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  analyzeCompetitor: (body: CompetitorDeepDiveRequest, options?: Pick<RequestInit, "signal">) =>
-    request<CompetitorDeepDiveReport>("/api/competitors/analyze", {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal: options?.signal,
-    }),
-  verifyCompetitorTikTok: (body: CompetitorTikTokVerifyRequest) =>
-    request<CompetitorTikTokVerifyResponse>("/api/competitors/tiktok-verify", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  cancelCompetitorAnalysis: (body: CompetitorCancelRequest) =>
-    request<CompetitorCancelResponse>("/api/competitors/cancel", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getHistory: () => request<ResearchHistoryList>("/api/history"),
-  saveHistory: (body: SaveResearchHistoryRequest) =>
-    request<ResearchHistoryResponse>("/api/history", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getHistoryItem: (id: string) => request<ResearchHistoryResponse>(`/api/history/${encodeURIComponent(id)}`),
-  deleteHistoryItem: (id: string) =>
-    request<ResearchHistoryList>(`/api/history/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
+  runAgentStream,
+  readAgentOutputFile: (path: string) =>
+    request<AgentOutputFileResponse>(`/api/agent/output-file?path=${encodeURIComponent(path)}`),
   getLLMSettings: () => request<LLMSettings>("/api/settings/llm"),
   updateLLMSettings: (body: UpdateLLMSettingsRequest) =>
     request<LLMSettings>("/api/settings/llm", {
       method: "POST",
       body: JSON.stringify(body),
-    }),
-  getRedditSettings: () => request<RedditSettings>("/api/settings/reddit"),
-  updateRedditSettings: (body: UpdateRedditSettingsRequest) =>
-    request<RedditSettings>("/api/settings/reddit", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getResearchSettings: () => request<ResearchDefaults>("/api/settings/research"),
-  updateResearchSettings: (body: UpdateResearchDefaultsRequest) =>
-    request<ResearchDefaults>("/api/settings/research", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getAgentReachSettings: () => request<AgentReachSettings>("/api/settings/agent-reach"),
-  updateAgentReachSettings: (body: UpdateAgentReachSettingsRequest) =>
-    request<AgentReachSettings>("/api/settings/agent-reach", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getWebSearchSettings: () => request<WebSearchSettings>("/api/settings/web-search"),
-  updateWebSearchSettings: (body: UpdateWebSearchSettingsRequest) =>
-    request<WebSearchSettings>("/api/settings/web-search", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  reconnectAgentReach: () =>
-    request<AgentReachReconnectResult>("/api/settings/agent-reach/reconnect", {
-      method: "POST",
     }),
 };

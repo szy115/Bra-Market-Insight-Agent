@@ -1,6 +1,9 @@
 import json
 import os
 from collections import Counter
+from typing import Any
+
+import pytest
 
 from insight_agent import server as server_module
 from insight_agent import settings as settings_module
@@ -120,6 +123,59 @@ def test_agent_reach_analysis_uses_provider(monkeypatch) -> None:
     assert result["data_volume"]["ai_comment_samples"] == 0
     assert result["posts"][0]["comment_items"]
     assert "Top comments" in result["posts"][0]["excerpt"]
+
+
+def test_reddit_flexible_time_range_fetches_broader_window_and_filters(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    now = server_module.dt.datetime.now(server_module.dt.UTC)
+    captured: dict[str, object] = {}
+
+    def fake_fetch(query: str, limit: int, time_range: str, **_kwargs) -> ProviderResult:
+        captured["query"] = query
+        captured["limit"] = limit
+        captured["time_range"] = time_range
+        recent = EvidenceItem(
+            source="reddit",
+            provider="agent_reach_opencli",
+            content_type="post",
+            title="Recent minimizer bra discussion",
+            text="Need a smoother minimizer bra for a large bust.",
+            url="https://www.reddit.com/r/ABraThatFits/comments/recent/post/",
+            external_id="recent",
+            community="ABraThatFits",
+            created_at=(now - server_module.dt.timedelta(days=10)).isoformat(),
+            metrics={"score": 10, "comments": 1},
+        )
+        old = EvidenceItem(
+            source="reddit",
+            provider="agent_reach_opencli",
+            content_type="post",
+            title="Old minimizer bra discussion",
+            text="Older thread about minimizer bra.",
+            url="https://www.reddit.com/r/ABraThatFits/comments/old/post/",
+            external_id="old",
+            community="ABraThatFits",
+            created_at=(now - server_module.dt.timedelta(days=200)).isoformat(),
+            metrics={"score": 8, "comments": 1},
+        )
+        return ProviderResult([recent, old], [], "agent_reach")
+
+    monkeypatch.setattr("insight_agent.server.fetch_reddit_agent_reach", fake_fetch)
+
+    result = analyze_category(
+        {
+            "category": "minimizer bra",
+            "mode": "agent_reach",
+            "limit": 10,
+            "timeRange": "90d",
+            "useLlm": False,
+        }
+    )
+
+    assert captured["time_range"] == "year"
+    assert captured["limit"] == 40
+    assert [post["id"] for post in result["posts"]] == ["recent"]
+    assert "Filtered 1 Reddit posts outside requested time range 90d." in " ".join(result["warnings"])
 
 
 def test_amazon_query_expansion_maps_large_bust_minimizer_terms() -> None:
@@ -917,6 +973,83 @@ def test_tiktok_chrome_path_env_overrides_discovery(monkeypatch, tmp_path) -> No
     assert tiktok_browser_module.find_chrome_executable() == chrome_path
 
 
+def test_compact_agent_amazon_shelf_keeps_all_products() -> None:
+    products = [
+        {
+            "asin": f"B000000{i:03d}",
+            "title": f"Example Minimizer Bra {i}",
+            "brand": "Example",
+            "product_url": f"https://www.amazon.com/dp/B000000{i:03d}",
+            "price_text": "$29.99",
+            "rating_value": 4.2,
+            "review_count": 100 + i,
+            "badges": ["Overall Pick", "Sponsored", "Prime", "Deal", "Extra"],
+            "review_samples": [
+                {"title": f"Review {i}", "body": f"Review body {i}", "rating_value": 5}
+            ]
+            if i in (0, 11)
+            else [],
+        }
+        for i in range(12)
+    ]
+
+    result = server_module.compact_agent_result(
+        "amazon_shelf",
+        {
+            "metrics": {"products": len(products)},
+            "price_bands": [],
+            "brands": [],
+            "queries": ["minimizer bra"],
+            "products": products,
+        },
+    )
+
+    assert len(result["products"]) == 12
+    assert result["products"][0]["asin"] == "B000000000"
+    assert result["products"][-1]["asin"] == "B000000011"
+    assert result["products"][0]["review_sample_count"] == 1
+    assert result["products"][0]["review_samples"][0]["body"] == "Review body 0"
+    assert result["products"][-1]["review_samples"][0]["body"] == "Review body 11"
+    assert "review_samples" not in result
+
+
+def test_compact_agent_reddit_voc_keeps_all_posts_with_comments() -> None:
+    posts = [
+        {
+            "id": f"post-{i}",
+            "title": f"Reddit post {i}",
+            "url": f"https://www.reddit.com/r/ABraThatFits/comments/{i}/post/",
+            "subreddit": "ABraThatFits",
+            "score": 10 + i,
+            "comments": 2,
+            "excerpt": f"Post excerpt {i}",
+            "comment_items": [
+                {"author": "user-a", "text": f"Comment {i}A", "score": 3},
+                {"author": "user-b", "text": f"Comment {i}B", "score": 1},
+            ],
+        }
+        for i in range(9)
+    ]
+
+    result = server_module.compact_agent_result(
+        "reddit_voc",
+        {
+            "coverage": {"posts": len(posts)},
+            "market_signal": {},
+            "sentiment": {},
+            "pain_points": [],
+            "brands": [],
+            "sizes": [],
+            "posts": posts,
+        },
+    )
+
+    assert len(result["posts"]) == 9
+    assert result["posts"][0]["comment_sample_count"] == 2
+    assert result["posts"][0]["comment_items"][0]["text"] == "Comment 0A"
+    assert result["posts"][-1]["id"] == "post-8"
+
+
 def test_combined_insight_returns_fixed_cited_sections() -> None:
     reddit_report = {
         "category": "minimizer bra",
@@ -974,19 +1107,51 @@ def test_combined_insight_returns_fixed_cited_sections() -> None:
     assert all(item["citations"] for item in result["evidence_chain"])
 
 
-def test_run_agent_uses_planned_tools_and_synthesizes_artifact(monkeypatch) -> None:
+def native_tool_call(call_id: str, name: str, args: dict) -> dict:
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+    }
+
+
+def native_chat_response(tool_calls: list[dict] | None = None, content: str = "") -> dict:
+    message: dict[str, Any] = {"role": "assistant", "content": content}
+    if tool_calls is not None:
+        message["tool_calls"] = tool_calls
+    return {
+        "provider": "test",
+        "model": "native-tool-model",
+        "usage": {"total_tokens": 12},
+        "message": message,
+    }
+
+
+def test_run_agent_uses_native_tool_calls_and_synthesizes_artifact(monkeypatch) -> None:
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "breakout_competitor_discovery",
+                        "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {"limit": 30})]),
+        native_chat_response([native_tool_call("call-tiktok", "tiktok_social", {"limit": 6})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {"reason": "enough evidence"})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        assert tools
+        assert any(tool["function"]["name"] == "load_skill" for tool in tools)
+        return chat_responses.pop(0)
+
     def fake_call_openai_compatible(messages):
-        payload = messages[-1]["content"]
-        if "tool_catalog" in payload:
-            return {
-                "provider": "test",
-                "model": "planner",
-                "usage": {"total_tokens": 12},
-                "result": {
-                    "tools": ["amazon_shelf", "competitor_discovery", "tiktok_social"],
-                    "reason": "Competitor mode needs Amazon shelf and TikTok validation.",
-                },
-            }
         return {
             "provider": "test",
             "model": "synth",
@@ -1001,6 +1166,7 @@ def test_run_agent_uses_planned_tools_and_synthesizes_artifact(monkeypatch) -> N
             },
         }
 
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
     monkeypatch.setattr(
         server_module,
@@ -1058,25 +1224,512 @@ def test_run_agent_uses_planned_tools_and_synthesizes_artifact(monkeypatch) -> N
     assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf", "tiktok_social"]
     assert all(tool["status"] == "ok" for tool in result["tools"])
     assert result["planner"]["status"] == "ok"
+    assert result["planner"]["native_tool_calls"] is True
+    assert result["skill"]["skill_id"] == "breakout_competitor_discovery"
     assert result["llm_analysis"]["status"] == "ok"
     assert result["artifact"]["title"] == "AI competitor artifact"
     assert result["artifact"]["key_findings"]
+    assert [event["type"] for event in result["events"]] == ["input", "skill", "tool", "tool", "artifact"]
+    assert result["events"][1]["file_path"].endswith("skill-breakout_competitor_discovery.md")
+    assert result["events"][2]["tool"] == "amazon_shelf"
+    assert result["events"][3]["tool"] == "tiktok_social"
+    assert result["events"][2]["input"]["category"] == "minimizer bra"
+    assert result["events"][2]["output"]["summary"].startswith("1 Amazon products")
+    assert result["events"][2]["file_path"].endswith("tool-01-amazon_shelf.json")
+    assert [item["type"] for item in result["output_files"]] == ["skill", "tool", "tool", "report"]
+    opened_skill_file = server_module.read_agent_output_file(result["output_files"][0]["path"])
+    assert opened_skill_file["format"] == "markdown"
+    assert "# 爆款竞品发现 Skill" in opened_skill_file["content"]
+    assert "```json skill-spec" not in opened_skill_file["content"]
+    assert "Fixed Steps" not in opened_skill_file["content"]
+    assert result["planner"]["planned_tools"] == ["amazon_shelf", "tiktok_social"]
+    opened_tool_file = server_module.read_agent_output_file(result["output_files"][1]["path"])
+    assert opened_tool_file["name"] == "tool-01-amazon_shelf.json"
+    assert opened_tool_file["content"]["name"] == "amazon_shelf"
+    with pytest.raises(ValueError):
+        server_module.read_agent_output_file(__file__)
+
+    emitted: list[dict] = []
+    chat_responses.extend(
+        [
+            native_chat_response(
+                [
+                    native_tool_call(
+                        "call-load-2",
+                        "load_skill",
+                        {
+                            "skill_id": "breakout_competitor_discovery",
+                            "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
+                        },
+                    )
+                ]
+            ),
+            native_chat_response([native_tool_call("call-amazon-2", "amazon_shelf", {})]),
+            native_chat_response([native_tool_call("call-tiktok-2", "tiktok_social", {})]),
+            native_chat_response([native_tool_call("call-synth-2", "synthesize_artifact", {})]),
+        ]
+    )
+    server_module.run_agent(
+        {
+            "prompt": "帮我发现美国 minimizer bra 爆款竞品",
+            "agentMode": "competitor",
+            "category": "minimizer bra",
+            "useLlm": True,
+        },
+        emit_event=emitted.append,
+    )
+    assert any(event["id"].startswith("tool-amazon_shelf") and event["status"] == "running" for event in emitted)
+    assert any(event["id"].startswith("tool-amazon_shelf") and event["status"] == "ok" and event.get("file_path") for event in emitted)
 
 
-def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
-    captured: dict[str, dict] = {}
+def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_disclosure(monkeypatch) -> None:
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-synth-too-early", "synthesize_artifact", {})]),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+    synth_tool_results: list[list[dict[str, Any]]] = []
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
 
     def fake_call_openai_compatible(messages):
         payload = json.loads(messages[-1]["content"])
-        if "tool_catalog" in payload:
-            captured["planner"] = payload
-            return {
-                "provider": "test",
-                "model": "planner",
-                "usage": {"total_tokens": 10},
-                "result": {"tools": [], "reason": "Prompt-only workflow did not require live tools in this unit test."},
+        synth_tool_results.append(payload["tool_results"])
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Evidence gated artifact",
+                "executive_summary": "Amazon evidence was collected after the gate blocked early synthesis.",
+                "key_findings": ["The final gate required Amazon shelf evidence."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 minimizer bra 市场最近90天在变什么，品牌 Hsia，市场 Amazon US",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
+    assert any(event["title"] == "Evidence Contract 阻止生成 Artifact" for event in result["events"])
+    assert result["evidence_gaps"][0]["evidence_id"] == "reddit_user_voc"
+    assert result["artifact"]["evidence_gaps"][0]["evidence_id"] == "reddit_user_voc"
+    assert any("Reddit" in risk for risk in result["artifact"]["risks"])
+    assert synth_tool_results
+    assert synth_tool_results[0][-1]["name"] == "evidence_gate"
+
+
+def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch) -> None:
+    chat_calls: list[list[dict]] = []
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_calls.append(messages)
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Action-loop market artifact",
+                "executive_summary": "The model selected only Amazon shelf evidence.",
+                "key_findings": ["Tool choice came from the action loop."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 minimizer bra 市场，先只看 Amazon 货架",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["runtime"]["engine"] == "langgraph"
+    assert result["runtime"]["pattern"] == "native_tool_call_loop"
+    assert result["skill"]["skill_id"] == "weekly_market_insight"
+    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
+    assert result["planner"]["planned_tools"] == ["amazon_shelf"]
+    assert result["artifact"]["title"] == "Action-loop market artifact"
+    assert len(chat_calls) == 3
+    assert any(message.get("role") == "tool" and message.get("name") == "load_skill" for message in chat_calls[1])
+
+
+def test_run_agent_can_return_normal_chat_without_artifact(monkeypatch) -> None:
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        assert any(tool["function"]["name"] == "respond_to_user" for tool in tools)
+        return native_chat_response(
+            [
+                native_tool_call(
+                    "call-respond",
+                    "respond_to_user",
+                    {"message": "你好，我可以帮你做市场洞察、爆款竞品发现和证据驱动的研发机会分析。"},
+                )
+            ]
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "你好",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["response_type"] == "message"
+    assert "artifact" not in result
+    assert result["message"]["content"].startswith("你好")
+    assert result["tools"] == []
+    assert [event["type"] for event in result["events"]] == ["input", "message"]
+
+
+def test_run_agent_can_inspect_capabilities_for_general_tool_questions(monkeypatch) -> None:
+    monkeypatch.delenv("SIF_MCP_TOKEN", raising=False)
+    monkeypatch.delenv("SIF_API_KEY", raising=False)
+    monkeypatch.delenv("SIF_TOKEN", raising=False)
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {
+            "sif_market_get_keyword_demand": {
+                "label": "Sif: market_get_keyword_demand",
+                "description": "Get Sif keyword demand evidence.",
+                "input_schema": {"type": "object", "properties": {"keywords": {"type": "array"}}},
+                "source": "sif_mcp",
+                "mcp_tool": "market_get_keyword_demand",
+                "auth_env_names": ["SIF_MCP_TOKEN", "SIF_API_KEY", "SIF_TOKEN"],
             }
-        captured["synthesizer"] = payload
+        },
+    )
+    chat_calls: list[list[dict]] = []
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_calls.append(messages)
+        assert any(tool["function"]["name"] == "inspect_agent_capabilities" for tool in tools)
+        if len(chat_calls) == 1:
+            system_prompt = messages[0]["content"]
+            assert "inspect_agent_capabilities" in system_prompt
+            assert "sif_market_get_keyword_demand (sif_mcp)" in system_prompt
+            return native_chat_response(
+                [
+                    native_tool_call(
+                        "call-inspect",
+                        "inspect_agent_capabilities",
+                        {"focus": "Sif MCP"},
+                    )
+                ]
+            )
+        capability_observation = next(
+            message for message in messages if message.get("role") == "tool" and message.get("name") == "inspect_agent_capabilities"
+        )
+        payload = json.loads(capability_observation["content"])
+        assert payload["status"] == "ok"
+        assert payload["tool_sources"][0]["source"] == "sif_mcp"
+        assert payload["tool_sources"][0]["registered"] is True
+        assert payload["tool_sources"][0]["auth_configured"] is False
+        assert "sif_market_get_keyword_demand" in payload["tool_sources"][0]["tools"]
+        return native_chat_response(
+            [
+                native_tool_call(
+                    "call-respond",
+                    "respond_to_user",
+                    {
+                        "message": (
+                            "当前已经注册了 Sif MCP 工具入口，但未检测到 SIF_MCP_TOKEN / SIF_API_KEY。"
+                            "配置密钥后可以尝试调用 sif_market_get_keyword_demand。"
+                        )
+                    },
+                )
+            ]
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "你现在能调用 sif 工具吗",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["response_type"] == "message"
+    assert "Sif MCP 工具入口" in result["message"]["content"]
+    assert "sif_market_get_keyword_demand" in result["message"]["content"]
+    assert [event["title"] for event in result["events"]] == ["接收用户输入", "检查 Agent 能力", "回复用户"]
+    assert result["tools"] == []
+
+
+def test_run_agent_empty_general_response_falls_back_to_capability_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {
+            "sif_market_get_keyword_history": {
+                "label": "Sif: market_get_keyword_history",
+                "description": "Get Sif keyword history evidence.",
+                "input_schema": {"type": "object", "properties": {"keywords": {"type": "array"}}},
+                "source": "sif_mcp",
+                "mcp_tool": "market_get_keyword_history",
+                "auth_env_names": ["SIF_MCP_TOKEN", "SIF_API_KEY", "SIF_TOKEN"],
+            }
+        },
+    )
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return native_chat_response(tool_calls=None, content="")
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "你有哪些工具，能调用 Sif MCP 吗？",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["response_type"] == "message"
+    assert "当前工具目录共有" in result["message"]["content"]
+    assert "Sif MCP" in result["message"]["content"]
+    assert "artifact" not in result
+    assert [event["type"] for event in result["events"]] == ["input", "message"]
+
+
+def test_run_agent_capability_answer_uses_inventory_observation(monkeypatch) -> None:
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {
+            "sif_market_get_keyword_demand": {
+                "label": "Sif: market_get_keyword_demand",
+                "description": "Get Sif keyword demand evidence.",
+                "input_schema": {"type": "object", "properties": {"keywords": {"type": "array"}}},
+                "source": "sif_mcp",
+                "mcp_tool": "market_get_keyword_demand",
+                "auth_env_names": ["SIF_MCP_TOKEN", "SIF_API_KEY", "SIF_TOKEN"],
+            }
+        },
+    )
+    chat_calls: list[list[dict]] = []
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_calls.append(messages)
+        if len(chat_calls) == 1:
+            return native_chat_response(
+                [native_tool_call("call-inspect", "inspect_agent_capabilities", {"focus": "数据工具"})]
+            )
+        capability_observation = next(
+            message for message in messages if message.get("role") == "tool" and message.get("name") == "inspect_agent_capabilities"
+        )
+        payload = json.loads(capability_observation["content"])
+        tool_rows = "\n".join(
+            f"| `{tool['name']}` | {tool['source']} |"
+            for tool in payload["tools"]
+        )
+        return native_chat_response(
+            [
+                native_tool_call(
+                    "call-respond",
+                    "respond_to_user",
+                    {
+                        "message": "| 工具 | 来源 |\n| --- | --- |\n" + tool_rows
+                    },
+                )
+            ]
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "列出你现在所有数据工具，包括 MCP",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["response_type"] == "message"
+    assert "`amazon_shelf`" in result["message"]["content"]
+    assert "`sif_market_get_keyword_demand`" in result["message"]["content"]
+    assert "sif_mcp" in result["message"]["content"]
+
+
+def test_run_agent_forces_capability_inspection_when_model_answers_directly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {
+            "sif_market_get_keyword_demand": {
+                "label": "Sif: market_get_keyword_demand",
+                "description": "Get Sif keyword demand evidence.",
+                "input_schema": {"type": "object", "properties": {"keywords": {"type": "array"}}},
+                "source": "sif_mcp",
+                "mcp_tool": "market_get_keyword_demand",
+                "auth_env_names": ["SIF_MCP_TOKEN", "SIF_API_KEY", "SIF_TOKEN"],
+            }
+        },
+    )
+    chat_calls: list[list[dict]] = []
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_calls.append(messages)
+        if len(chat_calls) == 1:
+            return native_chat_response(
+                [
+                    native_tool_call(
+                        "call-respond",
+                        "respond_to_user",
+                        {"message": "你好，我可以帮你做市场洞察、爆款竞品发现和证据驱动的研发机会分析。"},
+                    )
+                ]
+            )
+        capability_observation = next(
+            message for message in messages if message.get("role") == "tool" and message.get("name") == "inspect_agent_capabilities"
+        )
+        payload = json.loads(capability_observation["content"])
+        assert "sif_market_get_keyword_demand" in [tool["name"] for tool in payload["tools"]]
+        return native_chat_response(
+            [
+                native_tool_call(
+                    "call-respond-final",
+                    "respond_to_user",
+                    {"message": "我当前可以调用 amazon_shelf，也可以看到 sif_market_get_keyword_demand。"},
+                )
+            ]
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "我是说你可以调用的工具有哪些？",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["response_type"] == "message"
+    assert "sif_market_get_keyword_demand" in result["message"]["content"]
+    assert [event["type"] for event in result["events"]] == ["input", "message", "message"]
+    assert result["events"][0]["message"] == "正在判断是直接回复、补齐参数，还是调用工具执行任务。"
+
+
+def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
+    captured_messages: list[list[dict]] = []
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "breakout_competitor_discovery",
+                        "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-tiktok", "tiktok_social", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        captured_messages.append(messages)
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
         return {
             "provider": "test",
             "model": "synth",
@@ -1091,7 +1744,21 @@ def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
             },
         }
 
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
 
     prompt = (
         "任务：帮我发现美国 minimizer bra 爆款竞品。\n\n"
@@ -1106,24 +1773,430 @@ def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
         }
     )
 
-    assert "skill" not in result
-    assert "workflow_skill" not in captured["planner"]
-    assert "workflow_skill" not in captured["synthesizer"]
-    assert "工作流要求：调用 amazon_shelf" in captured["planner"]["user_prompt"]
-    assert "排除 HSIA" in captured["synthesizer"]["user_prompt"]
+    assert result["skill"]["skill_id"] == "breakout_competitor_discovery"
+    first_user_message = next(message["content"] for message in captured_messages[0] if message["role"] == "user")
+    assert "workflow_skill" not in first_user_message
+    assert "工作流要求：调用 amazon_shelf" in first_user_message
+    assert "排除 HSIA" in first_user_message
     assert result["artifact"]["title"] == "Prompt workflow artifact"
+    assert [event["type"] for event in result["events"]] == ["input", "skill", "tool", "tool", "artifact"]
+    assert result["events"][1]["status"] == "ok"
+
+
+def test_run_agent_returns_needs_input_when_skill_required_params_are_missing(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {"skill_id": "weekly_market_insight", "extracted_params": {"category": "minimizer bra"}},
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-ask",
+                    "ask_user",
+                    {
+                        "reason": "需要品牌、市场和时间范围后才能执行工具。",
+                        "missing_params": ["brand", "marketplace", "time_range"],
+                        "questions": [
+                            {"field": "brand", "question": "请确认研究品牌。"},
+                            {"field": "marketplace", "question": "请确认市场。"},
+                            {"field": "time_range", "question": "请确认时间范围。"},
+                        ],
+                    },
+                )
+            ]
+        ),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "分析 minimizer bra 市场",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "needs_input"
+    assert result["tools"] == []
+    assert result["skill"]["status"] == "needs_input"
+    assert result["skill"]["missing_params"] == ["brand", "marketplace", "time_range"]
+    assert result["pending"]["skill_id"] == "weekly_market_insight"
+    assert result["pending"]["continue_run_id"] == result["run_id"]
+    assert [event["type"] for event in result["events"]] == ["input", "skill"]
+    assert result["events"][1]["status"] == "needs_input"
+    assert "artifact" not in result
+    assert "需要品牌、市场和时间范围" in result["message"]["content"]
+    assert [item["type"] for item in result["output_files"]] == ["skill"]
+
+
+def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(monkeypatch) -> None:
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "market": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Alias normalized artifact",
+                "executive_summary": "The market alias was normalized into marketplace.",
+                "key_findings": ["market alias did not trigger needs_input."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 Amazon US 市场 minimizer bra 最近90天在变什么，品牌 Hsia。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["missing_params"] == []
+    assert result["skill"]["params"]["marketplace"] == "Amazon US"
+    assert result["artifact"]["title"] == "Alias normalized artifact"
+
+
+def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(monkeypatch) -> None:
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {"skill_id": "weekly_market_insight", "extracted_params": {}},
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Prompt params artifact",
+                "executive_summary": "The prompt provided all required params.",
+                "key_findings": ["No clarification was needed."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 Amazon US 市场 minimizer bra 最近90天在变什么，品牌 Hsia，输出 Hsia 下一步研发机会。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["missing_params"] == []
+    assert result["skill"]["params"]["brand"] == "Hsia"
+    assert result["skill"]["params"]["marketplace"] == "Amazon US"
+    assert result["skill"]["params"]["time_range"] == "90d"
+    assert result["artifact"]["title"] == "Prompt params artifact"
+
+
+def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load-pending",
+                    "load_skill",
+                    {"skill_id": "weekly_market_insight", "extracted_params": {"category": "minimizer bra"}},
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-ask",
+                    "ask_user",
+                    {
+                        "reason": "需要品牌、市场和时间范围后才能执行工具。",
+                        "missing_params": ["brand", "marketplace", "time_range"],
+                        "questions": [
+                            {"field": "brand", "question": "请确认研究品牌。"},
+                            {"field": "marketplace", "question": "请确认市场。"},
+                            {"field": "time_range", "question": "请确认时间范围。"},
+                        ],
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load-continued",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-reddit", "reddit_voc", {})]),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Continued market artifact",
+                "executive_summary": "The continued run used supplied parameters.",
+                "key_findings": ["The pending skill continued."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    pending = server_module.run_agent(
+        {
+            "prompt": "分析 minimizer bra 市场",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+    continued = server_module.run_agent(
+        {
+            "prompt": "品牌 Hsia，市场美国，时间最近90天",
+            "agentMode": "market",
+            "continueRunId": pending["run_id"],
+            "useLlm": True,
+        }
+    )
+
+    assert pending["status"] == "needs_input"
+    assert continued["status"] == "ok"
+    assert continued["skill"]["missing_params"] == []
+    assert continued["skill"]["params"]["brand"] == "Hsia"
+    assert continued["skill"]["params"]["marketplace"] == "US"
+    assert continued["skill"]["params"]["time_range"] == "90d"
+    assert [tool["name"] for tool in continued["tools"]] == ["reddit_voc", "amazon_shelf"]
+    assert continued["events"][2]["input"]["timeRange"] == "90d"
+    assert continued["artifact"]["title"] == "Continued market artifact"
+
+
+def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolved(monkeypatch) -> None:
+    chat_calls: list[list[dict]] = []
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Bali",
+                            "marketplace": "US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-confirm",
+                    "ask_user",
+                    {
+                        "reason": "需要确认 Bali 和 Amazon US 是否映射正确。",
+                        "missing_params": [],
+                        "questions": [
+                            {"field": "brand", "question": "研究对象品牌是 Bali 吗？"},
+                            {"field": "marketplace", "question": "目标电商市场是 Amazon US 吗？"},
+                        ],
+                    },
+                )
+            ]
+        ),
+        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_calls.append(messages)
+        return chat_responses.pop(0)
+
+    def fake_call_openai_compatible(messages):
+        return {
+            "provider": "test",
+            "model": "synth",
+            "usage": {"total_tokens": 20},
+            "result": {
+                "title": "Resolved params artifact",
+                "executive_summary": "The run continued after resolved params.",
+                "key_findings": ["Confirmation ask_user was ignored."],
+                "opportunities": [],
+                "risks": [],
+                "next_steps": [],
+            },
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
+    monkeypatch.setattr(
+        server_module,
+        "execute_agent_tool_with_timeout",
+        lambda tool_name, category, payload: {
+            "name": tool_name,
+            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": {},
+        },
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "分析 minimizer bra 市场。品牌 Bali，目标电商市场 Amazon US，最近90天",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["missing_params"] == []
+    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
+    assert result["artifact"]["title"] == "Resolved params artifact"
+    ask_user_observation = [
+        json.loads(message["content"])
+        for message in chat_calls[2]
+        if message.get("role") == "tool" and message.get("name") == "ask_user"
+    ][0]
+    assert ask_user_observation["status"] == "ignored"
 
 
 def test_run_agent_does_not_use_hardcoded_tool_routing_when_planner_unavailable(monkeypatch) -> None:
-    def unavailable_llm(_messages):
+    def unavailable_llm(_messages, tools=None, tool_choice=None):
         raise server_module.LLMUnavailable("No LLM configured")
 
-    def fail_tool(_payload):
+    def fail_tool(*_args, **_kwargs):
         raise AssertionError("Tool execution should only happen after LLM tool planning.")
 
-    monkeypatch.setattr(server_module, "call_openai_compatible", unavailable_llm)
-    monkeypatch.setattr(server_module, "analyze_amazon_category", fail_tool)
-    monkeypatch.setattr(server_module, "analyze_tiktok_category", fail_tool)
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", unavailable_llm)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fail_tool)
 
     result = server_module.run_agent(
         {
@@ -1136,8 +2209,11 @@ def test_run_agent_does_not_use_hardcoded_tool_routing_when_planner_unavailable(
 
     assert result["planner"]["status"] == "unavailable"
     assert result["tools"] == []
+    assert result["response_type"] == "message"
     assert result["llm_analysis"]["status"] == "unavailable"
-    assert result["artifact"]["key_findings"] == ["暂无成功工具结果。"]
+    assert "artifact" not in result
+    assert "LLM API 不可用" in result["message"]["content"]
+    assert [event["status"] for event in result["events"]] == ["ok", "error", "skipped", "ok"]
 
 
 def test_amazon_review_url_prefers_review_id_and_falls_back_to_review_anchor() -> None:

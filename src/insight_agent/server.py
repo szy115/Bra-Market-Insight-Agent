@@ -19,6 +19,21 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from .agent_params import (
+    adapt_agent_params_for_tool,
+    agent_payload_from_params,
+    normalize_agent_time_range,
+    resolve_canonical_agent_params,
+)
+from .agent_skill_harness import parse_evidence_contract, parse_tool_policy
+from .agent_tool_recovery import (
+    SUCCESS_TOOL_STATUSES,
+    assess_agent_tool_result,
+    compact_attempt_result,
+    final_status_after_exhaustion,
+    retry_delay_seconds,
+    retry_limit_for_assessment,
+)
 from .ingestion.agent_reach import (
     agent_reach_health,
     clear_run_cancel,
@@ -38,15 +53,28 @@ from .ingestion.amazon_opencli import (
     read_amazon_discussion,
     read_amazon_product,
 )
-from .ingestion.tiktok_browser import fetch_tiktok_playwright, open_tiktok_login_browser
+from .ingestion.tiktok_browser import fetch_tiktok_playwright
 from .ingestion.youtube_ytdlp import fetch_youtube_ytdlp
 from .llm import (
     LLMUnavailable,
     call_openai_compatible,
+    call_openai_compatible_chat,
     enhance_amazon_report_with_llm,
     enhance_combined_insight_with_llm,
     enhance_competitor_deep_dive_with_llm,
     enhance_report_with_llm,
+)
+from .mcp_sif import (
+    build_sif_input_payload,
+    execute_sif_agent_tool,
+    get_sif_tool_catalog,
+    is_sif_agent_tool,
+)
+from .mcp_sellersprite import (
+    build_sellersprite_input_payload,
+    execute_sellersprite_agent_tool,
+    get_sellersprite_tool_catalog,
+    is_sellersprite_agent_tool,
 )
 from .settings import (
     DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
@@ -78,9 +106,11 @@ STATIC_DIR = PACKAGE_DIR / "static"
 CACHE_DIR = PROJECT_ROOT / ".cache"
 HISTORY_PATH = CACHE_DIR / "research-history.json"
 DATA_DIR = PACKAGE_DIR / "data"
+SKILLS_DIR = PROJECT_ROOT / "skills"
 
 CACHE_VERSION = "v4"
 ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24
+REDDIT_NATIVE_TIME_RANGES = {"day", "week", "month", "year", "all"}
 
 
 class OperationCancelled(RuntimeError):
@@ -477,6 +507,40 @@ def write_cache(path: Path, data: Any) -> None:
     )
 
 
+def reddit_provider_time_range(time_range: str) -> str:
+    if time_range in REDDIT_NATIVE_TIME_RANGES:
+        return time_range
+    days_match = re.fullmatch(r"(\d{1,5})d", time_range)
+    if not days_match:
+        return "year"
+    days = int(days_match.group(1))
+    if days <= 1:
+        return "day"
+    if days <= 7:
+        return "week"
+    if days <= 30:
+        return "month"
+    if days <= 365:
+        return "year"
+    return "all"
+
+
+def time_range_cutoff(time_range: str, now: dt.datetime | None = None) -> dt.datetime | None:
+    now = now or dt.datetime.now(dt.UTC)
+    if time_range == "day":
+        return now - dt.timedelta(days=1)
+    if time_range == "week":
+        return now - dt.timedelta(days=7)
+    if time_range == "month":
+        return now - dt.timedelta(days=30)
+    days_match = re.fullmatch(r"(\d{1,5})d", time_range)
+    if days_match:
+        return now - dt.timedelta(days=max(1, int(days_match.group(1))))
+    if time_range == "year":
+        return now - dt.timedelta(days=365)
+    return None
+
+
 def read_history_items() -> list[dict[str, Any]]:
     if not HISTORY_PATH.exists():
         return []
@@ -828,6 +892,31 @@ def dedupe_posts(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def filter_posts_by_time_range(posts: list[dict[str, Any]], time_range: str) -> tuple[list[dict[str, Any]], list[str]]:
+    cutoff = time_range_cutoff(time_range)
+    if not cutoff or not posts:
+        return posts, []
+    filtered: list[dict[str, Any]] = []
+    dated_posts = 0
+    for post in posts:
+        created = parse_date(post.get("created_utc") or post.get("created_at") or post.get("date"))
+        if not created:
+            filtered.append(post)
+            continue
+        dated_posts += 1
+        if created >= cutoff:
+            filtered.append(post)
+    warnings: list[str] = []
+    dropped = len(posts) - len(filtered)
+    if dropped:
+        warnings.append(f"Filtered {dropped} Reddit posts outside requested time range {time_range}.")
+    if dated_posts == 0:
+        warnings.append(
+            f"Could not verify requested time range {time_range} because collected Reddit posts had no parseable timestamps."
+        )
+    return filtered, warnings
+
+
 def collect_reddit(
     category: str,
     limit: int,
@@ -838,6 +927,13 @@ def collect_reddit(
     comments_per_post: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], str]:
     query = build_reddit_query(category)
+    requested_time_range = normalize_agent_time_range(time_range) or "year"
+    provider_time_range = reddit_provider_time_range(requested_time_range)
+    provider_limit = (
+        limit
+        if requested_time_range in REDDIT_NATIVE_TIME_RANGES
+        else min(MAX_RESEARCH_POST_LIMIT, max(limit * 3, limit + 30))
+    )
     settings_values = read_settings_values()
     effective_detail_limit = int_setting(settings_values, "AGENT_REACH_DETAIL_LIMIT", 8, 0, 100)
     effective_comments_per_post = int_setting(settings_values, "AGENT_REACH_COMMENTS_PER_POST", 20, 0, 200)
@@ -861,7 +957,7 @@ def collect_reddit(
             "analysis",
             query,
             str(limit),
-            time_range,
+            requested_time_range,
             mode,
             detail_cache_part,
             comments_cache_part,
@@ -896,6 +992,8 @@ def collect_reddit(
     if mode == "sample":
         posts = load_sample_posts()
         warnings.append("Using built-in sample data by request.")
+        posts, filter_warnings = filter_posts_by_time_range(posts, requested_time_range)
+        warnings.extend(filter_warnings)
         write_cache(cache_path, {"posts": posts[:limit], "mode": source_mode})
         return posts[:limit], warnings, source_mode
 
@@ -906,21 +1004,21 @@ def collect_reddit(
                 "detail_limit": effective_detail_limit,
                 "comments_per_post": effective_comments_per_post,
             }
-        agent_reach_result = fetch_reddit_agent_reach(query, limit, time_range, **agent_reach_kwargs)
+        agent_reach_result = fetch_reddit_agent_reach(query, provider_limit, provider_time_range, **agent_reach_kwargs)
         warnings.extend(agent_reach_result.warnings)
         if agent_reach_result.items:
             posts = [item.to_legacy_post() for item in agent_reach_result.items]
             source_mode = "agent_reach"
 
     if not posts and mode in {"auto", "oauth"}:
-        oauth_posts, oauth_warnings = fetch_reddit_oauth(query, limit, time_range)
+        oauth_posts, oauth_warnings = fetch_reddit_oauth(query, provider_limit, provider_time_range)
         warnings.extend(oauth_warnings)
         if oauth_posts:
             posts = oauth_posts
             source_mode = "oauth"
 
     if not posts and mode in {"auto", "rss"}:
-        rss_posts, rss_warnings = fetch_reddit_rss(query, limit, time_range, bypass_cache=bypass_cache)
+        rss_posts, rss_warnings = fetch_reddit_rss(query, provider_limit, provider_time_range, bypass_cache=bypass_cache)
         warnings.extend(rss_warnings)
         if rss_posts:
             posts = rss_posts
@@ -937,18 +1035,35 @@ def collect_reddit(
         )
         return [], warnings, source_mode
 
-    posts = dedupe_posts(posts)[:limit]
+    posts = dedupe_posts(posts)
+    posts, filter_warnings = filter_posts_by_time_range(posts, requested_time_range)
+    warnings.extend(filter_warnings)
+    posts = posts[:limit]
     write_cache(cache_path, {"posts": posts, "mode": source_mode})
     return posts, warnings, source_mode
 
 
-def parse_date(value: str | None) -> dt.datetime | None:
+def parse_date(value: Any) -> dt.datetime | None:
     if not value:
         return None
+    if isinstance(value, (int, float)):
+        try:
+            return dt.datetime.fromtimestamp(float(value), dt.UTC)
+        except (OSError, OverflowError, ValueError):
+            return None
+    text = str(value).strip()
+    if re.fullmatch(r"\d+(?:\.\d+)?", text):
+        try:
+            return dt.datetime.fromtimestamp(float(text), dt.UTC)
+        except (OSError, OverflowError, ValueError):
+            return None
     try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed
 
 
 def add_months(value: dt.date, offset: int) -> dt.date:
@@ -4769,61 +4884,171 @@ AGENT_TOOL_CATALOG: dict[str, dict[str, str]] = {
 }
 
 
-def plan_agent_tools(
-    prompt: str,
-    mode: str,
-    use_llm: bool,
-) -> tuple[list[str], dict[str, Any]]:
-    if not use_llm:
-        return [], {
-            "enabled": False,
-            "status": "not_requested",
-            "message": "Tool planning was skipped; no deterministic backend routing was used.",
+def agent_tool_catalog() -> dict[str, dict[str, Any]]:
+    catalog: dict[str, dict[str, Any]] = {name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()}
+    catalog.update(get_sif_tool_catalog())
+    catalog.update(get_sellersprite_tool_catalog())
+    return catalog
+
+def markdown_section(markdown_text: str, heading: str) -> str:
+    pattern = rf"^##\s+{re.escape(heading)}\s*$"
+    match = re.search(pattern, markdown_text, flags=re.MULTILINE)
+    if not match:
+        return ""
+    start = match.end()
+    next_match = re.search(r"^##\s+", markdown_text[start:], flags=re.MULTILINE)
+    end = start + next_match.start() if next_match else len(markdown_text)
+    return markdown_text[start:end].strip()
+
+
+def markdown_bullets(section: str) -> list[str]:
+    return [line.strip()[2:].strip() for line in section.splitlines() if line.strip().startswith("- ")]
+
+
+def parse_skill_value(value: str) -> Any:
+    stripped = value.strip()
+    if stripped.lower() == "true":
+        return True
+    if stripped.lower() == "false":
+        return False
+    if re.fullmatch(r"\d+", stripped):
+        return int(stripped)
+    return stripped
+
+
+def markdown_table_rows(section: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or "---" in stripped:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if cells and cells[0] not in {"字段", "Field"}:
+            rows.append(cells)
+    return rows
+
+
+def first_markdown_paragraph(section: str) -> str:
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", section) if part.strip()]
+    return paragraphs[0] if paragraphs else ""
+
+
+def extract_agent_skill_spec(markdown_text: str, path: Path) -> dict[str, Any]:
+    title_match = re.search(r"^#\s+(.+)$", markdown_text, flags=re.MULTILINE)
+    name = title_match.group(1).strip() if title_match else path.parent.name
+    required_rows = markdown_table_rows(markdown_section(markdown_text, "Required Inputs"))
+    optional_rows = markdown_table_rows(markdown_section(markdown_text, "Optional Defaults"))
+    required = [row[0] for row in required_rows if row]
+    required_descriptions = {
+        row[0]: row[1]
+        for row in required_rows
+        if len(row) >= 2 and row[0]
+    }
+    defaults: dict[str, Any] = {}
+    for row in optional_rows:
+        if len(row) >= 2 and row[0]:
+            defaults[row[0]] = parse_skill_value(row[1])
+    return {
+        "skill_id": path.parent.name,
+        "name": name,
+        "description": first_markdown_paragraph(markdown_section(markdown_text, "What It Does")),
+        "when_to_use": markdown_bullets(markdown_section(markdown_text, "When To Use")),
+        "required_inputs_summary": required,
+        "input_schema": {"required": required, "required_descriptions": required_descriptions, "defaults": defaults},
+        "tool_policy": parse_tool_policy(markdown_text),
+        "evidence_contract": parse_evidence_contract(markdown_text),
+        "markdown": markdown_text,
+        "source_path": str(path),
+    }
+
+
+def load_agent_skill_registry() -> dict[str, dict[str, Any]]:
+    registry: dict[str, dict[str, Any]] = {}
+    if not SKILLS_DIR.exists():
+        return registry
+    for skill_path in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        if skill_path.parent.name.startswith("_"):
+            continue
+        try:
+            skill = extract_agent_skill_spec(skill_path.read_text(encoding="utf-8"), skill_path)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Skipping skill {skill_path}: {exc}")
+            continue
+        registry[str(skill["skill_id"])] = skill
+    return registry
+
+
+AGENT_SKILL_REGISTRY: dict[str, dict[str, Any]] = load_agent_skill_registry()
+
+
+def agent_skill_manifests() -> list[dict[str, Any]]:
+    return [
+        {
+            "skill_id": skill["skill_id"],
+            "name": skill["name"],
+            "description": skill["description"],
+            "when_to_use": skill["when_to_use"],
+            "required_inputs_summary": skill["required_inputs_summary"],
+            "tool_policy": skill.get("tool_policy") or [],
+            "evidence_contract": skill.get("evidence_contract") or [],
+            "markdown": compact_text(str(skill.get("markdown") or ""), 2200),
         }
-    try:
-        planned = call_openai_compatible(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a tool-routing planner for an ecommerce market insight agent. "
-                        "Return strict JSON only. Select the smallest useful set of callable data tools from the catalog. "
-                        "Follow the user's prompt; do not use hidden backend defaults."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "ui_mode": mode,
-                            "user_prompt": prompt,
-                            "tool_catalog": AGENT_TOOL_CATALOG,
-                            "rules": [
-                                "Select tools only when the user prompt requires the evidence that tool can provide.",
-                                "Use only tool names present in tool_catalog.",
-                                "Do not select product workflow pages as tools; only data-source tools are callable.",
-                                "If the prompt does not imply any concrete data source, return an empty tools array and explain why.",
-                                "Return 0-4 tools.",
-                            ],
-                            "schema": {"tools": ["tool_name"], "reason": "string"},
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ]
-        )
-        raw_tools = (planned.get("result") or {}).get("tools") or []
-        selected = [tool for tool in raw_tools if tool in AGENT_TOOL_CATALOG]
-        return selected[:4], {
-            "enabled": True,
-            "status": "ok",
-            "provider": planned.get("provider"),
-            "model": planned.get("model"),
-            "usage": planned.get("usage") or {},
-            "message": (planned.get("result") or {}).get("reason") or "",
-        }
-    except LLMUnavailable as exc:
-        return [], {"enabled": True, "status": "unavailable", "message": str(exc)}
+        for skill in AGENT_SKILL_REGISTRY.values()
+    ]
+
+
+def resolve_agent_skill_params(
+    skill: dict[str, Any],
+    payload: dict[str, Any],
+    extracted_params: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    return resolve_canonical_agent_params(skill, payload, extracted_params)
+
+
+def agent_payload_with_skill_params(payload: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    return agent_payload_from_params(payload, params)
+
+
+def agent_event(
+    seq: int,
+    event_type: str,
+    status: str,
+    title: str,
+    message: str = "",
+    *,
+    tool: str | None = None,
+    duration_ms: int | None = None,
+    data: dict[str, Any] | None = None,
+    input_params: dict[str, Any] | None = None,
+    output: dict[str, Any] | None = None,
+    file_path: str | None = None,
+    event_id: str | None = None,
+) -> dict[str, Any]:
+    if event_type == "input":
+        title = "接收用户输入"
+        message = "正在判断是直接回复、补齐参数，还是调用工具执行任务。"
+    event: dict[str, Any] = {
+        "id": event_id or f"evt-{seq:03d}",
+        "seq": seq,
+        "type": event_type,
+        "status": status,
+        "title": title,
+        "message": message,
+        "timestamp": now_iso(),
+    }
+    if tool:
+        event["tool"] = tool
+    if duration_ms is not None:
+        event["duration_ms"] = duration_ms
+    if data:
+        event["data"] = data
+    if input_params is not None:
+        event["input"] = input_params
+    if output is not None:
+        event["output"] = output
+    if file_path:
+        event["file_path"] = file_path
+    return event
 
 
 def agent_category_from_payload(payload: dict[str, Any]) -> str:
@@ -4845,7 +5070,19 @@ def agent_brief_for_category(category: str) -> dict[str, str]:
     return brief
 
 
+def agent_tool_input_payload(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if is_sif_agent_tool(tool_name):
+        return build_sif_input_payload(tool_name, category, payload)
+    if is_sellersprite_agent_tool(tool_name):
+        return build_sellersprite_input_payload(tool_name, category, payload)
+    return adapt_agent_params_for_tool(tool_name, category, payload)
+
+
 def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, Any]:
+    if is_sif_agent_tool(tool_name):
+        return result
+    if is_sellersprite_agent_tool(tool_name):
+        return result
     if tool_name == "reddit_voc":
         return {
             "coverage": result.get("coverage"),
@@ -4854,17 +5091,23 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
             "pain_points": result.get("pain_points", [])[:5],
             "brands": result.get("brands", [])[:8],
             "sizes": result.get("sizes", [])[:8],
-            "evidence": [
+            "posts": [
                 {
+                    "id": post.get("id"),
                     "title": post.get("title"),
                     "url": post.get("url"),
                     "subreddit": post.get("subreddit"),
+                    "score": post.get("score"),
+                    "comments": post.get("comments"),
+                    "comment_sample_count": len(post_comment_items(post)),
+                    "comment_items": post_comment_items(post),
                     "excerpt": compact_text(str(post.get("excerpt") or ""), 260),
                 }
-                for post in result.get("posts", [])[:6]
+                for post in result.get("posts", [])
             ],
         }
     if tool_name == "amazon_shelf":
+        products = result.get("products", [])
         return {
             "metrics": result.get("metrics"),
             "price_bands": result.get("price_bands"),
@@ -4879,9 +5122,11 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
                     "price": product.get("price_text"),
                     "rating": product.get("rating_value"),
                     "reviews": product.get("review_count"),
+                    "review_sample_count": len(product.get("review_samples") or []),
+                    "review_samples": product.get("review_samples") if isinstance(product.get("review_samples"), list) else [],
                     "badges": product.get("badges", [])[:4],
                 }
-                for product in result.get("products", [])[:8]
+                for product in products
             ],
         }
     if tool_name == "media_rankings":
@@ -4912,6 +5157,7 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
                     "author": video.get("author"),
                     "views": video.get("view_count"),
                     "comments": len(video.get("comment_samples") or []),
+                    "comment_samples": video.get("comment_samples") if isinstance(video.get("comment_samples"), list) else [],
                     "snippet": compact_text(tiktok_video_text(video), 260),
                 }
                 for video in result.get("videos", [])[:8]
@@ -4921,6 +5167,10 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
 
 
 def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
+    if is_sif_agent_tool(tool_name):
+        return "Sif MCP returned structured evidence."
+    if is_sellersprite_agent_tool(tool_name):
+        return result.get("summary") or "SellerSprite MCP returned structured evidence."
     if tool_name == "reddit_voc":
         coverage = result.get("coverage") or {}
         data_volume = result.get("data_volume") or {}
@@ -4940,49 +5190,26 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
 
 def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
-    bypass_cache = bool(payload.get("bypassCache"))
+    tool_input = agent_tool_input_payload(tool_name, category, payload)
+    catalog = agent_tool_catalog()
+    if is_sif_agent_tool(tool_name):
+        return execute_sif_agent_tool(tool_name, tool_input)
+    if is_sellersprite_agent_tool(tool_name):
+        return execute_sellersprite_agent_tool(tool_name, tool_input)
     try:
         if tool_name == "reddit_voc":
-            raw = analyze_category(
-                {
-                    "category": category,
-                    "timeRange": payload.get("timeRange") or "year",
-                    "limit": min(max(int(payload.get("redditLimit") or 30), 5), 120),
-                    "mode": payload.get("mode") or "auto",
-                    "useLlm": False,
-                    "redditDetailLimit": min(max(int(payload.get("redditDetailLimit") or 5), 0), 30),
-                    "redditCommentsPerPost": min(max(int(payload.get("redditCommentsPerPost") or 10), 0), 80),
-                    "bypassCache": bypass_cache,
-                }
-            )
+            raw = analyze_category(tool_input)
         elif tool_name == "amazon_shelf":
-            raw = analyze_amazon_category(
-                {
-                    "category": category,
-                    "limit": min(max(int(payload.get("amazonLimit") or 30), 5), 80),
-                    "amazonKeywordLimit": min(max(int(payload.get("amazonKeywordLimit") or 6), 1), 12),
-                    "useLlm": False,
-                    "bypassCache": bypass_cache,
-                }
-            )
+            raw = analyze_amazon_category(tool_input)
         elif tool_name == "media_rankings":
-            discovery = discover_article_urls(
-                {
-                    "category": category,
-                    "queryLimit": min(max(int(payload.get("articleQueryLimit") or 4), 1), 10),
-                    "resultsPerQuery": min(max(int(payload.get("articleResultsPerQuery") or 5), 1), 10),
-                    "candidateLimit": min(max(int(payload.get("articleCandidateLimit") or 8), 1), 20),
-                    "includeIndustryReports": True,
-                    "bypassCache": bypass_cache,
-                }
-            )
+            discovery = discover_article_urls(tool_input)
             urls = [item.get("url") for item in discovery.get("candidates", [])[:3] if item.get("url")]
             raw = analyze_articles(
                 {
                     "category": category,
                     "urls": urls,
                     "limit": len(urls),
-                    "bypassCache": bypass_cache,
+                    "bypassCache": bool(tool_input.get("bypassCache")),
                 }
             ) if urls else {
                 "category": category,
@@ -4994,38 +5221,38 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             }
             raw["discovery"] = discovery
         elif tool_name == "tiktok_social":
-            raw = analyze_tiktok_category(
-                {
-                    "category": category,
-                    "limit": min(max(int(payload.get("tiktokLimit") or 6), 1), 12),
-                    "tiktokCommentsPerVideo": min(max(int(payload.get("tiktokCommentsPerVideo") or 4), 1), 20),
-                    "bypassCache": bypass_cache,
-                }
-            )
+            raw = analyze_tiktok_category(tool_input)
         else:
             raise ValueError(f"Unknown agent tool: {tool_name}")
         return {
             "name": tool_name,
-            "label": AGENT_TOOL_CATALOG[tool_name]["label"],
+            "label": catalog[tool_name]["label"],
             "status": "ok",
             "summary": agent_tool_summary(tool_name, raw),
             "duration_ms": int((time.time() - started) * 1000),
+            "input": tool_input,
             "data": compact_agent_result(tool_name, raw),
         }
     except Exception as exc:  # noqa: BLE001
         return {
             "name": tool_name,
-            "label": AGENT_TOOL_CATALOG.get(tool_name, {}).get("label", tool_name),
+            "label": catalog.get(tool_name, {}).get("label", tool_name),
             "status": "error",
             "summary": str(exc),
             "duration_ms": int((time.time() - started) * 1000),
+            "input": tool_input,
             "data": {},
         }
 
 
-def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
-    timeout_seconds = min(max(int(payload.get("agentToolTimeoutSeconds") or 600), 30), 1200)
+def execute_agent_tool_once_with_timeout(
+    tool_name: str,
+    category: str,
+    payload: dict[str, Any],
+    timeout_seconds: int,
+) -> dict[str, Any]:
     started = time.time()
+    catalog = agent_tool_catalog()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(execute_agent_tool, tool_name, category, payload)
     try:
@@ -5035,10 +5262,11 @@ def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict
         executor.shutdown(wait=False, cancel_futures=True)
         return {
             "name": tool_name,
-            "label": AGENT_TOOL_CATALOG.get(tool_name, {}).get("label", tool_name),
+            "label": catalog.get(tool_name, {}).get("label", tool_name),
             "status": "error",
             "summary": f"Tool timed out after {timeout_seconds} seconds.",
             "duration_ms": int((time.time() - started) * 1000),
+            "input": agent_tool_input_payload(tool_name, category, payload),
             "data": {},
         }
     finally:
@@ -5046,8 +5274,53 @@ def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict
             executor.shutdown(wait=False, cancel_futures=True)
 
 
+def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+    timeout_seconds = min(max(int(payload.get("agentToolTimeoutSeconds") or 600), 30), 1200)
+    configured_retries = min(max(int(payload.get("agentToolRetryAttempts") or 2), 0), 3)
+    retry_delay_ms = min(max(int(payload.get("agentToolRetryDelayMs") or 300), 0), 5000)
+    started = time.time()
+    attempts: list[dict[str, Any]] = []
+    final_result: dict[str, Any] | None = None
+    final_assessment = None
+
+    for attempt_index in range(1, configured_retries + 2):
+        result = execute_agent_tool_once_with_timeout(tool_name, category, payload, timeout_seconds)
+        assessment = assess_agent_tool_result(tool_name, result)
+        attempts.append(compact_attempt_result(attempt_index, result, assessment))
+        final_result = result
+        final_assessment = assessment
+        allowed_retries = retry_limit_for_assessment(assessment, configured_retries)
+        if not assessment.retryable or attempt_index > allowed_retries:
+            break
+        time.sleep(retry_delay_seconds(attempt_index, retry_delay_ms))
+
+    assert final_result is not None and final_assessment is not None
+    total_duration_ms = int((time.time() - started) * 1000)
+    final_status = final_assessment.status
+    retryable = final_assessment.retryable and len(attempts) <= retry_limit_for_assessment(final_assessment, configured_retries)
+    if final_assessment.retryable and len(attempts) > retry_limit_for_assessment(final_assessment, configured_retries):
+        final_status = final_status_after_exhaustion(final_assessment)
+        retryable = False
+    if final_status in SUCCESS_TOOL_STATUSES and len(attempts) > 1:
+        final_result["summary"] = f"{final_result.get('summary') or final_assessment.reason} Recovered after {len(attempts)} attempts."
+    elif final_status not in SUCCESS_TOOL_STATUSES:
+        final_result["summary"] = final_assessment.reason
+    final_result["status"] = final_status
+    final_result["outcome"] = final_assessment.outcome
+    final_result["duration_ms"] = total_duration_ms
+    final_result["recovery"] = {
+        "attempt_count": len(attempts),
+        "retried": len(attempts) > 1,
+        "retryable": retryable,
+        "attempts": attempts,
+        "reason": final_assessment.reason,
+        "suggested_next_actions": final_assessment.suggested_next_actions,
+    }
+    return final_result
+
+
 def fallback_agent_artifact(prompt: str, mode: str, category: str, tool_results: list[dict[str, Any]]) -> dict[str, Any]:
-    ok_tools = [tool for tool in tool_results if tool.get("status") == "ok"]
+    ok_tools = [tool for tool in tool_results if tool.get("status") in SUCCESS_TOOL_STATUSES]
     findings = [f"{tool.get('label')}: {tool.get('summary')}" for tool in ok_tools]
     return {
         "title": f"{category} {'爆款竞品分析' if mode == 'competitor' else '市场洞察'}",
@@ -5138,29 +5411,249 @@ def synthesize_agent_artifact(
         }
 
 
-def run_agent(payload: dict[str, Any]) -> dict[str, Any]:
-    prompt = str(payload.get("prompt") or "").strip()
-    if not prompt:
-        raise ValueError("prompt is required")
-    mode = str(payload.get("agentMode") or payload.get("mode") or "market").strip().lower()
-    if mode not in {"market", "competitor"}:
-        mode = "market"
-    category = agent_category_from_payload(payload)
-    locale = str(payload.get("locale") or "zh")
-    use_llm = payload.get("useLlm", True) is not False
-    planned_tools, planner = plan_agent_tools(prompt, mode, use_llm)
-    tool_results = [execute_agent_tool_with_timeout(tool_name, category, payload) for tool_name in planned_tools]
-    artifact, llm_analysis = synthesize_agent_artifact(prompt, mode, category, tool_results, locale, use_llm)
+def html_escape(value: Any) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def render_html_list(items: Any) -> str:
+    if not isinstance(items, list) or not items:
+        return "<p class=\"empty\">暂无。</p>"
+    return "<ul>" + "".join(f"<li>{html_escape(item)}</li>" for item in items[:12]) + "</ul>"
+
+
+def render_agent_html_report(
+    artifact: dict[str, Any],
+    prompt: str,
+    mode: str,
+    category: str,
+    tool_results: list[dict[str, Any]],
+    generated_at: str,
+) -> str:
+    title = html_escape(artifact.get("title") or f"{category} 市场洞察")
+    subtitle = "爆款竞品分析" if mode == "competitor" else "市场洞察"
+    tool_cards = []
+    for tool in tool_results:
+        status = str(tool.get("status") or "")
+        status_class = "ok" if status in SUCCESS_TOOL_STATUSES else "error"
+        tool_cards.append(
+            f"""
+            <article class="tool-card {status_class}">
+              <div class="tool-head">
+                <strong>{html_escape(tool.get("label") or tool.get("name"))}</strong>
+                <span>{html_escape(status or "unknown")}</span>
+              </div>
+              <p>{html_escape(tool.get("summary"))}</p>
+            </article>
+            """
+        )
+    tools_html = "".join(tool_cards) or "<p class=\"empty\">本轮没有成功工具结果。</p>"
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; }}
+  html, body {{ margin: 0; padding: 0; background: #fff; color: #172033; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }}
+  body {{ padding: 0 0 42px; }}
+  .layout {{ width: min(1180px, 100%); margin: 0 auto; padding: 24px; }}
+  .hero {{ border-radius: 14px; background: linear-gradient(135deg, #6366f1 0%, #5b7cf8 52%, #4f46e5 100%); color: #fff; padding: 38px 42px; box-shadow: 0 18px 46px rgba(79, 70, 229, 0.18); }}
+  .hero h1 {{ margin: 0; font-size: 34px; line-height: 1.16; }}
+  .hero p {{ margin: 12px 0 0; opacity: 0.9; }}
+  .meta {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }}
+  .meta span {{ border: 1px solid rgba(255,255,255,0.24); border-radius: 999px; background: rgba(255,255,255,0.12); padding: 5px 10px; font-size: 12px; }}
+  .summary {{ margin: 22px 0; border-left: 4px solid #4f46e5; border-radius: 0 10px 10px 0; background: #f8fafc; padding: 18px 22px; color: #334155; line-height: 1.7; }}
+  .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
+  @media (max-width: 820px) {{ .grid {{ grid-template-columns: 1fr; }} .layout {{ padding: 14px; }} .hero {{ padding: 28px 24px; }} }}
+  section.card {{ border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 20px; box-shadow: 0 4px 14px rgba(79,70,229,0.06); }}
+  section.card h2 {{ margin: 0 0 12px; color: #312e81; font-size: 18px; }}
+  ul {{ margin: 0; padding-left: 20px; color: #334155; line-height: 1.72; }}
+  li {{ margin: 4px 0; }}
+  .tool-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }}
+  .tool-card {{ border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; padding: 13px; }}
+  .tool-card.ok {{ border-color: #bbf7d0; background: #f0fdf4; }}
+  .tool-card.error {{ border-color: #fecdd3; background: #fff1f2; }}
+  .tool-head {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+  .tool-head strong {{ color: #0f172a; }}
+  .tool-head span {{ border-radius: 999px; background: #fff; color: #475569; padding: 2px 7px; font-size: 11px; font-weight: 700; }}
+  .tool-card p, .empty {{ color: #64748b; line-height: 1.55; }}
+  .prompt {{ white-space: pre-wrap; color: #475569; line-height: 1.6; }}
+</style>
+</head>
+<body>
+  <main class="layout">
+    <header class="hero">
+      <h1>{title}</h1>
+      <p>{html_escape(subtitle)} · {html_escape(category)}</p>
+      <div class="meta">
+        <span>生成时间：{html_escape(generated_at)}</span>
+        <span>模式：{html_escape(mode)}</span>
+        <span>工具数：{len(tool_results)}</span>
+      </div>
+    </header>
+    <div class="summary">{html_escape(artifact.get("executive_summary"))}</div>
+    <div class="grid">
+      <section class="card"><h2>关键发现</h2>{render_html_list(artifact.get("key_findings"))}</section>
+      <section class="card"><h2>机会</h2>{render_html_list(artifact.get("opportunities"))}</section>
+      <section class="card"><h2>风险</h2>{render_html_list(artifact.get("risks"))}</section>
+      <section class="card"><h2>下一步</h2>{render_html_list(artifact.get("next_steps"))}</section>
+    </div>
+    <section class="card" style="margin-top:16px;"><h2>工具证据</h2><div class="tool-grid">{tools_html}</div></section>
+    <section class="card" style="margin-top:16px;"><h2>原始任务</h2><div class="prompt">{html_escape(prompt)}</div></section>
+  </main>
+</body>
+</html>"""
+
+
+def write_agent_run_json(run_id: str, filename: str, payload: Any) -> str:
+    run_dir = CACHE_DIR / "agent-runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / filename
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return str(path)
+
+
+def write_agent_run_text(run_id: str, filename: str, content: str) -> str:
+    run_dir = CACHE_DIR / "agent-runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / filename
+    path.write_text(content, encoding="utf-8")
+    return str(path)
+
+
+def read_agent_output_file(path_value: str) -> dict[str, Any]:
+    if not path_value:
+        raise ValueError("path is required")
+    requested = Path(path_value).expanduser().resolve()
+    allowed_root = (CACHE_DIR / "agent-runs").resolve()
+    try:
+        requested.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError("file is outside the agent output directory") from exc
+    if requested.suffix.lower() not in {".json", ".md", ".html"}:
+        raise ValueError("only JSON, Markdown, and HTML output files can be opened")
+    if not requested.exists() or not requested.is_file():
+        raise ValueError("output file was not found")
+    if requested.suffix.lower() == ".md":
+        return {
+            "name": requested.name,
+            "path": str(requested),
+            "format": "markdown",
+            "content": requested.read_text(encoding="utf-8"),
+        }
+    if requested.suffix.lower() == ".html":
+        return {
+            "name": requested.name,
+            "path": str(requested),
+            "format": "html",
+            "content": requested.read_text(encoding="utf-8"),
+        }
     return {
-        "run_id": hashlib.sha1(f"{prompt}-{now_iso()}".encode()).hexdigest()[:12],
-        "generated_at": now_iso(),
+        "name": requested.name,
+        "path": str(requested),
+        "format": "json",
+        "content": json.loads(requested.read_text(encoding="utf-8")),
+    }
+
+
+AGENT_PARAM_LABELS = {
+    "brand": {"zh": "品牌", "en": "brand"},
+    "marketplace": {"zh": "市场", "en": "marketplace"},
+    "category": {"zh": "品类", "en": "category"},
+    "time_range": {"zh": "时间范围", "en": "time range"},
+}
+
+AGENT_PARAM_SUGGESTIONS = {
+    "brand": ["Hsia / 遐"],
+    "marketplace": ["US", "美国站(com)"],
+    "category": ["minimizer bra", "full coverage bra", "large bust bra"],
+    "time_range": ["最近30天", "最近90天", "最近一年"],
+}
+
+
+def load_agent_run(run_id: str) -> dict[str, Any] | None:
+    if not re.fullmatch(r"[a-f0-9]{12}", run_id or ""):
+        return None
+    path = CACHE_DIR / "agent-runs" / run_id / "run.json"
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def build_agent_clarification(
+    skill: dict[str, Any],
+    missing_params: list[str],
+    resolved_params: dict[str, Any],
+    locale: str,
+) -> dict[str, Any]:
+    language = "en" if locale == "en" else "zh"
+    labels = [
+        AGENT_PARAM_LABELS.get(param, {}).get(language, param)
+        for param in missing_params
+    ]
+    if language == "en":
+        message = (
+            f"I loaded {skill.get('name')}, but need these inputs before running tools: "
+            f"{', '.join(labels)}."
+        )
+        question_prefix = "Please confirm"
+    else:
+        message = (
+            f"我已加载「{skill.get('name')}」，但执行工具前还需要确认："
+            f"{'、'.join(labels)}。"
+        )
+        question_prefix = "请确认"
+    questions = [
+        {
+            "field": param,
+            "label": AGENT_PARAM_LABELS.get(param, {}).get(language, param),
+            "question": f"{question_prefix}{AGENT_PARAM_LABELS.get(param, {}).get(language, param)}",
+            "suggestions": AGENT_PARAM_SUGGESTIONS.get(param, []),
+        }
+        for param in missing_params
+    ]
+    return {
+        "status": "needs_input",
+        "message": message,
+        "missing_params": missing_params,
+        "resolved_params": resolved_params,
+        "questions": questions,
+    }
+
+
+def build_clarification_artifact(
+    prompt: str,
+    mode: str,
+    category: str,
+    clarification: dict[str, Any],
+    locale: str,
+) -> dict[str, Any]:
+    if locale == "en":
+        return {
+            "title": "More inputs needed",
+            "executive_summary": clarification["message"],
+            "key_findings": [f"Missing input: {question['label']}" for question in clarification.get("questions", [])],
+            "opportunities": ["After the user confirms the missing inputs, continue the same selected skill."],
+            "risks": ["No data tools were run yet, so no market conclusion has been generated."],
+            "next_steps": ["Reply with the missing inputs in one sentence."],
+            "prompt": prompt,
+            "mode": mode,
+            "category": category,
+        }
+    return {
+        "title": "需要补齐参数",
+        "executive_summary": clarification["message"],
+        "key_findings": [f"缺少参数：{question['label']}" for question in clarification.get("questions", [])],
+        "opportunities": ["用户补齐参数后，继续执行同一个 Skill。"],
+        "risks": ["当前还没有调用数据工具，因此不会生成市场结论。"],
+        "next_steps": ["请用一句话补充缺少的参数。"],
+        "prompt": prompt,
         "mode": mode,
         "category": category,
-        "prompt": prompt,
-        "planner": planner,
-        "tools": tool_results,
-        "artifact": artifact,
-        "llm_analysis": llm_analysis,
     }
 
 
@@ -5170,9 +5663,7 @@ def analyze_category(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("category is required")
     limit = int(payload.get("limit") or 25)
     limit = max(5, min(limit, MAX_RESEARCH_POST_LIMIT))
-    time_range = str(payload.get("timeRange") or "year")
-    if time_range not in {"day", "week", "month", "year", "all"}:
-        time_range = "year"
+    time_range = normalize_agent_time_range(payload.get("timeRange")) or "year"
     mode = str(payload.get("mode") or "auto")
     if mode not in {"auto", "agent_reach", "oauth", "rss", "sample"}:
         mode = "auto"
@@ -5233,6 +5724,35 @@ def analyze_category(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def run_agent(payload: dict[str, Any], emit_event: Any | None = None) -> dict[str, Any]:
+    from .agent_runtime import AgentRuntimeDeps, LangGraphAgentRuntime
+
+    runtime = LangGraphAgentRuntime(
+        AgentRuntimeDeps(
+            now_iso=now_iso,
+            load_agent_run=load_agent_run,
+            write_json=write_agent_run_json,
+            write_text=write_agent_run_text,
+            agent_event=agent_event,
+            category_from_payload=agent_category_from_payload,
+            call_chat=call_openai_compatible_chat,
+            skill_registry=lambda: AGENT_SKILL_REGISTRY,
+            skill_manifests=agent_skill_manifests,
+            resolve_skill_params=resolve_agent_skill_params,
+            payload_with_skill_params=agent_payload_with_skill_params,
+            tool_input_payload=agent_tool_input_payload,
+            execute_tool=execute_agent_tool_with_timeout,
+            synthesize_artifact=synthesize_agent_artifact,
+            render_html_report=render_agent_html_report,
+            build_clarification=build_agent_clarification,
+            build_clarification_artifact=build_clarification_artifact,
+            tool_catalog=agent_tool_catalog,
+            cache_dir=lambda: CACHE_DIR,
+        )
+    )
+    return runtime.run(payload, emit_event=emit_event)
+
+
 class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
@@ -5244,13 +5764,6 @@ class AppHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/health":
             self.send_json({"ok": True, "time": now_iso()})
-            return
-        if parsed.path == "/api/history":
-            self.send_json(list_research_history())
-            return
-        if parsed.path.startswith("/api/history/"):
-            item_id = urllib.parse.unquote(parsed.path.removeprefix("/api/history/"))
-            self.send_json(get_research_history_item(item_id))
             return
         if parsed.path == "/api/settings/llm":
             self.send_json(build_llm_settings_response())
@@ -5267,25 +5780,21 @@ class AppHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/settings/web-search":
             self.send_json(build_web_search_settings_response())
             return
+        if parsed.path == "/api/agent/output-file":
+            query = urllib.parse.parse_qs(parsed.query)
+            path_value = query.get("path", [""])[0]
+            try:
+                self.send_json(read_agent_output_file(path_value))
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
         return super().do_GET()
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path not in {
             "/api/agent/run",
-            "/api/analyze",
-            "/api/analyze/amazon",
-            "/api/analyze/youtube",
-            "/api/analyze/tiktok",
-            "/api/analyze/articles",
-            "/api/analyze/combined",
-            "/api/tiktok/login-browser",
-            "/api/articles/discover",
-            "/api/competitors/discover",
-            "/api/competitors/analyze",
-            "/api/competitors/tiktok-verify",
-            "/api/competitors/cancel",
-            "/api/history",
+            "/api/agent/run/stream",
             "/api/settings/llm",
             "/api/settings/reddit",
             "/api/settings/research",
@@ -5302,8 +5811,9 @@ class AppHandler(SimpleHTTPRequestHandler):
                 result = reconnect_opencli_extension()
             elif parsed.path == "/api/agent/run":
                 result = run_agent(payload)
-            elif parsed.path == "/api/history":
-                result = save_research_history(payload)
+            elif parsed.path == "/api/agent/run/stream":
+                self.send_agent_run_stream(payload)
+                return
             elif parsed.path == "/api/settings/llm":
                 result = update_llm_settings(payload)
             elif parsed.path == "/api/settings/reddit":
@@ -5314,30 +5824,9 @@ class AppHandler(SimpleHTTPRequestHandler):
                 result = update_agent_reach_settings(payload)
             elif parsed.path == "/api/settings/web-search":
                 result = update_web_search_settings(payload)
-            elif parsed.path == "/api/analyze/amazon":
-                result = analyze_amazon_category(payload)
-            elif parsed.path == "/api/analyze/youtube":
-                result = analyze_youtube_category(payload)
-            elif parsed.path == "/api/analyze/tiktok":
-                result = analyze_tiktok_category(payload)
-            elif parsed.path == "/api/tiktok/login-browser":
-                result = open_tiktok_login_browser()
-            elif parsed.path == "/api/analyze/articles":
-                result = analyze_articles(payload)
-            elif parsed.path == "/api/articles/discover":
-                result = discover_article_urls(payload)
-            elif parsed.path == "/api/analyze/combined":
-                result = analyze_combined_insight(payload)
-            elif parsed.path == "/api/competitors/discover":
-                result = discover_competitors(payload)
-            elif parsed.path == "/api/competitors/analyze":
-                result = analyze_competitor_deep_dive(payload)
-            elif parsed.path == "/api/competitors/tiktok-verify":
-                result = verify_competitor_tiktok(payload)
-            elif parsed.path == "/api/competitors/cancel":
-                result = cancel_competitor_analysis(payload)
             else:
-                result = analyze_category(payload)
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
             self.send_json(result)
         except OperationCancelled as exc:
             self.send_json({"error": str(exc), "cancelled": True}, status=HTTPStatus.CONFLICT)
@@ -5347,17 +5836,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": f"Analysis failed: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_DELETE(self) -> None:
-        parsed = urllib.parse.urlparse(self.path)
-        if not parsed.path.startswith("/api/history/"):
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        try:
-            item_id = urllib.parse.unquote(parsed.path.removeprefix("/api/history/"))
-            self.send_json(delete_research_history_item(item_id))
-        except ValueError as exc:
-            self.send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
-        except Exception as exc:  # noqa: BLE001
-            self.send_json({"error": f"Delete failed: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def send_json(self, payload: dict[str, Any], status: int = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -5366,6 +5845,30 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_sse(self, event_name: str, payload: dict[str, Any]) -> None:
+        body = (
+            f"event: {event_name}\n"
+            f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+        ).encode()
+        self.wfile.write(body)
+        self.wfile.flush()
+
+    def send_agent_run_stream(self, payload: dict[str, Any]) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        self.end_headers()
+
+        try:
+            result = run_agent(payload, emit_event=lambda event: self.send_sse("event", event))
+            self.send_sse("result", result)
+        except ValueError as exc:
+            self.send_sse("error", {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            self.send_sse("error", {"error": f"Analysis failed: {exc}"})
 
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:

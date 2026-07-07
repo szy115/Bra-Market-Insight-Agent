@@ -1,91 +1,39 @@
 import {
-  ArrowLeft,
   BarChart3,
   Bot,
-  CalendarRange,
   Database,
   Download,
+  ExternalLink,
   FileText,
-  FlaskConical,
-  FolderOpen,
-  KeyRound,
+  History,
   Languages,
-  Lightbulb,
   Link2,
   Loader2,
-  Megaphone,
   MessageSquare,
-  Radar,
-  RefreshCw,
+  Newspaper,
+  PackageSearch,
+  Plus,
   Save,
-  Search,
   Settings,
-  ShieldAlert,
-  ShoppingBag,
   Sparkles,
-  Square,
-  Target,
+  Star,
   Trash2,
-  Youtube,
+  Video,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   api,
-  type AgentReachSettings,
+  type AgentOutputFileMeta,
+  type AgentOutputFileResponse,
+  type AgentRunEvent,
+  type AgentRunRequest,
   type AgentRunResponse,
-  type AnalysisReport,
-  type AnalyzeRequest,
-  type ArticleDiscoveryCandidate,
-  type ArticleDiscoveryReport,
-  type ArticleReport,
-  type AmazonReport,
-  type CombinedInsightItem,
-  type CombinedInsightReport,
-  type CombinedEvidenceChainItem,
-  type CompetitorCandidate,
-  type CompetitorDeepDiveItem,
-  type CompetitorDeepDiveReport,
-  type CompetitorDiscoveryBrief,
-  type CompetitorDiscoveryReport,
-  type CompetitorScoreWeights,
-  type InsightCitation,
   type LLMSettings,
-  type RedditSettings,
-  type ResearchDefaults,
-  type ResearchHistoryItem,
-  type ResearchHistorySummary,
-  type TikTokReport,
-  type WebSearchSettings,
-  type YouTubeReport,
 } from "./lib/api";
-import { confidenceLabel, pct, shortDate, sourceLabel } from "./lib/format";
 import { formatMessage, loadLocale, makeTranslator, saveLocale, type Locale, type Translator } from "./lib/i18n";
-import {
-  describeAmazonResearchSettings,
-  describeArticleResearchSettings,
-  describeResearchSettings,
-  describeTikTokResearchSettings,
-  describeYoutubeResearchSettings,
-  loadResearchSettings,
-  saveResearchSettings,
-  type ResearchSettings,
-} from "./lib/researchSettings";
-import { CoverageChart, SentimentChart, TopicBarChart, TrendChart } from "./components/charts";
 
-type Page = "agent" | "research" | "competitors" | "settings";
-type ResearchSource = "reddit" | "amazon" | "youtube" | "tiktok" | "combined" | "articles";
-type SourceSettingsSource = Exclude<ResearchSource, "combined">;
-type CompetitorTab = "discovery" | "monitoring";
-type CompetitorDeepDivePreset = "fast" | "standard" | "deep";
-type HistoryReportTab = "combined" | "reddit" | "amazon" | "youtube" | "tiktok" | "articles";
+type Page = "agent" | "settings";
 type AgentArtifactTab = "market" | "draft" | "output";
-type AgentSkillId =
-  | "market_trend"
-  | "breakout_discovery"
-  | "breakout_teardown"
-  | "amazon_reviews"
-  | "tiktok_validation"
-  | "article_rankings";
 type AgentPromptTemplateId = "market_insight_weekly" | "breakout_competitor_tiktok";
 type AgentPromptTemplate = {
   id: AgentPromptTemplateId;
@@ -95,317 +43,69 @@ type AgentPromptTemplate = {
   prompt: string;
   sources: string[];
 };
-type ResearchLaunchIntent = {
-  source: ResearchSource;
-  category?: string;
-  openHistory?: boolean;
-  nonce: number;
-};
-type CompetitorLaunchIntent = {
-  tab: CompetitorTab;
-  nonce: number;
-};
 type LocalizedProps = {
   locale: Locale;
   t: Translator;
 };
-type ResearchSession = {
-  category: string;
-  activeSource: ResearchSource;
-  articleUrls: string;
-  redditReport: AnalysisReport | null;
-  amazonReport: AmazonReport | null;
-  youtubeReport: YouTubeReport | null;
-  tiktokReport: TikTokReport | null;
-  articleDiscoveryReport: ArticleDiscoveryReport | null;
-  articleReport: ArticleReport | null;
-  combinedReport: CombinedInsightReport | null;
+type AgentSessionSnapshot = {
+  version: 1;
+  selectedTemplateId: AgentPromptTemplateId;
+  agentMode: "market" | "competitor";
+  prompt: string;
+  artifactTab: AgentArtifactTab;
+  result: AgentRunResponse | null;
+  streamEvents: AgentRunEvent[];
+  selectedOutputPath: string;
+  savedAt: string;
 };
-type CompetitorSession = {
-  activeCompetitorTab: CompetitorTab;
-  discoveryBrief: CompetitorDiscoveryBrief;
-  scoreWeights: CompetitorScoreWeights;
-  productLimit: number;
-  bypassCache: boolean;
-  discoveryReport: CompetitorDiscoveryReport | null;
-  monitoringCandidates: CompetitorCandidate[];
-  deepDiveReports: Record<string, CompetitorDeepDiveReport>;
-  selectedDeepDiveKey: string;
-  deepDivePreset: CompetitorDeepDivePreset;
+type AgentRunHistoryItem = AgentSessionSnapshot & {
+  id: string;
+  title: string;
+  status: string;
+  skillName: string;
+  fileCount: number;
+  toolNames: string[];
+  createdAt: string;
+  updatedAt: string;
 };
-
-const RESEARCH_SESSION_KEY = "insight-agent.research-session";
-const COMPETITOR_SESSION_KEY = "insight-agent.competitor-session";
-const DEFAULT_AGENT_CATEGORY = "minimizer bra";
-
-const DEFAULT_COMPETITOR_DISCOVERY_BRIEF: CompetitorDiscoveryBrief = {
-  brand: "Hsia / 遐",
-  market: "美国",
-  category: "大胸显小 / Minimizer Bra",
-  coreKeywords: "minimizer bra, full coverage bra, large bust bra, supportive bra",
-  targetPriceBand: "$49-$69",
-  upgradePriceBand: "$59-$79",
-  coreSizes: "D-G",
-  coreUsers: "大胸、通勤、显小、支撑、舒适、外穿平滑",
-  brandDirection: "好看、支撑、显小的大胸文胸",
+type AgentChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  runId?: string;
+  createdAt: string;
+};
+type AgentConversationSession = AgentSessionSnapshot & {
+  id: string;
+  title: string;
+  messages: AgentChatMessage[];
+  runs: AgentRunHistoryItem[];
+  createdAt: string;
+  updatedAt: string;
 };
 
-const DEFAULT_COMPETITOR_SCORE_WEIGHTS: CompetitorScoreWeights = {
-  briefMatch: 1,
-  priceFit: 1.35,
-  sizeMatch: 1,
-  marketProof: 1,
-  reviewEvidence: 1,
-  queryCoverage: 1,
-  tiktokProof: 1,
-};
-
-const COMPETITOR_SCORE_WEIGHT_KEYS = Object.keys(DEFAULT_COMPETITOR_SCORE_WEIGHTS) as Array<keyof CompetitorScoreWeights>;
-const DEFAULT_COMPETITOR_DEEP_DIVE_PRESET: CompetitorDeepDivePreset = "standard";
-const COMPETITOR_DEEP_DIVE_PRESET_KEYS: CompetitorDeepDivePreset[] = ["fast", "standard", "deep"];
-const COMPETITOR_DEEP_DIVE_PRESETS: Record<CompetitorDeepDivePreset, {
-  amazonReviewLimit: number;
-  redditLimit: number;
-  redditDetailLimit: number;
-  redditCommentsPerPost: number;
-  webCandidateLimit: number;
-  aiReviewLimit: number;
-  aiRedditPostLimit: number;
-}> = {
-  fast: {
-    amazonReviewLimit: 30,
-    redditLimit: 25,
-    redditDetailLimit: 5,
-    redditCommentsPerPost: 10,
-    webCandidateLimit: 3,
-    aiReviewLimit: 20,
-    aiRedditPostLimit: 10,
-  },
-  standard: {
-    amazonReviewLimit: 60,
-    redditLimit: 50,
-    redditDetailLimit: 10,
-    redditCommentsPerPost: 15,
-    webCandidateLimit: 4,
-    aiReviewLimit: 35,
-    aiRedditPostLimit: 15,
-  },
-  deep: {
-    amazonReviewLimit: 120,
-    redditLimit: 80,
-    redditDetailLimit: 20,
-    redditCommentsPerPost: 20,
-    webCandidateLimit: 6,
-    aiReviewLimit: 50,
-    aiRedditPostLimit: 25,
-  },
-};
-
-function loadResearchSession(): ResearchSession {
-  const fallback: ResearchSession = {
-    category: "wireless bras for large bust",
-    activeSource: "combined",
-    articleUrls: "",
-    redditReport: null,
-    amazonReport: null,
-    youtubeReport: null,
-    tiktokReport: null,
-    articleDiscoveryReport: null,
-    articleReport: null,
-    combinedReport: null,
-  };
-  try {
-    const raw = localStorage.getItem(RESEARCH_SESSION_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<ResearchSession>;
-    const activeSource: ResearchSource = parsed.activeSource === "reddit"
-      || parsed.activeSource === "amazon"
-      || parsed.activeSource === "youtube"
-      || parsed.activeSource === "tiktok"
-      || parsed.activeSource === "articles"
-      ? parsed.activeSource
-      : "combined";
-    return {
-      category: typeof parsed.category === "string" && parsed.category.trim() ? parsed.category : fallback.category,
-      activeSource,
-      articleUrls: typeof parsed.articleUrls === "string" ? parsed.articleUrls : fallback.articleUrls,
-      redditReport: parsed.redditReport || null,
-      amazonReport: parsed.amazonReport || null,
-      youtubeReport: parsed.youtubeReport || null,
-      tiktokReport: parsed.tiktokReport || null,
-      articleDiscoveryReport: parsed.articleDiscoveryReport || null,
-      articleReport: parsed.articleReport || null,
-      combinedReport: parsed.combinedReport || null,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function saveResearchSession(session: ResearchSession): void {
-  try {
-    localStorage.setItem(RESEARCH_SESSION_KEY, JSON.stringify(session));
-  } catch {
-    // Large research runs can exceed browser quota; the live in-memory report still remains usable.
-  }
-}
-
-function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  const numeric = typeof value === "string" ? Number(value) : value;
-  if (typeof numeric !== "number" || !Number.isFinite(numeric)) return fallback;
-  return Math.min(max, Math.max(min, numeric));
-}
-
-function normalizeCompetitorBrief(value: unknown, fallbackQuery?: string): CompetitorDiscoveryBrief {
-  const raw = value && typeof value === "object" ? value as Partial<CompetitorDiscoveryBrief> : {};
-  const next = { ...DEFAULT_COMPETITOR_DISCOVERY_BRIEF };
-  (Object.keys(next) as Array<keyof CompetitorDiscoveryBrief>).forEach((key) => {
-    const fieldValue = raw[key];
-    if (typeof fieldValue === "string" && fieldValue.trim()) {
-      next[key] = fieldValue.trim();
-    }
-  });
-  if (fallbackQuery && !raw.coreKeywords) {
-    next.coreKeywords = fallbackQuery;
-  }
-  return next;
-}
-
-function normalizeCompetitorScoreWeights(value: unknown): CompetitorScoreWeights {
-  const raw = value && typeof value === "object" ? value as Partial<CompetitorScoreWeights> : {};
-  const next = { ...DEFAULT_COMPETITOR_SCORE_WEIGHTS };
-  COMPETITOR_SCORE_WEIGHT_KEYS.forEach((key) => {
-    next[key] = Number(boundedNumber(raw[key], next[key], 0, 3).toFixed(2));
-  });
-  return next;
-}
-
-function loadCompetitorSession(): CompetitorSession {
-  const fallback: CompetitorSession = {
-    activeCompetitorTab: "discovery",
-    discoveryBrief: DEFAULT_COMPETITOR_DISCOVERY_BRIEF,
-    scoreWeights: DEFAULT_COMPETITOR_SCORE_WEIGHTS,
-    productLimit: 20,
-    bypassCache: false,
-    discoveryReport: null,
-    monitoringCandidates: [],
-    deepDiveReports: {},
-    selectedDeepDiveKey: "",
-    deepDivePreset: DEFAULT_COMPETITOR_DEEP_DIVE_PRESET,
-  };
-  try {
-    const raw = localStorage.getItem(COMPETITOR_SESSION_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<CompetitorSession>;
-    const oldQuery = typeof (parsed as { discoveryQuery?: unknown }).discoveryQuery === "string"
-      ? (parsed as { discoveryQuery: string }).discoveryQuery
-      : "";
-    return {
-      activeCompetitorTab: parsed.activeCompetitorTab === "monitoring" ? "monitoring" : fallback.activeCompetitorTab,
-      discoveryBrief: normalizeCompetitorBrief(parsed.discoveryBrief, oldQuery),
-      scoreWeights: normalizeCompetitorScoreWeights(parsed.scoreWeights),
-      productLimit: boundedInteger(parsed.productLimit, fallback.productLimit, 1, 100),
-      bypassCache: Boolean(parsed.bypassCache),
-      discoveryReport: parsed.discoveryReport || null,
-      monitoringCandidates: Array.isArray(parsed.monitoringCandidates) ? parsed.monitoringCandidates : fallback.monitoringCandidates,
-      deepDiveReports: parsed.deepDiveReports && typeof parsed.deepDiveReports === "object" ? parsed.deepDiveReports : fallback.deepDiveReports,
-      selectedDeepDiveKey: typeof parsed.selectedDeepDiveKey === "string" ? parsed.selectedDeepDiveKey : fallback.selectedDeepDiveKey,
-      deepDivePreset: COMPETITOR_DEEP_DIVE_PRESET_KEYS.includes(parsed.deepDivePreset as CompetitorDeepDivePreset)
-        ? (parsed.deepDivePreset as CompetitorDeepDivePreset)
-        : fallback.deepDivePreset,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function saveCompetitorSession(session: CompetitorSession): void {
-  try {
-    localStorage.setItem(COMPETITOR_SESSION_KEY, JSON.stringify(session));
-  } catch {
-    // Keep the live page state even if the browser refuses a larger stored report.
-  }
-}
-
-function parseArticleUrls(value: string): string[] {
-  const seen = new Set<string>();
-  return value
-    .split(/[\s,]+/)
-    .map((item) => item.trim())
-    .filter((item) => {
-      if (!/^https?:\/\//i.test(item) || seen.has(item)) return false;
-      seen.add(item);
-      return true;
-    });
-}
+const AGENT_SESSION_STORAGE_KEY = "insight-agent.agent-session";
+const AGENT_RUN_HISTORY_STORAGE_KEY = "insight-agent.agent-run-history";
+const AGENT_RUN_HISTORY_LIMIT = 20;
+const AGENT_CONVERSATION_STORAGE_KEY = "insight-agent.agent-sessions";
+const AGENT_CONVERSATION_LIMIT = 20;
 
 export function App() {
   const [page, setPage] = useState<Page>("agent");
   const [locale, setLocale] = useState<Locale>(() => loadLocale());
-  const [researchSettings, setResearchSettings] = useState<ResearchSettings>(() => loadResearchSettings());
-  const [researchLaunchIntent, setResearchLaunchIntent] = useState<ResearchLaunchIntent | null>(null);
-  const [competitorLaunchIntent, setCompetitorLaunchIntent] = useState<CompetitorLaunchIntent | null>(null);
   const t = useMemo(() => makeTranslator(locale), [locale]);
 
   useEffect(() => {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   }, [locale]);
 
-  useEffect(() => {
-    Promise.all([api.getResearchSettings(), api.getAgentReachSettings()])
-      .then(([settings, agentReach]) => {
-        updateResearchSettings({
-          mode: settings.mode,
-          timeRange: settings.timeRange,
-          limit: settings.limit,
-          llmEvidencePosts: settings.llmEvidencePosts,
-          llmCommentSamplesPerPost: settings.llmCommentSamplesPerPost,
-          redditDetailLimit: agentReach.detail_limit,
-          redditCommentsPerPost: agentReach.comments_per_post,
-          amazonProductLimit: settings.amazonProductLimit,
-          amazonKeywordLimit: settings.amazonKeywordLimit,
-          amazonDetailLimit: settings.amazonDetailLimit,
-          amazonDiscussionLimit: settings.amazonDiscussionLimit,
-          amazonReviewsPerProduct: settings.amazonReviewsPerProduct,
-          amazonLlmProductLimit: settings.amazonLlmProductLimit,
-          amazonLlmReviewSamplesPerProduct: settings.amazonLlmReviewSamplesPerProduct,
-        });
-      })
-      .catch(() => {
-        // Local storage defaults still keep the demo usable if the API is unavailable.
-      });
-  }, []);
-
-  function updateResearchSettings(next: Partial<ResearchSettings>) {
-    setResearchSettings((current) => {
-      const merged = { ...current, ...next };
-      saveResearchSettings(merged);
-      return merged;
-    });
-  }
-
   function updateLocale(next: Locale) {
     setLocale(next);
     saveLocale(next);
   }
 
-  function openResearchSource(source: ResearchSource, category = DEFAULT_AGENT_CATEGORY, openHistory = false) {
-    setResearchLaunchIntent({ source, category, openHistory, nonce: Date.now() });
-    setPage("research");
-  }
-
-  function openCompetitorTab(tab: CompetitorTab) {
-    setCompetitorLaunchIntent({ tab, nonce: Date.now() });
-    setPage("competitors");
-  }
-
   return (
-    <div className={`app-shell${page === "agent" ? " agent-shell" : ""}`}>
+    <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">IA</div>
@@ -417,12 +117,6 @@ export function App() {
         <nav className="nav">
           <button className={page === "agent" ? "active" : ""} onClick={() => setPage("agent")}>
             <Sparkles size={17} /> <span>{t("nav.agent")}</span>
-          </button>
-          <button className={page === "research" ? "active" : ""} onClick={() => setPage("research")}>
-            <BarChart3 size={17} /> <span>{t("nav.research")}</span>
-          </button>
-          <button className={page === "competitors" ? "active" : ""} onClick={() => setPage("competitors")}>
-            <Target size={17} /> <span>{t("nav.competitors")}</span>
           </button>
           <button className={page === "settings" ? "active" : ""} onClick={() => setPage("settings")}>
             <Settings size={17} /> <span>{t("nav.settings")}</span>
@@ -444,36 +138,370 @@ export function App() {
       </aside>
 
       <main className="workspace">
-        {page === "agent" ? (
-          <SimpleAgentPage
-            locale={locale}
-            onOpenCompetitors={openCompetitorTab}
-            onOpenResearch={openResearchSource}
-            t={t}
-          />
-        ) : null}
-        <div className={page === "research" ? "" : "page-hidden"} aria-hidden={page !== "research"}>
-          <ResearchPage
-            launchIntent={researchLaunchIntent}
-            locale={locale}
-            onResearchSettingsChange={updateResearchSettings}
-            researchSettings={researchSettings}
-            t={t}
-          />
-        </div>
-        <div className={page === "competitors" ? "" : "page-hidden"} aria-hidden={page !== "competitors"}>
-          <CompetitorsPage launchIntent={competitorLaunchIntent} locale={locale} t={t} />
-        </div>
-        {page === "settings" ? (
-          <SettingsPage
-            locale={locale}
-            t={t}
-            onResearchSettingsChange={updateResearchSettings}
-          />
-        ) : null}
+        {page === "agent" ? <SimpleAgentPage locale={locale} t={t} /> : null}
+        {page === "settings" ? <SettingsPage locale={locale} t={t} /> : null}
       </main>
     </div>
   );
+}
+
+function isAgentPromptTemplateId(value: unknown): value is AgentPromptTemplateId {
+  return value === "market_insight_weekly" || value === "breakout_competitor_tiktok";
+}
+
+function isAgentMode(value: unknown): value is "market" | "competitor" {
+  return value === "market" || value === "competitor";
+}
+
+function isAgentArtifactTab(value: unknown): value is AgentArtifactTab {
+  return value === "market" || value === "draft" || value === "output";
+}
+
+function loadAgentSession(): AgentSessionSnapshot | null {
+  try {
+    const raw = localStorage.getItem(AGENT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AgentSessionSnapshot>;
+    if (
+      parsed.version !== 1 ||
+      !isAgentPromptTemplateId(parsed.selectedTemplateId) ||
+      !isAgentMode(parsed.agentMode) ||
+      !isAgentArtifactTab(parsed.artifactTab)
+    ) {
+      localStorage.removeItem(AGENT_SESSION_STORAGE_KEY);
+      return null;
+    }
+    return {
+      version: 1,
+      selectedTemplateId: parsed.selectedTemplateId,
+      agentMode: parsed.agentMode,
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : "",
+      artifactTab: parsed.artifactTab,
+      result: parsed.result && typeof parsed.result === "object" ? parsed.result as AgentRunResponse : null,
+      streamEvents: Array.isArray(parsed.streamEvents) ? parsed.streamEvents as AgentRunEvent[] : [],
+      selectedOutputPath: typeof parsed.selectedOutputPath === "string" ? parsed.selectedOutputPath : "",
+      savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
+    };
+  } catch {
+    try {
+      localStorage.removeItem(AGENT_SESSION_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures; the Agent can still run without persistence.
+    }
+    return null;
+  }
+}
+
+function saveAgentSession(snapshot: AgentSessionSnapshot): void {
+  try {
+    localStorage.setItem(AGENT_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Local storage can fail in private mode or when the quota is full.
+  }
+}
+
+function normalizeAgentRunHistoryItem(value: unknown): AgentRunHistoryItem | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.version !== 1 ||
+    typeof value.id !== "string" ||
+    !isAgentPromptTemplateId(value.selectedTemplateId) ||
+    !isAgentMode(value.agentMode) ||
+    !isAgentArtifactTab(value.artifactTab)
+  ) {
+    return null;
+  }
+  return {
+    version: 1,
+    id: value.id,
+    selectedTemplateId: value.selectedTemplateId,
+    agentMode: value.agentMode,
+    prompt: typeof value.prompt === "string" ? value.prompt : "",
+    artifactTab: value.artifactTab,
+    result: value.result && typeof value.result === "object" ? value.result as AgentRunResponse : null,
+    streamEvents: Array.isArray(value.streamEvents) ? value.streamEvents as AgentRunEvent[] : [],
+    selectedOutputPath: typeof value.selectedOutputPath === "string" ? value.selectedOutputPath : "",
+    savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date().toISOString(),
+    title: typeof value.title === "string" && value.title.trim() ? value.title : "Untitled run",
+    status: typeof value.status === "string" ? value.status : "ok",
+    skillName: typeof value.skillName === "string" ? value.skillName : "",
+    fileCount: typeof value.fileCount === "number" ? value.fileCount : 0,
+    toolNames: Array.isArray(value.toolNames) ? value.toolNames.filter((item): item is string => typeof item === "string") : [],
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
+  };
+}
+
+function loadAgentRunHistory(): AgentRunHistoryItem[] {
+  try {
+    const raw = localStorage.getItem(AGENT_RUN_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(normalizeAgentRunHistoryItem)
+      .filter((item): item is AgentRunHistoryItem => Boolean(item))
+      .slice(0, AGENT_RUN_HISTORY_LIMIT);
+  } catch {
+    try {
+      localStorage.removeItem(AGENT_RUN_HISTORY_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures.
+    }
+    return [];
+  }
+}
+
+function saveAgentRunHistory(history: AgentRunHistoryItem[]): AgentRunHistoryItem[] {
+  let next = history.slice(0, AGENT_RUN_HISTORY_LIMIT);
+  while (next.length) {
+    try {
+      localStorage.setItem(AGENT_RUN_HISTORY_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    } catch {
+      next = next.slice(0, -1);
+    }
+  }
+  try {
+    localStorage.removeItem(AGENT_RUN_HISTORY_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+  return [];
+}
+
+function buildAgentSessionSnapshot(args: {
+  selectedTemplateId: AgentPromptTemplateId;
+  agentMode: "market" | "competitor";
+  prompt: string;
+  artifactTab: AgentArtifactTab;
+  result: AgentRunResponse | null;
+  streamEvents: AgentRunEvent[];
+  selectedOutputPath: string;
+}): AgentSessionSnapshot {
+  return {
+    version: 1,
+    selectedTemplateId: args.selectedTemplateId,
+    agentMode: args.agentMode,
+    prompt: args.prompt,
+    artifactTab: args.artifactTab,
+    result: args.result,
+    streamEvents: args.streamEvents,
+    selectedOutputPath: args.selectedOutputPath,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function shortHistoryTitle(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > 52 ? `${compact.slice(0, 52)}...` : compact;
+}
+
+function buildAgentRunHistoryItem(snapshot: AgentSessionSnapshot, existing?: AgentRunHistoryItem): AgentRunHistoryItem | null {
+  if (!snapshot.result) return null;
+  const result = snapshot.result;
+  const id = result.run_id || existing?.id || `${Date.now()}`;
+  const title = result.artifact?.title
+    || result.message?.content
+    || result.prompt
+    || snapshot.prompt
+    || existing?.title
+    || "Untitled run";
+  const generatedAt = result.generated_at || snapshot.savedAt;
+  return {
+    ...snapshot,
+    id,
+    title: shortHistoryTitle(title),
+    status: result.status || "ok",
+    skillName: result.skill?.name || result.skill?.skill_id || "",
+    fileCount: buildAgentOutputFiles(result).length,
+    toolNames: result.tools.map((tool) => tool.label || tool.name),
+    createdAt: existing?.createdAt || generatedAt,
+    updatedAt: generatedAt,
+  };
+}
+
+function upsertAgentRunHistory(history: AgentRunHistoryItem[], snapshot: AgentSessionSnapshot): AgentRunHistoryItem[] {
+  const existing = snapshot.result ? history.find((item) => item.id === snapshot.result?.run_id) : undefined;
+  const item = buildAgentRunHistoryItem(snapshot, existing);
+  if (!item) return history;
+  return [item, ...history.filter((entry) => entry.id !== item.id)].slice(0, AGENT_RUN_HISTORY_LIMIT);
+}
+
+function newClientId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function assistantContentFromResult(result: AgentRunResponse): string {
+  if (result.response_type === "message") return result.message?.content || "";
+  if (result.status === "needs_input") {
+    const questions = result.pending?.questions?.map((question) => `- ${question.question}`).join("\n") || "";
+    return [result.pending?.message || "需要补齐参数后继续执行。", questions].filter(Boolean).join("\n");
+  }
+  if (result.artifact) {
+    return `${result.artifact.title}\n\n${result.artifact.executive_summary}`;
+  }
+  return "任务已完成。";
+}
+
+function messagesFromRunSnapshot(snapshot: AgentSessionSnapshot): AgentChatMessage[] {
+  if (!snapshot.result) return [];
+  const createdAt = snapshot.result.generated_at || snapshot.savedAt;
+  return [
+    {
+      id: `${snapshot.result.run_id}-user`,
+      role: "user",
+      content: snapshot.result.prompt || snapshot.prompt,
+      runId: snapshot.result.run_id,
+      createdAt,
+    },
+    {
+      id: `${snapshot.result.run_id}-assistant`,
+      role: "assistant",
+      content: assistantContentFromResult(snapshot.result),
+      runId: snapshot.result.run_id,
+      createdAt,
+    },
+  ];
+}
+
+function snapshotFromConversation(session: AgentConversationSession): AgentSessionSnapshot {
+  return {
+    version: 1,
+    selectedTemplateId: session.selectedTemplateId,
+    agentMode: session.agentMode,
+    prompt: session.prompt,
+    artifactTab: session.artifactTab,
+    result: session.result,
+    streamEvents: session.streamEvents,
+    selectedOutputPath: session.selectedOutputPath,
+    savedAt: session.savedAt,
+  };
+}
+
+function buildConversationTitle(value: string): string {
+  const title = shortHistoryTitle(value);
+  return title || "New conversation";
+}
+
+function normalizeAgentConversationSession(value: unknown): AgentConversationSession | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.version !== 1 ||
+    typeof value.id !== "string" ||
+    !isAgentPromptTemplateId(value.selectedTemplateId) ||
+    !isAgentMode(value.agentMode) ||
+    !isAgentArtifactTab(value.artifactTab)
+  ) {
+    return null;
+  }
+  return {
+    version: 1,
+    id: value.id,
+    selectedTemplateId: value.selectedTemplateId,
+    agentMode: value.agentMode,
+    prompt: typeof value.prompt === "string" ? value.prompt : "",
+    artifactTab: value.artifactTab,
+    result: value.result && typeof value.result === "object" ? value.result as AgentRunResponse : null,
+    streamEvents: Array.isArray(value.streamEvents) ? value.streamEvents as AgentRunEvent[] : [],
+    selectedOutputPath: typeof value.selectedOutputPath === "string" ? value.selectedOutputPath : "",
+    savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date().toISOString(),
+    title: typeof value.title === "string" && value.title.trim() ? value.title : "New conversation",
+    messages: Array.isArray(value.messages)
+      ? value.messages.filter(isRecord).map((message) => ({
+          id: typeof message.id === "string" ? message.id : newClientId("msg"),
+          role: message.role === "assistant" ? "assistant" : "user",
+          content: typeof message.content === "string" ? message.content : "",
+          runId: typeof message.runId === "string" ? message.runId : undefined,
+          createdAt: typeof message.createdAt === "string" ? message.createdAt : new Date().toISOString(),
+        }))
+      : [],
+    runs: Array.isArray(value.runs)
+      ? value.runs.map(normalizeAgentRunHistoryItem).filter((item): item is AgentRunHistoryItem => Boolean(item))
+      : [],
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
+  };
+}
+
+function saveAgentConversationSessions(sessions: AgentConversationSession[]): AgentConversationSession[] {
+  let next = sessions.slice(0, AGENT_CONVERSATION_LIMIT).map((session) => ({
+    ...session,
+    messages: session.messages.slice(-200),
+    runs: session.runs.slice(0, AGENT_RUN_HISTORY_LIMIT),
+  }));
+  while (next.length) {
+    try {
+      localStorage.setItem(AGENT_CONVERSATION_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    } catch {
+      next = next.slice(0, -1);
+    }
+  }
+  try {
+    localStorage.removeItem(AGENT_CONVERSATION_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+  return [];
+}
+
+function loadAgentConversationSessions(): AgentConversationSession[] {
+  try {
+    const raw = localStorage.getItem(AGENT_CONVERSATION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const sessions = parsed
+          .map(normalizeAgentConversationSession)
+          .filter((item): item is AgentConversationSession => Boolean(item));
+        if (sessions.length) return sessions.slice(0, AGENT_CONVERSATION_LIMIT);
+      }
+    }
+  } catch {
+    try {
+      localStorage.removeItem(AGENT_CONVERSATION_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures.
+    }
+  }
+
+  const legacySession = loadAgentSession();
+  const legacyRuns = loadAgentRunHistory();
+  if (!legacySession?.result && !legacyRuns.length) return [];
+  const runSnapshots = legacyRuns.length ? legacyRuns : legacySession ? [buildAgentRunHistoryItem(legacySession)].filter(Boolean) as AgentRunHistoryItem[] : [];
+  const baseSnapshot = legacySession || runSnapshots[0] || null;
+  if (!baseSnapshot) return [];
+  const messages = runSnapshots.flatMap((run) => messagesFromRunSnapshot(run));
+  const sessionId = newClientId("session");
+  const title = buildConversationTitle(baseSnapshot.result?.artifact?.title || baseSnapshot.result?.prompt || baseSnapshot.prompt);
+  const createdAt = runSnapshots[runSnapshots.length - 1]?.createdAt || baseSnapshot.savedAt;
+  const updatedAt = runSnapshots[0]?.updatedAt || baseSnapshot.savedAt;
+  const session: AgentConversationSession = {
+    version: 1,
+    selectedTemplateId: baseSnapshot.selectedTemplateId,
+    agentMode: baseSnapshot.agentMode,
+    prompt: baseSnapshot.prompt,
+    artifactTab: baseSnapshot.artifactTab,
+    result: baseSnapshot.result,
+    streamEvents: baseSnapshot.streamEvents,
+    selectedOutputPath: baseSnapshot.selectedOutputPath,
+    savedAt: baseSnapshot.savedAt,
+    id: sessionId,
+    title,
+    messages,
+    runs: runSnapshots,
+    createdAt,
+    updatedAt,
+  };
+  return saveAgentConversationSessions([session]);
+}
+
+function upsertAgentConversationSession(
+  sessions: AgentConversationSession[],
+  session: AgentConversationSession,
+): AgentConversationSession[] {
+  return [session, ...sessions.filter((item) => item.id !== session.id)].slice(0, AGENT_CONVERSATION_LIMIT);
 }
 
 function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
@@ -497,31 +525,84 @@ function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
   ];
 }
 
-function SimpleAgentPage({
-  locale,
-  onOpenCompetitors,
-  onOpenResearch,
-  t,
-}: {
-  onOpenCompetitors: (tab: CompetitorTab) => void;
-  onOpenResearch: (source: ResearchSource, category?: string, openHistory?: boolean) => void;
-} & LocalizedProps) {
+function SimpleAgentPage({ locale, t }: LocalizedProps) {
   const promptTemplates = useMemo(() => buildAgentPromptTemplates(t), [t]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<AgentPromptTemplateId>("market_insight_weekly");
+  const [initialConversations] = useState<AgentConversationSession[]>(() => loadAgentConversationSessions());
+  const [initialConversation] = useState<AgentConversationSession | null>(() => initialConversations[0] || null);
+  const [initialSession] = useState<AgentSessionSnapshot | null>(() => initialConversation ? snapshotFromConversation(initialConversation) : loadAgentSession());
+  const [selectedTemplateId, setSelectedTemplateId] = useState<AgentPromptTemplateId>(
+    initialSession?.selectedTemplateId || "market_insight_weekly",
+  );
   const selectedTemplate = promptTemplates.find((template) => template.id === selectedTemplateId) || promptTemplates[0]!;
-  const [agentMode, setAgentMode] = useState<"market" | "competitor">(selectedTemplate.mode);
-  const [prompt, setPrompt] = useState(selectedTemplate.prompt);
-  const [artifactTab, setArtifactTab] = useState<AgentArtifactTab>("market");
-  const [result, setResult] = useState<AgentRunResponse | null>(null);
+  const [agentMode, setAgentMode] = useState<"market" | "competitor">(initialSession?.agentMode || selectedTemplate.mode);
+  const [prompt, setPrompt] = useState(initialSession?.prompt ?? selectedTemplate.prompt);
+  const [artifactTab, setArtifactTab] = useState<AgentArtifactTab>(initialSession?.artifactTab || "market");
+  const [result, setResult] = useState<AgentRunResponse | null>(initialSession?.result || null);
+  const [streamEvents, setStreamEvents] = useState<AgentRunEvent[]>(initialSession?.streamEvents || []);
+  const [selectedOutputPath, setSelectedOutputPath] = useState(initialSession?.selectedOutputPath || "");
+  const [messages, setMessages] = useState<AgentChatMessage[]>(initialConversation?.messages || (initialSession ? messagesFromRunSnapshot(initialSession) : []));
+  const [sessionRuns, setSessionRuns] = useState<AgentRunHistoryItem[]>(initialConversation?.runs || []);
+  const [conversationSessions, setConversationSessions] = useState<AgentConversationSession[]>(initialConversations);
+  const [activeConversationId, setActiveConversationId] = useState(initialConversation?.id || newClientId("session"));
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const artifactJson = result ? JSON.stringify(result, null, 2) : "";
-  const artifactTitle = result?.artifact.title || t("agent.simpleTitle");
+  const hasFinalArtifact = Boolean(
+    result?.artifact && result.status === "ok" && result.response_type !== "message",
+  );
+  const artifactTitle = hasFinalArtifact && result?.artifact ? result.artifact.title : t("agent.simpleTitle");
   const artifactTabs: Array<{ id: AgentArtifactTab; label: string }> = [
     { id: "market", label: t("agent.tab.market") },
     { id: "draft", label: t("agent.tab.draft") },
     { id: "output", label: t("agent.tab.output") },
   ];
+  const executionEvents = result?.events?.length
+    ? result.events
+    : streamEvents.length
+      ? streamEvents
+      : loading
+        ? buildLoadingAgentEvents(t)
+        : [];
+  const awaitingInput = result?.status === "needs_input";
+
+  useEffect(() => {
+    const snapshot = buildAgentSessionSnapshot({
+      selectedTemplateId,
+      agentMode,
+      prompt,
+      artifactTab,
+      result,
+      streamEvents,
+      selectedOutputPath,
+    });
+    saveAgentSession(snapshot);
+    const now = new Date().toISOString();
+    const currentSession: AgentConversationSession = {
+      ...snapshot,
+      id: activeConversationId,
+      title: buildConversationTitle(
+        result?.artifact?.title || messages.find((message) => message.role === "user")?.content || t("agent.newConversation"),
+      ),
+      messages,
+      runs: sessionRuns,
+      createdAt: conversationSessions.find((session) => session.id === activeConversationId)?.createdAt || now,
+      updatedAt: now,
+    };
+    setConversationSessions((current) => saveAgentConversationSessions(upsertAgentConversationSession(current, currentSession)));
+  }, [
+    activeConversationId,
+    agentMode,
+    artifactTab,
+    messages,
+    prompt,
+    result,
+    selectedOutputPath,
+    selectedTemplateId,
+    sessionRuns,
+    streamEvents,
+    t,
+  ]);
 
   function applyPromptTemplate(template: AgentPromptTemplate) {
     setSelectedTemplateId(template.id);
@@ -530,24 +611,168 @@ function SimpleAgentPage({
     setArtifactTab("draft");
   }
 
+  function applyAgentRunResponse(nextResult: AgentRunResponse): AgentSessionSnapshot {
+    const nextPrompt = "";
+    const nextSelectedOutputPath = nextResult.status === "needs_input" || nextResult.response_type === "message"
+      ? ""
+      : preferredAgentOutputPath(nextResult);
+    const nextArtifactTab = nextResult.status === "needs_input" || nextResult.response_type === "message"
+      ? "draft"
+      : "output";
+    const nextEvents = nextResult.events || [];
+    setResult(nextResult);
+    setStreamEvents(nextEvents);
+    setSelectedOutputPath(nextSelectedOutputPath);
+    setArtifactTab(nextArtifactTab);
+    setPrompt(nextPrompt);
+    setAgentMode(nextResult.mode || agentMode);
+    const snapshot = buildAgentSessionSnapshot({
+      selectedTemplateId,
+      agentMode: nextResult.mode || agentMode,
+      prompt: nextPrompt,
+      artifactTab: nextArtifactTab,
+      result: nextResult,
+      streamEvents: nextEvents,
+      selectedOutputPath: nextSelectedOutputPath,
+    });
+    saveAgentSession(snapshot);
+    const runItem = buildAgentRunHistoryItem(snapshot, sessionRuns.find((item) => item.id === nextResult.run_id));
+    if (runItem) {
+      setSessionRuns((current) => [runItem, ...current.filter((item) => item.id !== runItem.id)].slice(0, AGENT_RUN_HISTORY_LIMIT));
+    }
+    setMessages((current) => {
+      if (current.some((message) => message.role === "assistant" && message.runId === nextResult.run_id)) return current;
+      return [
+        ...current,
+        {
+          id: `${nextResult.run_id}-assistant`,
+          role: "assistant",
+          content: assistantContentFromResult(nextResult),
+          runId: nextResult.run_id,
+          createdAt: nextResult.generated_at || new Date().toISOString(),
+        },
+      ];
+    });
+    return snapshot;
+  }
+
+  function restoreSessionRun(item: AgentRunHistoryItem) {
+    setSelectedTemplateId(item.selectedTemplateId);
+    setAgentMode(item.agentMode);
+    setPrompt("");
+    setArtifactTab(item.artifactTab);
+    setResult(item.result);
+    setStreamEvents(item.streamEvents);
+    setSelectedOutputPath(item.selectedOutputPath || (item.result ? preferredAgentOutputPath(item.result) : ""));
+    setError(null);
+    setLoading(false);
+    saveAgentSession(item);
+  }
+
+  function openSessionRunFile(item: AgentRunHistoryItem, path: string) {
+    setSelectedTemplateId(item.selectedTemplateId);
+    setAgentMode(item.agentMode);
+    setPrompt("");
+    setArtifactTab("output");
+    setResult(item.result);
+    setStreamEvents(item.streamEvents);
+    setSelectedOutputPath(path);
+    setError(null);
+    setLoading(false);
+    saveAgentSession({
+      ...item,
+      artifactTab: "output",
+      selectedOutputPath: path,
+    });
+  }
+
+  function restoreConversationSession(session: AgentConversationSession) {
+    setSelectedTemplateId(session.selectedTemplateId);
+    setAgentMode(session.agentMode);
+    setPrompt(session.prompt);
+    setArtifactTab(session.artifactTab);
+    setResult(session.result);
+    setStreamEvents(session.streamEvents);
+    setSelectedOutputPath(session.selectedOutputPath || (session.result ? preferredAgentOutputPath(session.result) : ""));
+    setMessages(session.messages);
+    setSessionRuns(session.runs);
+    setActiveConversationId(session.id);
+    setError(null);
+    setLoading(false);
+    setShowHistory(false);
+    saveAgentSession(snapshotFromConversation(session));
+  }
+
+  function startNewConversation() {
+    const template = promptTemplates.find((item) => item.id === selectedTemplateId) || promptTemplates[0]!;
+    setActiveConversationId(newClientId("session"));
+    setSelectedTemplateId(template.id);
+    setAgentMode(template.mode);
+    setPrompt(template.prompt);
+    setArtifactTab("draft");
+    setResult(null);
+    setStreamEvents([]);
+    setSelectedOutputPath("");
+    setMessages([]);
+    setSessionRuns([]);
+    setError(null);
+    setLoading(false);
+    setShowHistory(false);
+  }
+
+  function deleteConversationSession(id: string) {
+    setConversationSessions((current) => {
+      const next = saveAgentConversationSessions(current.filter((item) => item.id !== id));
+      if (activeConversationId === id) {
+        const fallback = next[0];
+        if (fallback) {
+          restoreConversationSession(fallback);
+        } else {
+          startNewConversation();
+        }
+      }
+      return next;
+    });
+  }
+
   async function runAgent(event?: FormEvent) {
     event?.preventDefault();
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
+    const pendingResult = result?.status === "needs_input" ? result : null;
     setLoading(true);
     setError(null);
-    setArtifactTab("output");
+    setResult(null);
+    setStreamEvents([]);
+    setSelectedOutputPath("");
+    setArtifactTab(pendingResult ? "draft" : "output");
+    const userMessage: AgentChatMessage = {
+      id: newClientId("msg"),
+      role: "user",
+      content: cleanPrompt,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((current) => [...current, userMessage]);
     try {
-      const response = await api.runAgent({
+      const request: AgentRunRequest = {
         prompt: cleanPrompt,
-        agentMode,
-        category: DEFAULT_AGENT_CATEGORY,
+        agentMode: pendingResult?.mode || agentMode,
         locale,
         useLlm: true,
         agentToolTimeoutSeconds: 600,
+      };
+      if (pendingResult?.pending) {
+        request.continueRunId = pendingResult.pending.continue_run_id || pendingResult.run_id;
+        request.skillId = pendingResult.pending.skill_id || pendingResult.skill?.skill_id || undefined;
+        request.params = pendingResult.pending.resolved_params || pendingResult.skill?.params;
+      }
+      const response = await api.runAgentStream(request, {
+        onEvent: (nextEvent) => setStreamEvents((current) => upsertAgentRunEvent(current, nextEvent)),
+        onResult: (nextResult) => {
+          applyAgentRunResponse(nextResult);
+        },
       });
-      setResult(response);
-      setArtifactTab("market");
+      applyAgentRunResponse(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("agent.runError"));
     } finally {
@@ -555,17 +780,91 @@ function SimpleAgentPage({
     }
   }
 
+  function openAgentOutputFile(path: string) {
+    setSelectedOutputPath(path);
+    setArtifactTab("output");
+  }
+
+  const activeRunAssistantIndex = result?.run_id
+    ? messages.findIndex((message) => message.role === "assistant" && message.runId === result.run_id)
+    : -1;
+  const latestUserMessageIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") return index;
+    }
+    return -1;
+  })();
+  const shouldShowEventsBeforeMessages = executionEvents.length > 0 && messages.length === 0;
+  const shouldInsertEventsBeforeMessage = (index: number) => (
+    executionEvents.length > 0 && activeRunAssistantIndex === index
+  );
+  const shouldInsertEventsAfterMessage = (index: number) => (
+    executionEvents.length > 0 && activeRunAssistantIndex < 0 && latestUserMessageIndex === index
+  );
+  const renderExecutionTimeline = (key: string) => (
+    <Fragment key={key}>
+      <div className="agent-tool-toggle">
+        <Link2 size={15} />
+        <span>{formatMessage(t("agent.eventCount"), { count: executionEvents.length })}</span>
+      </div>
+      <AgentExecutionTimeline
+        events={executionEvents}
+        onOpenOutputFile={openAgentOutputFile}
+        selectedOutputPath={selectedOutputPath}
+        t={t}
+      />
+    </Fragment>
+  );
+
   return (
     <div className="agent-minimal-page">
       <header className="agent-minimal-head">
-        <button type="button" className="icon-only-button" onClick={() => onOpenResearch("combined", DEFAULT_AGENT_CATEGORY)}>
-          <ArrowLeft size={17} />
-        </button>
         <h2>{artifactTitle}</h2>
-        <button type="button" className="icon-only-button" onClick={() => result ? downloadText(`${slugify(result.artifact.title)}.json`, artifactJson, "application/json") : undefined}>
-          <Download size={17} />
-        </button>
+        <div className="agent-minimal-actions">
+          <button
+            type="button"
+            className="agent-history-button"
+            disabled={loading}
+            onClick={startNewConversation}
+          >
+            <Plus size={16} />
+            <span>{t("agent.newConversation")}</span>
+          </button>
+          <button
+            type="button"
+            className={`agent-history-button ${showHistory ? "active" : ""}`}
+            onClick={() => setShowHistory((current) => !current)}
+          >
+            <History size={16} />
+            <span>{t("agent.history.open")}</span>
+            <b>{conversationSessions.length}</b>
+          </button>
+          <button
+            type="button"
+            className="icon-only-button"
+            disabled={!hasFinalArtifact}
+            onClick={() => {
+              if (hasFinalArtifact && result?.artifact) {
+                downloadText(`${slugify(result.artifact.title)}.json`, artifactJson, "application/json");
+              }
+            }}
+            title={t("agent.downloadArtifact")}
+          >
+            <Download size={17} />
+          </button>
+        </div>
       </header>
+
+      {showHistory ? (
+        <AgentConversationHistoryPanel
+          activeSessionId={activeConversationId}
+          locale={locale}
+          onDelete={deleteConversationSession}
+          onRestore={restoreConversationSession}
+          sessions={conversationSessions}
+          t={t}
+        />
+      ) : null}
 
       <div className="agent-minimal-grid">
         <section className="agent-chat-pane">
@@ -577,11 +876,27 @@ function SimpleAgentPage({
                 <p>{selectedTemplate.description}</p>
               </div>
             </div>
-            <div className="agent-message user">{prompt}</div>
-            <div className="agent-tool-toggle">
-              <Link2 size={15} />
-              <span>{formatMessage(t("agent.toolCalls"), { count: result?.tools.length ?? (loading ? 3 : 0) })}</span>
-            </div>
+            {shouldShowEventsBeforeMessages ? renderExecutionTimeline("execution-empty") : null}
+            {messages.map((message, index) => {
+              const linkedRun = message.runId ? sessionRuns.find((item) => item.id === message.runId) : undefined;
+              return (
+                <Fragment key={message.id}>
+                  {shouldInsertEventsBeforeMessage(index) ? renderExecutionTimeline(`execution-before-${message.id}`) : null}
+                  <div className={`agent-message ${message.role}`}>
+                    <p>{message.content}</p>
+                    {message.role === "assistant" && linkedRun && isCompletedArtifactRun(linkedRun.result) ? (
+                      <AgentRunOutputFileChips
+                        activePath={selectedOutputPath}
+                        files={buildAgentOutputFiles(linkedRun.result)}
+                        onOpen={(path) => openSessionRunFile(linkedRun, path)}
+                        t={t}
+                      />
+                    ) : null}
+                  </div>
+                  {shouldInsertEventsAfterMessage(index) ? renderExecutionTimeline(`execution-after-${message.id}`) : null}
+                </Fragment>
+              );
+            })}
             {loading ? (
               <div className="agent-message assistant">
                 <Loader2 className="spin" size={17} />
@@ -589,23 +904,7 @@ function SimpleAgentPage({
               </div>
             ) : null}
             {error ? <div className="alert danger">{error}</div> : null}
-            {result ? (
-              <>
-                <div className="agent-tool-list">
-                  {result.tools.map((tool) => (
-                    <div className={`agent-tool-call ${tool.status}`} key={tool.name}>
-                      <span>{tool.label}</span>
-                      <b>{tool.status === "ok" ? t("agent.toolOk") : t("agent.toolError")}</b>
-                      <p>{tool.summary}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="agent-message assistant">
-                  <strong>{result.artifact.title}</strong>
-                  <p>{result.artifact.executive_summary}</p>
-                </div>
-              </>
-            ) : !loading ? (
+            {!messages.length && !loading ? (
               <div className="agent-message assistant subtle">{t("agent.emptyConversation")}</div>
             ) : null}
           </div>
@@ -629,7 +928,7 @@ function SimpleAgentPage({
                 aria-label={t("agent.promptLabel")}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder={t("agent.promptPlaceholder")}
+                placeholder={awaitingInput ? t("agent.clarificationPlaceholder") : t("agent.promptPlaceholder")}
                 rows={4}
               />
               <button type="submit" disabled={loading || !prompt.trim()} title={t("agent.send")}>
@@ -654,24 +953,291 @@ function SimpleAgentPage({
           </div>
           <div className="agent-artifact-body">
             {artifactTab === "market" ? (
-              <AgentArtifactSummary result={result} t={t} />
+              <AgentArtifactSummary result={hasFinalArtifact ? result : null} t={t} />
             ) : null}
             {artifactTab === "draft" ? (
-              <AgentDraftView
-                mode={agentMode}
-                onOpenCompetitors={onOpenCompetitors}
-                onOpenResearch={onOpenResearch}
-                prompt={prompt}
-                result={result}
-                t={t}
-              />
+              <AgentDraftView prompt={prompt} result={result} t={t} />
             ) : null}
             {artifactTab === "output" ? (
-              result ? <pre className="artifact-json minimal"><code>{artifactJson}</code></pre> : <AgentArtifactPlaceholder loading={loading} t={t} />
+              hasFinalArtifact && result ? (
+                <AgentOutputFilesView
+                  onSelectedPathChange={setSelectedOutputPath}
+                  result={result}
+                  selectedPath={selectedOutputPath}
+                  t={t}
+                />
+              ) : selectedOutputPath ? (
+                <AgentSingleOutputFileView path={selectedOutputPath} t={t} />
+              ) : <AgentArtifactPlaceholder loading={loading} t={t} />
             ) : null}
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function formatAgentHistoryTime(value: string, locale: Locale): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function AgentConversationHistoryPanel({
+  activeSessionId,
+  locale,
+  onDelete,
+  onRestore,
+  sessions,
+  t,
+}: {
+  activeSessionId: string;
+  locale: Locale;
+  onDelete: (id: string) => void;
+  onRestore: (item: AgentConversationSession) => void;
+  sessions: AgentConversationSession[];
+  t: Translator;
+}) {
+  return (
+    <section className="agent-run-history-panel">
+      <header>
+        <div>
+          <h3>{t("agent.history.title")}</h3>
+          <p>{formatMessage(t("agent.history.count"), { count: sessions.length })}</p>
+        </div>
+      </header>
+      {sessions.length ? (
+        <div className="agent-run-history-list">
+          {sessions.map((item) => {
+            const latestRun = item.runs[0];
+            const statusLabel = latestRun?.status === "needs_input"
+              ? t("agent.event.status.needsInput")
+              : t("agent.event.status.ok");
+            const fileCount = item.runs.reduce((total, run) => total + run.fileCount, 0);
+            const sessionMeta = formatMessage(t("agent.history.sessionMeta"), {
+              messages: item.messages.length,
+              runs: item.runs.length,
+            });
+            return (
+              <article className={`agent-run-history-item ${activeSessionId === item.id ? "active" : ""}`} key={item.id}>
+                <button className="agent-run-history-main" type="button" onClick={() => onRestore(item)}>
+                  <span className="agent-run-history-title">{item.title}</span>
+                  <span className="agent-run-history-meta">
+                    {formatAgentHistoryTime(item.updatedAt, locale)}
+                    {" · "}
+                    {statusLabel}
+                    {activeSessionId === item.id ? ` · ${t("agent.history.current")}` : ""}
+                  </span>
+                  <span className="agent-run-history-detail">
+                    {sessionMeta}
+                  </span>
+                  <span className="agent-run-history-detail">
+                    {t("agent.history.latestSkill")}: {latestRun?.skillName || t("agent.history.noSkill")}
+                  </span>
+                  <span className="agent-run-history-detail">
+                    {formatMessage(t("agent.history.files"), { count: fileCount })}
+                  </span>
+                </button>
+                <button
+                  className="agent-run-history-delete"
+                  type="button"
+                  onClick={() => onDelete(item.id)}
+                  title={t("agent.history.delete")}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="agent-run-history-empty">{t("agent.history.empty")}</p>
+      )}
+    </section>
+  );
+}
+
+function upsertAgentRunEvent(events: AgentRunEvent[], nextEvent: AgentRunEvent): AgentRunEvent[] {
+  const existingIndex = events.findIndex((event) => event.id === nextEvent.id);
+  if (existingIndex < 0) {
+    return [...events, nextEvent].sort((left, right) => left.seq - right.seq);
+  }
+  const updated = [...events];
+  updated[existingIndex] = { ...updated[existingIndex], ...nextEvent };
+  return updated.sort((left, right) => left.seq - right.seq);
+}
+
+function buildLoadingAgentEvents(t: Translator): AgentRunEvent[] {
+  const timestamp = new Date().toISOString();
+  return [
+    {
+      id: "loading-input",
+      seq: 1,
+      type: "input",
+      status: "ok",
+      title: t("agent.event.input"),
+      message: t("agent.event.inputBody"),
+      timestamp,
+    },
+    {
+      id: "loading-planner",
+      seq: 2,
+      type: "planner",
+      status: "running",
+      title: t("agent.event.planner"),
+      message: t("agent.event.plannerBody"),
+      timestamp,
+    },
+    {
+      id: "loading-tools",
+      seq: 3,
+      type: "tool",
+      status: "running",
+      title: t("agent.event.tools"),
+      message: t("agent.event.toolsBody"),
+      timestamp,
+    },
+    {
+      id: "loading-artifact",
+      seq: 4,
+      type: "artifact",
+      status: "running",
+      title: t("agent.event.artifact"),
+      message: t("agent.event.artifactBody"),
+      timestamp,
+    },
+  ];
+}
+
+function agentEventStatusLabel(status: AgentRunEvent["status"], t: Translator): string {
+  if (status === "ok") return t("agent.event.status.ok");
+  if (status === "error") return t("agent.event.status.error");
+  if (status === "running") return t("agent.event.status.running");
+  if (status === "needs_input") return t("agent.event.status.needsInput");
+  return t("agent.event.status.skipped");
+}
+
+function formatEventDetail(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function displayAgentEvent(event: AgentRunEvent, t: Translator): { title: string; message: string } {
+  if (event.type === "input") {
+    return {
+      title: t("agent.event.input"),
+      message: t("agent.event.inputBody"),
+    };
+  }
+  return {
+    title: event.title,
+    message: event.message || "",
+  };
+}
+
+function AgentExecutionTimeline({
+  events,
+  onOpenOutputFile,
+  selectedOutputPath,
+  t,
+}: {
+  events: AgentRunEvent[];
+  onOpenOutputFile: (path: string) => void;
+  selectedOutputPath: string;
+  t: Translator;
+}) {
+  return (
+    <div className="agent-execution-timeline">
+      {events.map((event) => {
+        const displayEvent = displayAgentEvent(event, t);
+        const hasDetails = Boolean(event.input || event.output || event.file_path || event.data || typeof event.duration_ms === "number");
+        const canOpenOutputFile = (event.type === "tool" || event.type === "skill") && event.file_path && event.status !== "running";
+        return (
+          <article className={`agent-execution-event ${event.status}`} key={event.id}>
+            <div className="agent-execution-dot" aria-hidden="true" />
+            <div className="agent-execution-card">
+              <div className="agent-execution-head">
+                <span>{displayEvent.title}</span>
+                <b>{agentEventStatusLabel(event.status, t)}</b>
+              </div>
+              {displayEvent.message ? <p>{displayEvent.message}</p> : null}
+              <div className="agent-execution-meta">
+                <span>{event.type}</span>
+                {event.tool ? <span>{event.tool}</span> : null}
+                {typeof event.duration_ms === "number" ? <span>{event.duration_ms}ms</span> : null}
+                {event.file_path ? <span>{t("agent.event.fileSaved")}</span> : null}
+              </div>
+              {canOpenOutputFile ? (
+                <button
+                  className={`agent-execution-file-button ${selectedOutputPath === event.file_path ? "active" : ""}`}
+                  type="button"
+                  onClick={() => onOpenOutputFile(event.file_path!)}
+                >
+                  <FileText size={16} />
+                  <span>
+                    <strong>{lastPathPart(event.file_path!)}</strong>
+                    <small>{event.type === "skill" ? t("agent.event.openSkillFile") : t("agent.event.openOutputFile")}</small>
+                  </span>
+                </button>
+              ) : null}
+              {hasDetails ? (
+                <details className="agent-execution-details">
+                  <summary>{t("agent.event.details")}</summary>
+                  <dl className="agent-execution-detail-grid">
+                    <div>
+                      <dt>{t("agent.event.doing")}</dt>
+                      <dd>{displayEvent.message || displayEvent.title}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("agent.event.success")}</dt>
+                      <dd>{agentEventStatusLabel(event.status, t)}</dd>
+                    </div>
+                    {typeof event.duration_ms === "number" ? (
+                      <div>
+                        <dt>{t("agent.event.duration")}</dt>
+                        <dd>{event.duration_ms}ms</dd>
+                      </div>
+                    ) : null}
+                    {event.file_path ? (
+                      <div className="wide">
+                        <dt>{t("agent.event.filePath")}</dt>
+                        <dd><code>{event.file_path}</code></dd>
+                      </div>
+                    ) : null}
+                    {event.input ? (
+                      <div className="wide">
+                        <dt>{t("agent.event.inputParams")}</dt>
+                        <dd><pre>{formatEventDetail(event.input)}</pre></dd>
+                      </div>
+                    ) : null}
+                    {event.output ? (
+                      <div className="wide">
+                        <dt>{t("agent.event.outputSummary")}</dt>
+                        <dd><pre>{formatEventDetail(event.output)}</pre></dd>
+                      </div>
+                    ) : null}
+                    {event.data ? (
+                      <div className="wide">
+                        <dt>{t("agent.event.rawMeta")}</dt>
+                        <dd><pre>{formatEventDetail(event.data)}</pre></dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </details>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -686,7 +1252,7 @@ function AgentArtifactPlaceholder({ loading, t }: { loading: boolean; t: Transla
 }
 
 function AgentArtifactSummary({ result, t }: { result: AgentRunResponse | null; t: Translator }) {
-  if (!result) return <AgentArtifactPlaceholder loading={false} t={t} />;
+  if (!result?.artifact) return <AgentArtifactPlaceholder loading={false} t={t} />;
   return (
     <div className="agent-artifact-summary">
       <p className="eyebrow">{result.mode === "competitor" ? t("agent.mode.competitor") : t("agent.mode.market")}</p>
@@ -711,17 +1277,1204 @@ function AgentArtifactList({ title, items }: { title: string; items: string[] })
   );
 }
 
+function isCompletedArtifactRun(result: AgentRunResponse | null): result is AgentRunResponse {
+  return Boolean(result && result.status !== "needs_input" && result.response_type !== "message" && result.artifact);
+}
+
+const HIDDEN_AGENT_OUTPUT_FILE_TYPES = new Set(["artifact", "events", "run"]);
+
+function buildAgentOutputFiles(result: AgentRunResponse): AgentOutputFileMeta[] {
+  const files = result.output_files?.length
+    ? result.output_files.filter((file) => !HIDDEN_AGENT_OUTPUT_FILE_TYPES.has(String(file.type || "").toLowerCase()))
+    : [];
+  if (!files.length) {
+    result.tools.forEach((tool) => {
+      if (!tool.file_path) return;
+      files.push({
+        type: "tool",
+        label: tool.label,
+        name: lastPathPart(tool.file_path),
+        path: tool.file_path,
+        summary: tool.summary,
+      });
+    });
+  }
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    if (!file.path || seen.has(file.path)) return false;
+    seen.add(file.path);
+    return true;
+  });
+}
+
+function outputFileTypeLabel(file: AgentOutputFileMeta, t: Translator): string {
+  const type = String(file.type || "").toLowerCase();
+  if (type === "report") return t("agent.output.type.report");
+  if (type === "tool") return t("agent.output.type.tool");
+  if (type === "artifact") return t("agent.output.type.artifact");
+  if (type === "events") return t("agent.output.type.events");
+  if (type === "run") return t("agent.output.type.run");
+  if (type === "skill") return t("agent.output.type.skill");
+  return file.type || t("agent.output.type.file");
+}
+
+function outputFileShortLabel(file: AgentOutputFileMeta, t: Translator): string {
+  const type = outputFileTypeLabel(file, t);
+  const label = file.label || file.name || type;
+  return label === type ? type : `${type} · ${label}`;
+}
+
+function preferredAgentOutputPath(result: AgentRunResponse): string {
+  const files = buildAgentOutputFiles(result);
+  return files.find((file) => file.type === "report" || file.name.toLowerCase().endsWith(".html"))?.path
+    || files.find((file) => file.type === "tool")?.path
+    || files[0]?.path
+    || "";
+}
+
+function AgentRunOutputFileChips({
+  activePath,
+  files,
+  onOpen,
+  t,
+}: {
+  activePath: string;
+  files: AgentOutputFileMeta[];
+  onOpen: (path: string) => void;
+  t: Translator;
+}) {
+  const visibleFiles = files.filter((file) => file.path);
+  if (!visibleFiles.length) return null;
+  return (
+    <div className="agent-message-files" aria-label={t("agent.output.files")}>
+      <span>{formatMessage(t("agent.output.filesCount"), { count: visibleFiles.length })}</span>
+      <div>
+        {visibleFiles.map((file) => (
+          <button
+            className={activePath === file.path ? "active" : ""}
+            key={file.path}
+            type="button"
+            onClick={() => onOpen(file.path)}
+            title={file.summary || file.name}
+          >
+            <FileText size={14} />
+            <span>{outputFileShortLabel(file, t)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function lastPathPart(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function AgentSingleOutputFileView({ path, t }: { path: string; t: Translator }) {
+  const [openedFile, setOpenedFile] = useState<AgentOutputFileResponse | null>(null);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) {
+      setOpenedFile(null);
+      return;
+    }
+    let ignore = false;
+    setLoadingFile(true);
+    setFileError(null);
+    api.readAgentOutputFile(path)
+      .then((file) => {
+        if (!ignore) setOpenedFile(file);
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setOpenedFile(null);
+          setFileError(err instanceof Error ? err.message : t("agent.output.fileError"));
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoadingFile(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [path, t]);
+
+  return (
+    <section className="agent-output-single">
+      <header className="agent-output-preview-head">
+        <div>
+          <span>{openedFile?.name || lastPathPart(path)}</span>
+          <code>{openedFile?.path || path}</code>
+        </div>
+        {openedFile ? (
+          <button
+            type="button"
+            className="icon-only-button"
+            onClick={() => downloadText(openedFile.name, outputFileDownloadText(openedFile), outputFileMime(openedFile))}
+            title={t("agent.output.download")}
+          >
+            <Download size={16} />
+          </button>
+        ) : null}
+      </header>
+      {loadingFile ? <AgentArtifactPlaceholder loading t={t} /> : null}
+      {fileError ? <div className="alert danger">{fileError}</div> : null}
+      {!loadingFile && !fileError && openedFile ? <AgentOutputFileContent file={openedFile} t={t} /> : null}
+    </section>
+  );
+}
+
+function AgentOutputFilesView({
+  onSelectedPathChange,
+  result,
+  selectedPath,
+  t,
+}: {
+  onSelectedPathChange: (path: string) => void;
+  result: AgentRunResponse;
+  selectedPath: string;
+  t: Translator;
+}) {
+  const files = useMemo(() => buildAgentOutputFiles(result), [result]);
+  const [openedFile, setOpenedFile] = useState<AgentOutputFileResponse | null>(null);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const preferredPath = preferredAgentOutputPath(result);
+  const effectiveSelectedPath = files.some((file) => file.path === selectedPath)
+    ? selectedPath
+    : preferredPath || files[0]?.path || "";
+
+  useEffect(() => {
+    if (!files.length) {
+      if (selectedPath) onSelectedPathChange("");
+      return;
+    }
+    if (!files.some((file) => file.path === selectedPath)) {
+      onSelectedPathChange(effectiveSelectedPath);
+    }
+  }, [effectiveSelectedPath, files, onSelectedPathChange, selectedPath]);
+
+  useEffect(() => {
+    if (!effectiveSelectedPath) {
+      setOpenedFile(null);
+      return;
+    }
+    let ignore = false;
+    setLoadingFile(true);
+    setFileError(null);
+    api.readAgentOutputFile(effectiveSelectedPath)
+      .then((file) => {
+        if (!ignore) setOpenedFile(file);
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setOpenedFile(null);
+          setFileError(err instanceof Error ? err.message : t("agent.output.fileError"));
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoadingFile(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [effectiveSelectedPath, t]);
+
+  const selectedMeta = files.find((file) => file.path === effectiveSelectedPath);
+
+  if (!files.length) return <AgentArtifactPlaceholder loading={false} t={t} />;
+
+  return (
+    <section className="agent-output-preview">
+      <header className="agent-output-preview-head">
+        <div>
+          <span>{selectedMeta?.label || openedFile?.name || t("agent.output.preview")}</span>
+          <code>{openedFile?.path || effectiveSelectedPath}</code>
+        </div>
+        {openedFile ? (
+          <button
+            type="button"
+            className="icon-only-button"
+            onClick={() => downloadText(openedFile.name, outputFileDownloadText(openedFile), outputFileMime(openedFile))}
+            title={t("agent.output.download")}
+          >
+            <Download size={16} />
+          </button>
+        ) : null}
+      </header>
+      {loadingFile ? <AgentArtifactPlaceholder loading t={t} /> : null}
+      {fileError ? <div className="alert danger">{fileError}</div> : null}
+      {!loadingFile && !fileError && openedFile ? <AgentOutputFileContent file={openedFile} t={t} /> : null}
+    </section>
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function renderTableValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return formatEventDetail(value);
+  if (typeof value === "object") return formatEventDetail(value);
+  return String(value);
+}
+
+type RenderableTable = {
+  name: string;
+  rows: Array<Record<string, unknown>>;
+};
+
+const renderableArrayPriority = [
+  "products",
+  "review_samples",
+  "reviews",
+  "articles",
+  "videos",
+  "posts",
+  "events",
+  "tools",
+  "evidence",
+  "steps",
+];
+const nestedEvidenceArrayKeys = ["review_samples", "comment_items", "comment_samples", "reviews", "comments"];
+
+function isNestedEvidenceArrayKey(key: string): boolean {
+  return nestedEvidenceArrayKeys.includes(key);
+}
+
+function extractRenderableTables(content: unknown): RenderableTable[] {
+  if (Array.isArray(content)) return [{ name: "items", rows: content.filter(isRecord) }].filter((table) => table.rows.length);
+  if (!isRecord(content)) return [];
+  const data = isRecord(content.data) ? content.data : content;
+  const tables: RenderableTable[] = [];
+  const added = new Set<string>();
+  const hasPrimaryArray = Object.entries(data).some(
+    ([key, value]) => Array.isArray(value) && !isNestedEvidenceArrayKey(key) && value.some(isRecord),
+  );
+
+  function addTable(name: string, value: unknown) {
+    if (!Array.isArray(value) || added.has(name)) return;
+    if (hasPrimaryArray && isNestedEvidenceArrayKey(name)) return;
+    const rows = value.filter(isRecord);
+    if (!rows.length) return;
+    tables.push({ name, rows });
+    added.add(name);
+  }
+
+  renderableArrayPriority.forEach((key) => addTable(key, data[key]));
+  Object.entries(data).forEach(([key, value]) => addTable(key, value));
+  return tables;
+}
+
+function renderableColumns(rows: Array<Record<string, unknown>>): string[] {
+  const preferred = [
+    "id",
+    "type",
+    "tool",
+    "instruction",
+    "title",
+    "name",
+    "brand",
+    "asin",
+    "product_asin",
+    "product_brand",
+    "status",
+    "summary",
+    "price",
+    "rating",
+    "rating_value",
+    "reviews",
+    "body",
+    "date_text",
+    "url",
+  ];
+  const keys = new Set<string>();
+  rows.forEach((row) => {
+    Object.entries(row).forEach(([key, value]) => {
+      if (isNestedEvidenceArrayKey(key) && Array.isArray(value)) return;
+      if (value !== undefined) keys.add(key);
+    });
+  });
+  const preferredKeys = preferred.filter((key) => keys.has(key));
+  const rest = [...keys].filter((key) => !preferredKeys.includes(key));
+  return [...preferredKeys, ...rest];
+}
+
+function nestedEvidenceRows(row: Record<string, unknown>): Array<{ key: string; label: string; rows: Array<Record<string, unknown>> }> {
+  return nestedEvidenceArrayKeys
+    .map((key) => {
+      const value = row[key];
+      const rows = Array.isArray(value) ? value.filter(isRecord) : [];
+      return { key, label: key, rows };
+    })
+    .filter((item) => item.rows.length);
+}
+
+function nestedEvidenceCount(row: Record<string, unknown>): number {
+  return nestedEvidenceRows(row).reduce((total, item) => total + item.rows.length, 0);
+}
+
+function summaryItems(content: unknown): Array<{ label: string; value: string }> {
+  if (!isRecord(content)) return [];
+  return ["name", "label", "status", "summary", "duration_ms", "generated_at", "run_id"]
+    .filter((key) => content[key] !== undefined)
+    .map((key) => ({ label: key, value: renderTableValue(content[key]) }));
+}
+
+function outputFileMime(file: AgentOutputFileResponse): string {
+  if (file.format === "html") return "text/html";
+  return file.format === "markdown" ? "text/markdown" : "application/json";
+}
+
+function outputFileDownloadText(file: AgentOutputFileResponse): string {
+  return (file.format === "markdown" || file.format === "html") && typeof file.content === "string"
+    ? file.content
+    : formatEventDetail(file.content);
+}
+
+function AgentOutputFileContent({ file, t }: { file: AgentOutputFileResponse; t: Translator }) {
+  if (file.format === "html" && typeof file.content === "string") {
+    return <AgentHtmlPreview html={file.content} title={file.name} />;
+  }
+  if (file.format === "markdown" && typeof file.content === "string") {
+    return <AgentMarkdownPreview markdown={file.content} />;
+  }
+  const renderer = findArtifactRenderer(file, file.content);
+  if (renderer) {
+    return <>{renderer.render({ content: file.content, file, t })}</>;
+  }
+  return <AgentJsonPreview content={file.content} t={t} />;
+}
+
+function AgentHtmlPreview({ html, title }: { html: string; title: string }) {
+  return (
+    <iframe
+      className="agent-html-preview"
+      sandbox=""
+      srcDoc={html}
+      title={title}
+    />
+  );
+}
+
+function AgentMarkdownPreview({ markdown }: { markdown: string }) {
+  const lines = markdown.split(/\r?\n/);
+  const elements: ReactNode[] = [];
+  let index = 0;
+  let key = 0;
+
+  function readUntil(predicate: (line: string) => boolean): string[] {
+    const collected: string[] = [];
+    while (index < lines.length && !predicate(lines[index] || "")) {
+      collected.push(lines[index] || "");
+      index += 1;
+    }
+    return collected;
+  }
+
+  while (index < lines.length) {
+    const line = lines[index] || "";
+    const trimmed = line.trim();
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("```")) {
+      const fence = trimmed;
+      index += 1;
+      const code = readUntil((nextLine) => nextLine.trim().startsWith("```"));
+      if (index < lines.length) index += 1;
+      elements.push(
+        <pre className="agent-md-code" key={key++}>
+          <code>{fence.replace(/^```/, "") ? `${fence.replace(/^```/, "")}\n${code.join("\n")}` : code.join("\n")}</code>
+        </pre>,
+      );
+      continue;
+    }
+    if (trimmed.startsWith("# ")) {
+      elements.push(<h1 key={key++}>{trimmed.slice(2)}</h1>);
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("## ")) {
+      elements.push(<h2 key={key++}>{trimmed.slice(3)}</h2>);
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("### ")) {
+      elements.push(<h3 key={key++}>{trimmed.slice(4)}</h3>);
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("- ")) {
+      const items: string[] = [];
+      while (index < lines.length && (lines[index] || "").trim().startsWith("- ")) {
+        items.push((lines[index] || "").trim().slice(2));
+        index += 1;
+      }
+      elements.push(<ul key={key++}>{items.map((item) => <li key={item}>{item}</li>)}</ul>);
+      continue;
+    }
+    if (/^\d+\.\s/.test(trimmed)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+\.\s/.test((lines[index] || "").trim())) {
+        items.push((lines[index] || "").trim().replace(/^\d+\.\s/, ""));
+        index += 1;
+      }
+      elements.push(<ol key={key++}>{items.map((item) => <li key={item}>{item}</li>)}</ol>);
+      continue;
+    }
+    if (trimmed.includes("|") && (lines[index + 1] || "").includes("---")) {
+      const tableLines: string[] = [];
+      while (index < lines.length && (lines[index] || "").includes("|")) {
+        tableLines.push(lines[index] || "");
+        index += 1;
+      }
+      const rows = tableLines
+        .filter((row) => !/^\s*\|?\s*:?-{3,}/.test(row))
+        .map((row) => row.split("|").map((cell) => cell.trim()).filter(Boolean));
+      const [header, ...body] = rows;
+      if (header) {
+        elements.push(
+          <table className="agent-md-table" key={key++}>
+            <thead><tr>{header.map((cell) => <th key={cell}>{cell}</th>)}</tr></thead>
+            <tbody>
+              {body.map((row, rowIndex) => (
+                <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>,
+        );
+      }
+      continue;
+    }
+    const paragraph = readUntil((nextLine) => {
+      const next = nextLine.trim();
+      return !next || next.startsWith("#") || next.startsWith("- ") || /^\d+\.\s/.test(next) || next.startsWith("```");
+    }).join(" ");
+    elements.push(<p key={key++}>{paragraph}</p>);
+  }
+
+  return <article className="agent-markdown-preview">{elements}</article>;
+}
+
+type ArtifactRendererProps = {
+  content: unknown;
+  file: AgentOutputFileResponse;
+  t: Translator;
+};
+
+type ArtifactRenderer = {
+  id: string;
+  match: (file: AgentOutputFileResponse, content: unknown, toolName: string) => boolean;
+  render: (props: ArtifactRendererProps) => ReactNode;
+};
+
+function normalizeName(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function fileToolName(file: AgentOutputFileResponse): string {
+  const match = file.name.match(/^tool-\d+-(.+)\.json$/i);
+  if (match?.[1]) return match[1].toLowerCase();
+  return file.name.replace(/\.(json|md|html)$/i, "").toLowerCase();
+}
+
+function outputToolName(file: AgentOutputFileResponse, content: unknown): string {
+  if (isRecord(content) && typeof content.name === "string") return normalizeName(content.name);
+  return fileToolName(file);
+}
+
+function toolPayload(content: unknown): Record<string, unknown> {
+  if (isRecord(content) && isRecord(content.data)) return content.data;
+  return isRecord(content) ? content : {};
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function textValue(value: unknown, fallback = "—"): string {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return renderTableValue(value);
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatMetric(value: unknown, fallback = "—"): string {
+  const numeric = numberValue(value);
+  if (numeric === null) return textValue(value, fallback);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: numeric % 1 ? 1 : 0 }).format(numeric);
+}
+
+function formatPercentMetric(value: unknown): string {
+  const numeric = numberValue(value);
+  if (numeric === null) return textValue(value);
+  const normalized = Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
+  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(normalized)}%`;
+}
+
+function compactDisplayText(value: unknown, limit = 180): string {
+  const normalized = " ".concat(String(value || "").split(/\s+/).join(" ")).trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit - 1).trim()}...`;
+}
+
+function firstField(row: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+function nestedEvidenceForRecord(row: Record<string, unknown>): Array<{ key: string; rows: Array<Record<string, unknown>> }> {
+  return nestedEvidenceArrayKeys
+    .map((key) => ({ key, rows: recordArray(row[key]) }))
+    .filter((item) => item.rows.length);
+}
+
+function ArtifactStatGrid({ items }: { items: Array<{ label: string; value: unknown; hint?: string }> }) {
+  const visible = items.filter((item) => item.value !== undefined && item.value !== null && item.value !== "");
+  if (!visible.length) return null;
+  return (
+    <div className="artifact-stat-grid">
+      {visible.map((item) => (
+        <div key={item.label}>
+          <span>{item.label}</span>
+          <b>{formatMetric(item.value)}</b>
+          {item.hint ? <small>{item.hint}</small> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ArtifactRendererShell({
+  children,
+  icon,
+  stats,
+  subtitle,
+  summary,
+  title,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  stats?: Array<{ label: string; value: unknown; hint?: string }>;
+  subtitle: string;
+  summary?: string;
+  title: string;
+}) {
+  return (
+    <article className="artifact-renderer">
+      <header className="artifact-renderer-hero">
+        <div className="artifact-renderer-icon">{icon}</div>
+        <div>
+          <span>{subtitle}</span>
+          <h3>{title}</h3>
+          {summary ? <p>{summary}</p> : null}
+        </div>
+      </header>
+      {stats ? <ArtifactStatGrid items={stats} /> : null}
+      <div className="artifact-renderer-body">{children}</div>
+    </article>
+  );
+}
+
+function ArtifactSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="artifact-renderer-section">
+      <h4>{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function ArtifactPillList({ items }: { items: Array<Record<string, unknown>> | string[] }) {
+  const normalized = items
+    .map((item) => {
+      if (typeof item === "string") return { label: item, value: "" };
+      return {
+        label: textValue(firstField(item, ["name", "topic", "keyword", "title", "query"]), ""),
+        value: firstField(item, ["count", "share", "score", "value"]),
+      };
+    })
+    .filter((item) => item.label);
+  if (!normalized.length) return <p className="artifact-muted">暂无可展示数据。</p>;
+  return (
+    <div className="artifact-pill-list">
+      {normalized.map((item) => (
+        <span key={`${item.label}-${textValue(item.value, "")}`}>
+          {item.label}
+          {item.value !== undefined && item.value !== "" ? <b>{formatMetric(item.value)}</b> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ArtifactMiniBars({ items, labelKey = "name", valueKey = "count" }: { items: Array<Record<string, unknown>>; labelKey?: string; valueKey?: string }) {
+  const max = Math.max(...items.map((item) => numberValue(item[valueKey]) || 0), 1);
+  if (!items.length) return <p className="artifact-muted">暂无可展示数据。</p>;
+  return (
+    <div className="artifact-mini-bars">
+      {items.map((item, index) => {
+        const value = numberValue(item[valueKey]) || 0;
+        const label = textValue(item[labelKey] ?? item.period ?? item.week ?? item.keyword, `#${index + 1}`);
+        return (
+          <div key={`${label}-${index}`}>
+            <span>{label}</span>
+            <div><i style={{ width: `${Math.max(4, (value / max) * 100)}%` }} /></div>
+            <b>{formatMetric(value)}</b>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArtifactEvidenceDisclosure({ label, rows }: { label: string; rows: Array<Record<string, unknown>> }) {
+  const [open, setOpen] = useState(false);
+  if (!rows.length) return null;
+  return (
+    <div className="artifact-evidence-disclosure">
+      <button type="button" onClick={() => setOpen((current) => !current)}>
+        <MessageSquare size={13} />
+        <span>{open ? "收起" : "展开"} {label} ({rows.length})</span>
+      </button>
+      {open ? (
+        <div className="artifact-evidence-list">
+          {rows.map((row, index) => (
+            <blockquote key={index}>
+              <p>{compactDisplayText(firstField(row, ["body", "text", "content", "snippet", "excerpt", "title"]), 320)}</p>
+              <footer>
+                {textValue(firstField(row, ["author", "user", "rating", "date_text", "subreddit"]), "")}
+              </footer>
+            </blockquote>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ArtifactExternalLink({ url }: { url: unknown }) {
+  const href = typeof url === "string" ? url : "";
+  if (!href) return null;
+  return (
+    <a className="artifact-link" href={href} rel="noreferrer" target="_blank">
+      <ExternalLink size={13} />
+      <span>打开来源</span>
+    </a>
+  );
+}
+
+function AmazonShelfArtifact({ content }: ArtifactRendererProps) {
+  const wrapper = isRecord(content) ? content : {};
+  const data = toolPayload(content);
+  const metrics = isRecord(data.metrics) ? data.metrics : {};
+  const products = recordArray(data.products);
+  const brands = recordArray(data.brands);
+  const priceBands = recordArray(data.price_bands);
+  const queries = stringArray(data.queries);
+  const reviewSampleCount = products.reduce((total, product) => total + recordArray(product.review_samples).length, 0);
+  return (
+    <ArtifactRendererShell
+      icon={<PackageSearch size={22} />}
+      subtitle="Amazon shelf"
+      title="Amazon 商品货架"
+      summary={textValue(wrapper.summary, "价格、评分、评论量、品牌和评论样本信号。")}
+      stats={[
+        { label: "商品数", value: metrics.products ?? products.length },
+        { label: "品牌数", value: brands.length || undefined },
+        { label: "平均价格", value: metrics.price_avg ? `$${formatMetric(metrics.price_avg)}` : undefined },
+        { label: "平均评分", value: metrics.rating_avg },
+        { label: "评论总量", value: metrics.total_review_count },
+        { label: "评论样本", value: metrics.review_samples ?? reviewSampleCount },
+      ]}
+    >
+      <div className="artifact-two-column">
+        <ArtifactSection title="价格带">
+          <ArtifactMiniBars items={priceBands} />
+        </ArtifactSection>
+        <ArtifactSection title="品牌信号">
+          <ArtifactPillList items={brands} />
+        </ArtifactSection>
+      </div>
+      {queries.length ? (
+        <ArtifactSection title="检索关键词">
+          <ArtifactPillList items={queries} />
+        </ArtifactSection>
+      ) : null}
+      <ArtifactSection title={`商品列表 (${products.length})`}>
+        <div className="artifact-product-list">
+          {products.length ? products.map((product, index) => {
+            const reviews = recordArray(product.review_samples);
+            return (
+              <article className="artifact-product-card" key={`${textValue(product.asin, String(index))}-${index}`}>
+                <div>
+                  <span>{textValue(product.brand, "Unknown brand")}</span>
+                  <h5>{textValue(product.title, "Untitled product")}</h5>
+                  <p>{textValue(product.asin, "")}</p>
+                </div>
+                <div className="artifact-product-metrics">
+                  <span>{textValue(product.price)}</span>
+                  <span><Star size={13} />{textValue(product.rating)}</span>
+                  <span>{formatMetric(product.reviews)} reviews</span>
+                </div>
+                <ArtifactPillList items={stringArray(product.badges)} />
+                <ArtifactExternalLink url={product.url} />
+                <ArtifactEvidenceDisclosure label="review" rows={reviews} />
+              </article>
+            );
+          }) : <p className="artifact-muted">本次工具结果没有返回商品明细。</p>}
+        </div>
+      </ArtifactSection>
+    </ArtifactRendererShell>
+  );
+}
+
+function RedditVocArtifact({ content }: ArtifactRendererProps) {
+  const data = toolPayload(content);
+  const coverage = isRecord(data.coverage) ? data.coverage : {};
+  const signal = isRecord(data.market_signal) ? data.market_signal : {};
+  const sentiment = isRecord(data.sentiment) ? data.sentiment : {};
+  const painPoints = recordArray(data.pain_points);
+  const brands = recordArray(data.brands);
+  const sizes = recordArray(data.sizes);
+  const posts = recordArray(data.posts);
+  return (
+    <ArtifactRendererShell
+      icon={<MessageSquare size={22} />}
+      subtitle="Reddit VOC"
+      title="Reddit 用户声音"
+      summary={textValue(signal.summary, "用户痛点、真实语言、品牌和尺码讨论。")}
+      stats={[
+        { label: "帖子数", value: coverage.posts ?? posts.length },
+        { label: "Subreddit", value: coverage.subreddits },
+        { label: "市场信号", value: signal.score },
+        { label: "正向占比", value: sentiment.positive_share ? formatPercentMetric(sentiment.positive_share) : undefined },
+        { label: "负向占比", value: sentiment.negative_share ? formatPercentMetric(sentiment.negative_share) : undefined },
+      ]}
+    >
+      <div className="artifact-two-column">
+        <ArtifactSection title="痛点主题">
+          <ArtifactPillList items={painPoints} />
+        </ArtifactSection>
+        <ArtifactSection title="品牌与尺码">
+          <ArtifactPillList items={[...brands, ...sizes]} />
+        </ArtifactSection>
+      </div>
+      <ArtifactSection title={`帖子证据 (${posts.length})`}>
+        <div className="artifact-feed-list">
+          {posts.length ? posts.map((post, index) => {
+            const comments = recordArray(post.comment_items);
+            return (
+              <article className="artifact-feed-card" key={`${textValue(post.id, String(index))}-${index}`}>
+                <div className="artifact-feed-meta">
+                  <span>{textValue(post.subreddit, "Reddit")}</span>
+                  <span>{formatMetric(post.score)} score</span>
+                  <span>{formatMetric(post.comments)} comments</span>
+                </div>
+                <h5>{textValue(post.title, "Untitled post")}</h5>
+                <p>{compactDisplayText(post.excerpt, 260)}</p>
+                <ArtifactExternalLink url={post.url} />
+                <ArtifactEvidenceDisclosure label="comments" rows={comments} />
+              </article>
+            );
+          }) : <p className="artifact-muted">本次工具结果没有返回帖子明细。</p>}
+        </div>
+      </ArtifactSection>
+    </ArtifactRendererShell>
+  );
+}
+
+function TiktokSocialArtifact({ content }: ArtifactRendererProps) {
+  const data = toolPayload(content);
+  const metrics = isRecord(data.metrics) ? data.metrics : {};
+  const signal = isRecord(data.market_signal) ? data.market_signal : {};
+  const hashtags = recordArray(data.hashtags);
+  const painPoints = recordArray(data.pain_points);
+  const videos = recordArray(data.videos);
+  return (
+    <ArtifactRendererShell
+      icon={<Video size={22} />}
+      subtitle="TikTok social"
+      title="TikTok 社媒验证"
+      summary={textValue(signal.summary, "视频、创作者语言和评论区样本。")}
+      stats={[
+        { label: "视频数", value: metrics.videos ?? videos.length },
+        { label: "创作者", value: metrics.authors },
+        { label: "点赞", value: metrics.total_likes },
+        { label: "评论", value: metrics.total_comment_count },
+        { label: "分享", value: metrics.total_shares },
+        { label: "社媒信号", value: signal.score },
+      ]}
+    >
+      <div className="artifact-two-column">
+        <ArtifactSection title="Hashtag">
+          <ArtifactPillList items={hashtags} />
+        </ArtifactSection>
+        <ArtifactSection title="评论痛点">
+          <ArtifactPillList items={painPoints} />
+        </ArtifactSection>
+      </div>
+      <ArtifactSection title={`视频证据 (${videos.length})`}>
+        <div className="artifact-feed-list">
+          {videos.length ? videos.map((video, index) => {
+            const comments = recordArray(video.comment_samples);
+            return (
+              <article className="artifact-feed-card" key={`${textValue(video.url, String(index))}-${index}`}>
+                <div className="artifact-feed-meta">
+                  <span>{textValue(video.author, "Creator")}</span>
+                  <span>{formatMetric(video.views)} views</span>
+                  <span>{formatMetric(video.comments)} comments</span>
+                </div>
+                <h5>{textValue(video.title, "Untitled video")}</h5>
+                <p>{compactDisplayText(video.snippet, 260)}</p>
+                <ArtifactExternalLink url={video.url} />
+                <ArtifactEvidenceDisclosure label="comments" rows={comments} />
+              </article>
+            );
+          }) : <p className="artifact-muted">本次工具结果没有返回视频明细。</p>}
+        </div>
+      </ArtifactSection>
+    </ArtifactRendererShell>
+  );
+}
+
+function MediaRankingsArtifact({ content }: ArtifactRendererProps) {
+  const data = toolPayload(content);
+  const articles = recordArray(data.articles);
+  return (
+    <ArtifactRendererShell
+      icon={<Newspaper size={22} />}
+      subtitle="Media rankings"
+      title="媒体测评与公开榜单"
+      summary={textValue(data.summary, "美国媒体测评、公开排名和可访问报道页面。")}
+      stats={[
+        { label: "文章数", value: articles.length },
+        { label: "高权威来源", value: articles.filter((article) => normalizeName(article.authority_level).includes("high")).length },
+        { label: "含产品信号", value: articles.filter((article) => recordArray(article.product_signals).length).length },
+      ]}
+    >
+      <ArtifactSection title={`文章来源 (${articles.length})`}>
+        <div className="artifact-source-grid">
+          {articles.length ? articles.map((article, index) => (
+            <article key={`${textValue(article.url, String(index))}-${index}`}>
+              <span>{textValue(article.domain, "Unknown source")}</span>
+              <h5>{textValue(article.title, "Untitled article")}</h5>
+              <p>{textValue(article.source_type)} · {textValue(article.authority_level)}</p>
+              <ArtifactPillList items={recordArray(article.product_signals)} />
+              <ArtifactExternalLink url={article.url} />
+            </article>
+          )) : <p className="artifact-muted">本次工具结果没有返回媒体文章。</p>}
+        </div>
+      </ArtifactSection>
+    </ArtifactRendererShell>
+  );
+}
+
+function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
+  const data = toolPayload(content);
+  const tool = outputToolName(file, content).replace(/^sif_/, "");
+  const profiles = recordArray(data.profiles);
+  const timing = recordArray(data.timing_summary);
+  const trends = recordArray(data.trend);
+  const asins = recordArray(data.asins);
+  const keywords = stringArray(data.keywords);
+  const profile = profiles[0];
+  const trend = profile && isRecord(profile.trend) ? profile.trend : {};
+  const current = profile && isRecord(profile.current) ? profile.current : {};
+  const seasonality = profile && isRecord(profile.seasonality) ? profile.seasonality : {};
+  const recentWeeks = recordArray(trend.recent_weeks);
+  return (
+    <ArtifactRendererShell
+      icon={<BarChart3 size={22} />}
+      subtitle="Sif MCP"
+      title={`Sif 数据工具：${tool}`}
+      summary={textValue((isRecord(content) ? content.summary : "") || profile?.interpretation || data.render_footer, "关键词、竞争、ASIN 或销量趋势数据。")}
+      stats={[
+        { label: "国家", value: data.country },
+        { label: "关键词", value: profile?.keyword ?? keywords.length },
+        { label: "当前搜索量", value: current.search_volume },
+        { label: "同比变化", value: trend.yoy_change ? formatPercentMetric(trend.yoy_change) : undefined },
+        { label: "趋势", value: trend.direction },
+        { label: "季节性", value: seasonality.strength },
+      ]}
+    >
+      {profiles.length ? (
+        <ArtifactSection title="关键词画像">
+          <div className="artifact-profile-grid">
+            {profiles.map((item, index) => {
+              const itemTrend = isRecord(item.trend) ? item.trend : {};
+              const itemCurrent = isRecord(item.current) ? item.current : {};
+              const itemSeasonality = isRecord(item.seasonality) ? item.seasonality : {};
+              return (
+                <article key={`${textValue(item.keyword, String(index))}-${index}`}>
+                  <span>{textValue(item.keyword, "keyword")}</span>
+                  <h5>{textValue(item.diagnosis, "诊断")}</h5>
+                  <p>{textValue(item.interpretation)}</p>
+                  <div>
+                    <b>{formatMetric(itemCurrent.search_volume)}</b>
+                    <small>当前搜索量</small>
+                  </div>
+                  <div>
+                    <b>{formatPercentMetric(itemTrend.yoy_change)}</b>
+                    <small>同比变化</small>
+                  </div>
+                  <div>
+                    <b>{textValue(itemSeasonality.strength)}</b>
+                    <small>季节性</small>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </ArtifactSection>
+      ) : null}
+      {recentWeeks.length ? (
+        <ArtifactSection title="近期周度趋势">
+          <ArtifactMiniBars items={recentWeeks} labelKey="week" valueKey="volume" />
+        </ArtifactSection>
+      ) : null}
+      {timing.length ? (
+        <ArtifactSection title="行动时机">
+          <div className="artifact-source-grid">
+            {timing.map((item, index) => (
+              <article key={`${textValue(item.keyword, String(index))}-${index}`}>
+                <span>{textValue(item.keyword, "keyword")}</span>
+                <h5>{formatMetric(item.weeks_to_peak)} weeks to peak</h5>
+                <p>{textValue(item.action_hint)}</p>
+              </article>
+            ))}
+          </div>
+        </ArtifactSection>
+      ) : null}
+      {trends.length || asins.length ? (
+        <ArtifactSection title="结构化明细">
+          <AgentJsonPreview content={trends.length ? trends : asins} t={t} />
+        </ArtifactSection>
+      ) : null}
+      {!profiles.length && !timing.length && !trends.length && !asins.length ? (
+        <AgentJsonPreview content={content} t={t} />
+      ) : null}
+    </ArtifactRendererShell>
+  );
+}
+
+function FinalArtifactJson({ content }: ArtifactRendererProps) {
+  const artifact = isRecord(content) ? content : {};
+  return (
+    <ArtifactRendererShell
+      icon={<Sparkles size={22} />}
+      subtitle="Final artifact"
+      title={textValue(artifact.title, "Artifact")}
+      summary={textValue(artifact.executive_summary, "")}
+      stats={[
+        { label: "关键发现", value: Array.isArray(artifact.key_findings) ? artifact.key_findings.length : undefined },
+        { label: "机会", value: Array.isArray(artifact.opportunities) ? artifact.opportunities.length : undefined },
+        { label: "风险", value: Array.isArray(artifact.risks) ? artifact.risks.length : undefined },
+        { label: "下一步", value: Array.isArray(artifact.next_steps) ? artifact.next_steps.length : undefined },
+      ]}
+    >
+      <div className="artifact-two-column">
+        <ArtifactSection title="关键发现">
+          <ArtifactBulletList items={stringArray(artifact.key_findings)} />
+        </ArtifactSection>
+        <ArtifactSection title="机会">
+          <ArtifactBulletList items={stringArray(artifact.opportunities)} />
+        </ArtifactSection>
+        <ArtifactSection title="风险">
+          <ArtifactBulletList items={stringArray(artifact.risks)} />
+        </ArtifactSection>
+        <ArtifactSection title="下一步">
+          <ArtifactBulletList items={stringArray(artifact.next_steps)} />
+        </ArtifactSection>
+      </div>
+    </ArtifactRendererShell>
+  );
+}
+
+function ArtifactBulletList({ items }: { items: string[] }) {
+  if (!items.length) return <p className="artifact-muted">暂无。</p>;
+  return (
+    <ul className="artifact-bullet-list">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
+  );
+}
+
+const artifactRenderers: ArtifactRenderer[] = [
+  {
+    id: "amazon_shelf",
+    match: (_file, _content, toolName) => toolName === "amazon_shelf",
+    render: (props) => <AmazonShelfArtifact {...props} />,
+  },
+  {
+    id: "reddit_voc",
+    match: (_file, _content, toolName) => toolName === "reddit_voc",
+    render: (props) => <RedditVocArtifact {...props} />,
+  },
+  {
+    id: "tiktok_social",
+    match: (_file, _content, toolName) => toolName === "tiktok_social",
+    render: (props) => <TiktokSocialArtifact {...props} />,
+  },
+  {
+    id: "media_rankings",
+    match: (_file, _content, toolName) => toolName === "media_rankings",
+    render: (props) => <MediaRankingsArtifact {...props} />,
+  },
+  {
+    id: "sif_mcp",
+    match: (_file, _content, toolName) => toolName.startsWith("sif_"),
+    render: (props) => <SifMcpArtifact {...props} />,
+  },
+  {
+    id: "final_artifact",
+    match: (file, content) => file.name === "artifact.json" && isRecord(content) && typeof content.executive_summary === "string",
+    render: (props) => <FinalArtifactJson {...props} />,
+  },
+];
+
+function findArtifactRenderer(file: AgentOutputFileResponse, content: unknown): ArtifactRenderer | null {
+  if (file.format && file.format !== "json") return null;
+  const toolName = outputToolName(file, content);
+  return artifactRenderers.find((renderer) => renderer.match(file, content, toolName)) || null;
+}
+
+function AgentJsonPreview({ content, t }: { content: unknown; t: Translator }) {
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const tables = extractRenderableTables(content)
+    .map((table) => ({ ...table, columns: renderableColumns(table.rows) }))
+    .filter((table) => table.columns.length);
+  const items = summaryItems(content);
+  return (
+    <div className="agent-json-preview">
+      {items.length ? (
+        <div className="agent-json-summary">
+          {items.map((item) => (
+            <div key={item.label}>
+              <span>{item.label}</span>
+              <b>{item.value}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {tables.map((table) => {
+        const caption = `${table.name} · ${formatMessage(t("agent.output.previewRows"), { count: table.rows.length })}`;
+        const hasNestedEvidence = table.rows.some((row) => nestedEvidenceCount(row) > 0);
+        const tableNode = (
+          <table className="agent-json-table">
+            <thead>
+              <tr>
+                {table.columns.map((column) => <th key={column}>{column}</th>)}
+                {hasNestedEvidence ? <th>{t("agent.output.comments")}</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, index) => {
+                const rowNestedEvidence = nestedEvidenceRows(row);
+                const rowNestedCount = rowNestedEvidence.reduce((total, item) => total + item.rows.length, 0);
+                const expandedKey = `${table.name}-${index}`;
+                const expanded = Boolean(expandedRows[expandedKey]);
+                return (
+                  <Fragment key={expandedKey}>
+                    <tr key={`${expandedKey}-row`}>
+                      {table.columns.map((column) => <td key={column}>{renderTableValue(row[column])}</td>)}
+                      {hasNestedEvidence ? (
+                        <td>
+                          {rowNestedCount ? (
+                            <button
+                              className="agent-json-expand-button"
+                              type="button"
+                              onClick={() => setExpandedRows((current) => ({ ...current, [expandedKey]: !current[expandedKey] }))}
+                            >
+                              {expanded
+                                ? t("agent.output.hideComments")
+                                : formatMessage(t("agent.output.showCommentsWithCount"), { count: rowNestedCount })}
+                            </button>
+                          ) : (
+                            <span className="agent-json-empty-comments">{t("agent.output.noComments")}</span>
+                          )}
+                        </td>
+                      ) : null}
+                    </tr>
+                    {expanded && rowNestedCount ? (
+                      <tr className="agent-json-child-row" key={`${expandedKey}-comments`}>
+                        <td colSpan={table.columns.length + (hasNestedEvidence ? 1 : 0)}>
+                          <div className="agent-json-child-panel">
+                            {rowNestedEvidence.map((item) => {
+                              const childColumns = renderableColumns(item.rows);
+                              return (
+                                <section key={item.key}>
+                                  <h4>{item.label}</h4>
+                                  <table className="agent-json-child-table">
+                                    <thead>
+                                      <tr>{childColumns.map((column) => <th key={column}>{column}</th>)}</tr>
+                                    </thead>
+                                    <tbody>
+                                      {item.rows.map((childRow, childIndex) => (
+                                        <tr key={childIndex}>
+                                          {childColumns.map((column) => <td key={column}>{renderTableValue(childRow[column])}</td>)}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </section>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+        return (
+          <div className="agent-json-table-wrap" key={table.name}>
+          <div className="agent-json-table-caption">
+            <span>{caption}</span>
+          </div>
+          {tableNode}
+        </div>
+        );
+      })}
+      <details className="agent-json-raw" open={!tables.length}>
+        <summary>{t("agent.output.rawJson")}</summary>
+        <pre className="artifact-json minimal"><code>{formatEventDetail(content)}</code></pre>
+      </details>
+    </div>
+  );
+}
+
 function AgentDraftView({
-  mode,
-  onOpenCompetitors,
-  onOpenResearch,
   prompt,
   result,
   t,
 }: {
-  mode: "market" | "competitor";
-  onOpenCompetitors: (tab: CompetitorTab) => void;
-  onOpenResearch: (source: ResearchSource, category?: string, openHistory?: boolean) => void;
   prompt: string;
   result: AgentRunResponse | null;
   t: Translator;
@@ -738,3905 +2491,8 @@ function AgentDraftView({
           ? plannedTools.map((tool) => <span key={tool}>{tool}</span>)
           : <span>{t("agent.promptRoutedTools")}</span>}
       </div>
-      <div className="artifact-action-grid minimal-actions">
-        <button type="button" onClick={() => onOpenResearch("combined", DEFAULT_AGENT_CATEGORY)}>
-          <Sparkles size={16} />
-          {t("agent.openIntegrated")}
-        </button>
-        <button type="button" onClick={() => onOpenCompetitors("discovery")}>
-          <Target size={16} />
-          {t("agent.openDiscovery")}
-        </button>
-        <button type="button" onClick={() => onOpenResearch("articles", DEFAULT_AGENT_CATEGORY)}>
-          <FileText size={16} />
-          {t("agent.openArticles")}
-        </button>
-        <button type="button" onClick={() => onOpenCompetitors("monitoring")}>
-          <Radar size={16} />
-          {t("agent.openTeardown")}
-        </button>
-      </div>
     </div>
   );
-}
-
-function AgentPage({
-  locale,
-  onOpenCompetitors,
-  onOpenResearch,
-  onOpenSettings,
-  t,
-}: {
-  onOpenCompetitors: (tab: CompetitorTab) => void;
-  onOpenResearch: (source: ResearchSource, category?: string, openHistory?: boolean) => void;
-  onOpenSettings: () => void;
-} & LocalizedProps) {
-  const [prompt, setPrompt] = useState(t("agent.defaultPrompt"));
-  const [artifactPrompt, setArtifactPrompt] = useState(t("agent.defaultPrompt"));
-  const [artifactTab, setArtifactTab] = useState<AgentArtifactTab>("market");
-  const [artifactGeneratedAt, setArtifactGeneratedAt] = useState(() => new Date().toISOString());
-  const artifactPayload = useMemo(
-    () => buildAgentArtifactPayload(artifactPrompt, artifactGeneratedAt),
-    [artifactPrompt, artifactGeneratedAt],
-  );
-  const artifactJson = JSON.stringify(artifactPayload, null, 2);
-  const sourceChips = ["Amazon", "Reddit", "TikTok", "YouTube", t("source.articles"), "Google Search"];
-  const skills: Array<{
-    id: AgentSkillId;
-    title: string;
-    body: string;
-    icon: ReactNode;
-    sources: string[];
-    actionLabel: string;
-    action: () => void;
-  }> = [
-    {
-      id: "market_trend",
-      title: t("agent.skill.marketTrend"),
-      body: t("agent.skill.marketTrendBody"),
-      icon: <BarChart3 size={18} />,
-      sources: ["Reddit", "Amazon"],
-      actionLabel: t("agent.openIntegrated"),
-      action: () => onOpenResearch("combined", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      id: "breakout_discovery",
-      title: t("agent.skill.breakoutDiscovery"),
-      body: t("agent.skill.breakoutDiscoveryBody"),
-      icon: <Target size={18} />,
-      sources: ["Amazon", "TikTok"],
-      actionLabel: t("agent.openDiscovery"),
-      action: () => onOpenCompetitors("discovery"),
-    },
-    {
-      id: "breakout_teardown",
-      title: t("agent.skill.breakoutTeardown"),
-      body: t("agent.skill.breakoutTeardownBody"),
-      icon: <Radar size={18} />,
-      sources: ["Amazon", "Reddit", t("source.articles")],
-      actionLabel: t("agent.openTeardown"),
-      action: () => onOpenCompetitors("monitoring"),
-    },
-    {
-      id: "amazon_reviews",
-      title: t("agent.skill.amazonReviews"),
-      body: t("agent.skill.amazonReviewsBody"),
-      icon: <ShoppingBag size={18} />,
-      sources: ["Amazon"],
-      actionLabel: t("agent.openAmazon"),
-      action: () => onOpenResearch("amazon", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      id: "tiktok_validation",
-      title: t("agent.skill.tiktokValidation"),
-      body: t("agent.skill.tiktokValidationBody"),
-      icon: <Megaphone size={18} />,
-      sources: ["TikTok"],
-      actionLabel: t("agent.openTikTok"),
-      action: () => onOpenResearch("tiktok", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      id: "article_rankings",
-      title: t("agent.skill.articleRankings"),
-      body: t("agent.skill.articleRankingsBody"),
-      icon: <FileText size={18} />,
-      sources: [t("source.articles"), "Google Search"],
-      actionLabel: t("agent.openArticles"),
-      action: () => onOpenResearch("articles", DEFAULT_AGENT_CATEGORY),
-    },
-  ];
-  const artifactTabs: Array<{ id: AgentArtifactTab; label: string }> = [
-    { id: "market", label: t("agent.tab.market") },
-    { id: "draft", label: t("agent.tab.draft") },
-    { id: "output", label: t("agent.tab.output") },
-  ];
-  const marketCards = [
-    {
-      title: t("agent.market.amazon"),
-      body: t("agent.market.amazonBody"),
-      icon: <ShoppingBag size={17} />,
-      actionLabel: t("agent.openAmazon"),
-      action: () => onOpenResearch("amazon", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      title: t("agent.market.reddit"),
-      body: t("agent.market.redditBody"),
-      icon: <MessageSquare size={17} />,
-      actionLabel: t("agent.openReddit"),
-      action: () => onOpenResearch("reddit", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      title: t("agent.market.tiktok"),
-      body: t("agent.market.tiktokBody"),
-      icon: <Megaphone size={17} />,
-      actionLabel: t("agent.openTikTok"),
-      action: () => onOpenResearch("tiktok", DEFAULT_AGENT_CATEGORY),
-    },
-    {
-      title: t("agent.market.articles"),
-      body: t("agent.market.articlesBody"),
-      icon: <FileText size={17} />,
-      actionLabel: t("agent.openArticles"),
-      action: () => onOpenResearch("articles", DEFAULT_AGENT_CATEGORY),
-    },
-  ];
-
-  function generateArtifact(event?: FormEvent) {
-    event?.preventDefault();
-    setArtifactPrompt(prompt.trim() || t("agent.defaultPrompt"));
-    setArtifactGeneratedAt(new Date().toISOString());
-    setArtifactTab("draft");
-  }
-
-  function applyPromptPreset(value: string) {
-    setPrompt(value);
-    setArtifactPrompt(value);
-    setArtifactGeneratedAt(new Date().toISOString());
-    setArtifactTab("market");
-  }
-
-  return (
-    <div className="page agent-page">
-      <section className="agent-hero">
-        <div className="agent-hero-copy">
-          <p className="eyebrow">{t("agent.eyebrow")}</p>
-          <h2>{t("agent.title")}</h2>
-          <p>{t("agent.description")}</p>
-          <div className="agent-source-strip">
-            {sourceChips.map((item) => <span key={item}>{item}</span>)}
-          </div>
-        </div>
-        <form className="agent-composer" onSubmit={generateArtifact}>
-          <textarea
-            aria-label={t("agent.promptLabel")}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder={t("agent.promptPlaceholder")}
-            rows={4}
-          />
-          <div className="agent-prompt-actions">
-            <button type="button" onClick={() => applyPromptPreset(t("agent.preset.market"))}>
-              {t("agent.preset.marketLabel")}
-            </button>
-            <button type="button" onClick={() => applyPromptPreset(t("agent.preset.competitor"))}>
-              {t("agent.preset.competitorLabel")}
-            </button>
-            <button type="button" onClick={() => applyPromptPreset(t("agent.preset.review"))}>
-              {t("agent.preset.reviewLabel")}
-            </button>
-            <button type="submit">
-              <Sparkles size={16} />
-              {t("agent.generateArtifact")}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="agent-artifact-shell">
-        <aside className="artifact-chat-panel">
-          <div className="artifact-chat-bubble">{artifactPrompt}</div>
-          <div className="artifact-tool-line">
-            <Link2 size={16} />
-            <span>{formatMessage(t("agent.toolCalls"), { count: 7 })}</span>
-          </div>
-          <div className="artifact-chat-result">
-            <strong>{t("agent.artifactReady")}</strong>
-            <p>{t("agent.artifactReadyBody")}</p>
-          </div>
-          <div className="artifact-action-grid">
-            <button type="button" onClick={() => onOpenResearch("combined", DEFAULT_AGENT_CATEGORY)}>
-              <Sparkles size={16} />
-              {t("agent.openIntegrated")}
-            </button>
-            <button type="button" onClick={() => onOpenCompetitors("discovery")}>
-              <Target size={16} />
-              {t("agent.openDiscovery")}
-            </button>
-            <button type="button" onClick={() => onOpenResearch("articles", DEFAULT_AGENT_CATEGORY)}>
-              <FileText size={16} />
-              {t("agent.openArticles")}
-            </button>
-            <button type="button" onClick={() => onOpenResearch("combined", DEFAULT_AGENT_CATEGORY, true)}>
-              <FolderOpen size={16} />
-              {t("history.open")}
-            </button>
-          </div>
-        </aside>
-
-        <section className="artifact-viewer">
-          <div className="artifact-viewer-head">
-            <div>
-              <p className="eyebrow">{t("agent.artifactEyebrow")}</p>
-              <h3>{t("agent.artifactTitle")}</h3>
-              <span>{shortDate(artifactGeneratedAt, locale)}</span>
-            </div>
-            <div className="artifact-viewer-actions">
-              <button
-                type="button"
-                onClick={() => downloadText("hsia-minimizer-bra-market-artifact.json", artifactJson, "application/json")}
-                title={t("agent.downloadArtifact")}
-              >
-                <Download size={16} />
-              </button>
-              <button type="button" onClick={onOpenSettings} title={t("nav.settings")}>
-                <Settings size={16} />
-              </button>
-            </div>
-          </div>
-          <div className="artifact-tabs" role="tablist" aria-label={t("agent.artifactTabs")}>
-            {artifactTabs.map((tab) => (
-              <button
-                className={artifactTab === tab.id ? "active" : ""}
-                key={tab.id}
-                type="button"
-                onClick={() => setArtifactTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {artifactTab === "market" ? (
-            <div className="artifact-market-grid">
-              {marketCards.map((card) => (
-                <article className="artifact-market-card" key={card.title}>
-                  <div>
-                    <span>{card.icon}</span>
-                    <h4>{card.title}</h4>
-                  </div>
-                  <p>{card.body}</p>
-                  <button type="button" onClick={card.action}>{card.actionLabel}</button>
-                </article>
-              ))}
-              <article className="artifact-market-card emphasis">
-                <div>
-                  <span><Target size={17} /></span>
-                  <h4>{t("agent.market.competitor")}</h4>
-                </div>
-                <p>{t("agent.market.competitorBody")}</p>
-                <button type="button" onClick={() => onOpenCompetitors("discovery")}>{t("agent.openDiscovery")}</button>
-              </article>
-              <article className="artifact-market-card emphasis">
-                <div>
-                  <span><Radar size={17} /></span>
-                  <h4>{t("agent.market.teardown")}</h4>
-                </div>
-                <p>{t("agent.market.teardownBody")}</p>
-                <button type="button" onClick={() => onOpenCompetitors("monitoring")}>{t("agent.openTeardown")}</button>
-              </article>
-            </div>
-          ) : null}
-
-          {artifactTab === "draft" ? (
-            <div className="artifact-draft">
-              <div className="artifact-brief-grid">
-                {Object.entries({
-                  [t("competitors.briefBrand")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.brand,
-                  [t("competitors.briefMarket")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.market,
-                  [t("competitors.briefCategory")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.category,
-                  [t("competitors.briefKeywords")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.coreKeywords,
-                  [t("competitors.briefTargetPrice")]: `${DEFAULT_COMPETITOR_DISCOVERY_BRIEF.targetPriceBand} / ${DEFAULT_COMPETITOR_DISCOVERY_BRIEF.upgradePriceBand}`,
-                  [t("competitors.briefSizes")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.coreSizes,
-                  [t("competitors.briefUsers")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.coreUsers,
-                  [t("competitors.briefDirection")]: DEFAULT_COMPETITOR_DISCOVERY_BRIEF.brandDirection,
-                }).map(([label, value]) => (
-                  <div key={label}>
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="artifact-task-list">
-                <article>
-                  <Search size={16} />
-                  <div>
-                    <h4>{t("agent.task.discovery")}</h4>
-                    <p>{t("agent.task.discoveryBody")}</p>
-                  </div>
-                </article>
-                <article>
-                  <ShieldAlert size={16} />
-                  <div>
-                    <h4>{t("agent.task.validation")}</h4>
-                    <p>{t("agent.task.validationBody")}</p>
-                  </div>
-                </article>
-                <article>
-                  <Lightbulb size={16} />
-                  <div>
-                    <h4>{t("agent.task.output")}</h4>
-                    <p>{t("agent.task.outputBody")}</p>
-                  </div>
-                </article>
-              </div>
-            </div>
-          ) : null}
-
-          {artifactTab === "output" ? (
-            <pre className="artifact-json"><code>{artifactJson}</code></pre>
-          ) : null}
-        </section>
-      </section>
-
-      <section className="agent-skill-grid" aria-label={t("agent.skills")}>
-        {skills.map((skill) => (
-          <article className="agent-skill-card" key={skill.id}>
-            <div className="agent-skill-icon">{skill.icon}</div>
-            <h3>{skill.title}</h3>
-            <p>{skill.body}</p>
-            <div className="agent-skill-sources">
-              {skill.sources.map((source) => <span key={`${skill.id}-${source}`}>{source}</span>)}
-            </div>
-            <button type="button" onClick={skill.action}>
-              {skill.actionLabel}
-            </button>
-          </article>
-        ))}
-      </section>
-    </div>
-  );
-}
-
-function buildAgentArtifactPayload(prompt: string, generatedAt: string) {
-  return {
-    artifact_type: "market_research_task",
-    title: "Hsia US minimizer bra market research",
-    prompt,
-    generated_at: generatedAt,
-    brand_brief: DEFAULT_COMPETITOR_DISCOVERY_BRIEF,
-    data_sources: [
-      { name: "Amazon product pages", route: "Research > Amazon Products", status: "connected" },
-      { name: "Amazon search results", route: "Breakout Competitors > Discovery", status: "connected" },
-      { name: "Amazon user reviews", route: "Research > Amazon Products / Breakout Teardown", status: "connected" },
-      { name: "TikTok / TikTok Shop related content", route: "Research > TikTok Social / Competitor TikTok validation", status: "connected" },
-      { name: "US media reviews", route: "Research > Media / Ranking Articles", status: "connected" },
-      { name: "Competitor official sites", route: "Breakout Competitors > Teardown web sources", status: "connected" },
-      { name: "Google search results", route: "Research > Article discovery", status: "connected" },
-      { name: "Public ranking articles", route: "Research > Media / Ranking Articles", status: "connected" },
-    ],
-    tasks: [
-      "Generate integrated market insight from Reddit and Amazon evidence",
-      "Discover breakout competitors from Amazon evidence gates",
-      "Cross-validate candidates with TikTok videos and detail-page comments",
-      "Read media reviews, public rankings, and accessible reports",
-      "Confirm competitors into teardown and produce R&D learnings",
-    ],
-    outputs: [
-      "market_insight_brief",
-      "breakout_competitor_candidates",
-      "tiktok_validation_cards",
-      "article_authority_evidence",
-      "competitor_teardown_report",
-    ],
-  };
-}
-
-function CompetitorsPage({ launchIntent, locale, t }: {
-  launchIntent?: CompetitorLaunchIntent | null;
-} & LocalizedProps) {
-  const [initialSession] = useState<CompetitorSession>(() => loadCompetitorSession());
-  const [activeCompetitorTab, setActiveCompetitorTab] = useState<CompetitorTab>(initialSession.activeCompetitorTab);
-  const [discoveryBrief, setDiscoveryBrief] = useState<CompetitorDiscoveryBrief>(initialSession.discoveryBrief);
-  const [scoreWeights, setScoreWeights] = useState<CompetitorScoreWeights>(initialSession.scoreWeights);
-  const [productLimit, setProductLimit] = useState(initialSession.productLimit);
-  const [bypassCache, setBypassCache] = useState(initialSession.bypassCache);
-  const [discoveryReport, setDiscoveryReport] = useState<CompetitorDiscoveryReport | null>(initialSession.discoveryReport);
-  const [monitoringCandidates, setMonitoringCandidates] = useState<CompetitorCandidate[]>(initialSession.monitoringCandidates);
-  const [deepDiveReports, setDeepDiveReports] = useState<Record<string, CompetitorDeepDiveReport>>(initialSession.deepDiveReports);
-  const [selectedDeepDiveKey, setSelectedDeepDiveKey] = useState(initialSession.selectedDeepDiveKey);
-  const [deepDivePreset, setDeepDivePreset] = useState<CompetitorDeepDivePreset>(initialSession.deepDivePreset);
-  const [discoveryLoading, setDiscoveryLoading] = useState(false);
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const [deepDiveLoadingKey, setDeepDiveLoadingKey] = useState<string | null>(null);
-  const [deepDiveError, setDeepDiveError] = useState<string | null>(null);
-  const [deepDiveMessage, setDeepDiveMessage] = useState<string | null>(null);
-  const [tiktokVerificationLoadingKey, setTikTokVerificationLoadingKey] = useState<string | null>(null);
-  const [tiktokVerificationMessage, setTikTokVerificationMessage] = useState<string | null>(null);
-  const deepDiveAbortRef = useRef<AbortController | null>(null);
-  const deepDiveRunIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    saveCompetitorSession({
-      activeCompetitorTab,
-      discoveryBrief,
-      scoreWeights,
-      productLimit,
-      bypassCache,
-      discoveryReport,
-      monitoringCandidates,
-      deepDiveReports,
-      selectedDeepDiveKey,
-      deepDivePreset,
-    });
-  }, [
-    activeCompetitorTab,
-    discoveryBrief,
-    scoreWeights,
-    productLimit,
-    bypassCache,
-    discoveryReport,
-    monitoringCandidates,
-    deepDiveReports,
-    selectedDeepDiveKey,
-    deepDivePreset,
-  ]);
-
-  useEffect(() => {
-    if (!launchIntent) return;
-    setActiveCompetitorTab(launchIntent.tab);
-  }, [launchIntent?.nonce, launchIntent?.tab]);
-
-  useEffect(() => () => cancelDeepDive(), []);
-
-  function updateDiscoveryBrief(field: keyof CompetitorDiscoveryBrief, value: string) {
-    setDiscoveryBrief((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateScoreWeight(field: keyof CompetitorScoreWeights, value: number) {
-    setScoreWeights((current) => ({
-      ...current,
-      [field]: Number(boundedNumber(value, current[field], 0, 3).toFixed(2)),
-    }));
-  }
-
-  async function runDiscovery(event?: FormEvent) {
-    event?.preventDefault();
-    const normalizedBrief = normalizeCompetitorBrief(discoveryBrief);
-    const normalizedScoreWeights = normalizeCompetitorScoreWeights(scoreWeights);
-    const normalizedProductLimit = boundedInteger(productLimit, 20, 1, 100);
-    setDiscoveryBrief(normalizedBrief);
-    setScoreWeights(normalizedScoreWeights);
-    setProductLimit(normalizedProductLimit);
-    setDiscoveryLoading(true);
-    setDiscoveryError(null);
-    try {
-      const report = await api.discoverCompetitors({
-        brief: normalizedBrief,
-        scoreWeights: normalizedScoreWeights,
-        limit: normalizedProductLimit,
-        amazonKeywordLimit: 8,
-        bypassCache,
-      });
-      setDiscoveryReport(report);
-    } catch (err) {
-      setDiscoveryError(err instanceof Error ? err.message : t("competitors.discoveryError"));
-    } finally {
-      setDiscoveryLoading(false);
-    }
-  }
-
-  function isMonitoringCandidate(candidate: CompetitorCandidate): boolean {
-    const key = competitorCandidateKey(candidate);
-    return monitoringCandidates.some((item) => competitorCandidateKey(item) === key);
-  }
-
-  function addMonitoringCandidate(candidate: CompetitorCandidate) {
-    setMonitoringCandidates((current) => {
-      const key = competitorCandidateKey(candidate);
-      if (current.some((item) => competitorCandidateKey(item) === key)) return current;
-      return [...current, candidate];
-    });
-  }
-
-  function cancelDeepDive(message?: string) {
-    const runId = deepDiveRunIdRef.current;
-    deepDiveAbortRef.current?.abort();
-    deepDiveAbortRef.current = null;
-    deepDiveRunIdRef.current = null;
-    if (runId) {
-      void api.cancelCompetitorAnalysis({ runId }).catch(() => {
-        // The browser-side abort already stopped the UI; backend cancellation is best effort.
-      });
-    }
-    setDeepDiveLoadingKey(null);
-    if (message) {
-      setDeepDiveMessage(message);
-    }
-  }
-
-  function removeMonitoringCandidate(candidate: CompetitorCandidate) {
-    const key = competitorCandidateKey(candidate);
-    if (deepDiveLoadingKey === key) {
-      cancelDeepDive(t("competitors.deepDiveStoppedAfterRemove"));
-    }
-    setMonitoringCandidates((current) => current.filter((item) => competitorCandidateKey(item) !== key));
-    setDeepDiveReports((current) => {
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-    if (selectedDeepDiveKey === key) {
-      setSelectedDeepDiveKey("");
-    }
-  }
-
-  function replaceCompetitorCandidate(updatedCandidate: CompetitorCandidate) {
-    const key = competitorCandidateKey(updatedCandidate);
-    setDiscoveryReport((current) => current ? {
-      ...current,
-      candidates: current.candidates.map((candidate) => (
-        competitorCandidateKey(candidate) === key ? updatedCandidate : candidate
-      )),
-    } : current);
-    setMonitoringCandidates((current) => current.map((candidate) => (
-      competitorCandidateKey(candidate) === key ? updatedCandidate : candidate
-    )));
-  }
-
-  async function verifyCandidateOnTikTok(candidate: CompetitorCandidate) {
-    const key = competitorCandidateKey(candidate);
-    setTikTokVerificationLoadingKey(key);
-    setTikTokVerificationMessage(null);
-    setDeepDiveError(null);
-    try {
-      const result = await api.verifyCompetitorTikTok({
-        candidate,
-        brief: discoveryBrief,
-        scoreWeights,
-        limit: 8,
-        tiktokCommentsPerVideo: 8,
-        bypassCache,
-      });
-      replaceCompetitorCandidate(result.candidate);
-      setTikTokVerificationMessage(formatMessage(t("competitors.tiktokValidated"), {
-        label: result.validation.label,
-        videos: result.validation.video_count,
-        comments: result.validation.comment_samples,
-      }));
-    } catch (err) {
-      setDeepDiveError(err instanceof Error ? err.message : t("competitors.tiktokValidationError"));
-    } finally {
-      setTikTokVerificationLoadingKey(null);
-    }
-  }
-
-  async function runDeepDive(candidate: CompetitorCandidate) {
-    const key = competitorCandidateKey(candidate);
-    if (deepDiveLoadingKey) {
-      cancelDeepDive();
-    }
-    const runId = createRunId("competitor");
-    const controller = new AbortController();
-    deepDiveRunIdRef.current = runId;
-    deepDiveAbortRef.current = controller;
-    setDeepDiveLoadingKey(key);
-    setDeepDiveError(null);
-    setDeepDiveMessage(null);
-    setSelectedDeepDiveKey(key);
-    const preset = COMPETITOR_DEEP_DIVE_PRESETS[deepDivePreset];
-    try {
-      const report = await api.analyzeCompetitor({
-        candidate,
-        runId,
-        category: discoveryBrief.category,
-        brief: discoveryBrief,
-        redditLimit: preset.redditLimit,
-        redditDetailLimit: preset.redditDetailLimit,
-        redditCommentsPerPost: preset.redditCommentsPerPost,
-        amazonReviewLimit: preset.amazonReviewLimit,
-        webCandidateLimit: preset.webCandidateLimit,
-        aiReviewLimit: preset.aiReviewLimit,
-        aiRedditPostLimit: preset.aiRedditPostLimit,
-        timeRange: "all",
-        mode: "auto",
-        useLlm: true,
-        locale,
-        bypassCache,
-      }, { signal: controller.signal });
-      if (controller.signal.aborted) return;
-      setDeepDiveReports((current) => ({ ...current, [key]: report }));
-    } catch (err) {
-      if (controller.signal.aborted) {
-        setDeepDiveMessage(t("competitors.deepDiveStopped"));
-        return;
-      }
-      setDeepDiveError(err instanceof Error ? err.message : t("competitors.deepDiveError"));
-    } finally {
-      if (deepDiveRunIdRef.current === runId) {
-        deepDiveAbortRef.current = null;
-        deepDiveRunIdRef.current = null;
-        setDeepDiveLoadingKey(null);
-      }
-    }
-  }
-
-  const status = discoveryReport
-    ? formatMessage(t("competitors.statusWithCandidates"), { count: discoveryReport.summary.candidate_count })
-    : t("competitors.ready");
-  const collectionSummary = discoveryReport
-    ? formatMessage(t("competitors.collectionSummaryWithData"), {
-      products: discoveryReport.source.collected_items_count,
-      candidates: discoveryReport.summary.candidate_count,
-    })
-    : t("competitors.collectionSummaryDefault");
-  const scoreWeightItems = COMPETITOR_SCORE_WEIGHT_KEYS.map((key) => ({
-    key,
-    label: t(`competitors.weight.${key}`, key),
-  }));
-  const activeDeepDivePreset = COMPETITOR_DEEP_DIVE_PRESETS[deepDivePreset];
-  const selectedDeepDiveReport = selectedDeepDiveKey ? deepDiveReports[selectedDeepDiveKey] : null;
-  const discoveryBuckets = discoveryReport ? [
-    {
-      key: "strong_breakout",
-      title: t("competitors.bucket.strong"),
-      subtitle: t("competitors.bucket.strongSubtitle"),
-      candidates: discoveryReport.candidates.filter((candidate) => candidate.breakout_tier === "strong_breakout"),
-    },
-    {
-      key: "needs_tiktok_validation",
-      title: t("competitors.bucket.tiktok"),
-      subtitle: t("competitors.bucket.tiktokSubtitle"),
-      candidates: discoveryReport.candidates.filter((candidate) => candidate.breakout_tier === "needs_tiktok_validation" || candidate.breakout_tier === "watchlist"),
-    },
-    {
-      key: "low_evidence",
-      title: t("competitors.bucket.low"),
-      subtitle: t("competitors.bucket.lowSubtitle"),
-      candidates: discoveryReport.candidates.filter((candidate) => !candidate.breakout_tier || candidate.breakout_tier === "low_evidence"),
-    },
-  ].filter((bucket) => bucket.candidates.length) : [];
-
-  return (
-    <div className="page competitors-page">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">{t("competitors.eyebrow")}</p>
-          <h2>{t("competitors.title")}</h2>
-          <p>{t("competitors.description")}</p>
-        </div>
-        <div className="status-pill">{status}</div>
-      </header>
-
-      <div className="source-tabs" role="tablist" aria-label="Competitors">
-        <button
-          className={activeCompetitorTab === "discovery" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveCompetitorTab("discovery")}
-        >
-          <Search size={16} />
-          {t("competitors.discoveryTab")}
-        </button>
-        <button
-          className={activeCompetitorTab === "monitoring" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveCompetitorTab("monitoring")}
-        >
-          <Radar size={16} />
-          {t("competitors.monitoringTab")}
-        </button>
-      </div>
-
-      {activeCompetitorTab === "discovery" ? (
-        <form className="competitor-brief-panel" onSubmit={runDiscovery} noValidate>
-          <div className="competitor-brief-grid">
-            <label className="brief-field">
-              <span>{t("competitors.briefBrand")}</span>
-              <input
-                value={discoveryBrief.brand}
-                onChange={(event) => updateDiscoveryBrief("brand", event.target.value)}
-              />
-            </label>
-            <label className="brief-field">
-              <span>{t("competitors.briefMarket")}</span>
-              <input
-                value={discoveryBrief.market}
-                onChange={(event) => updateDiscoveryBrief("market", event.target.value)}
-              />
-            </label>
-            <label className="brief-field">
-              <span>{t("competitors.briefCategory")}</span>
-              <input
-                value={discoveryBrief.category}
-                onChange={(event) => updateDiscoveryBrief("category", event.target.value)}
-              />
-            </label>
-            <label className="brief-field wide">
-              <span>{t("competitors.briefKeywords")}</span>
-              <textarea
-                value={discoveryBrief.coreKeywords}
-                onChange={(event) => updateDiscoveryBrief("coreKeywords", event.target.value)}
-                rows={3}
-              />
-            </label>
-            <label className="brief-field">
-              <span>{t("competitors.briefTargetPrice")}</span>
-              <input
-                value={discoveryBrief.targetPriceBand}
-                onChange={(event) => updateDiscoveryBrief("targetPriceBand", event.target.value)}
-              />
-            </label>
-            <label className="brief-field">
-              <span>{t("competitors.briefUpgradePrice")}</span>
-              <input
-                value={discoveryBrief.upgradePriceBand}
-                onChange={(event) => updateDiscoveryBrief("upgradePriceBand", event.target.value)}
-              />
-            </label>
-            <label className="brief-field">
-              <span>{t("competitors.briefSizes")}</span>
-              <input
-                value={discoveryBrief.coreSizes}
-                onChange={(event) => updateDiscoveryBrief("coreSizes", event.target.value)}
-              />
-            </label>
-            <label className="brief-field wide">
-              <span>{t("competitors.briefUsers")}</span>
-              <textarea
-                value={discoveryBrief.coreUsers}
-                onChange={(event) => updateDiscoveryBrief("coreUsers", event.target.value)}
-                rows={3}
-              />
-            </label>
-            <label className="brief-field wide">
-              <span>{t("competitors.briefDirection")}</span>
-              <textarea
-                value={discoveryBrief.brandDirection}
-                onChange={(event) => updateDiscoveryBrief("brandDirection", event.target.value)}
-                rows={3}
-              />
-            </label>
-          </div>
-          <div className="competitor-score-panel">
-            <div className="competitor-score-head">
-              <span>{t("competitors.scoreWeightsTitle")}</span>
-              <button className="score-reset-button" type="button" onClick={() => setScoreWeights(DEFAULT_COMPETITOR_SCORE_WEIGHTS)}>
-                <RefreshCw size={14} />
-                {t("competitors.resetWeights")}
-              </button>
-            </div>
-            <div className="score-weight-grid">
-              {scoreWeightItems.map((item) => (
-                <label className="score-weight-field" key={item.key}>
-                  <span>
-                    {item.label}
-                    <b>{scoreWeights[item.key].toFixed(2)}x</b>
-                  </span>
-                  <input
-                    max={3}
-                    min={0}
-                    onChange={(event) => updateScoreWeight(item.key, Number(event.target.value))}
-                    step={0.25}
-                    type="range"
-                    value={scoreWeights[item.key]}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="competitor-brief-actions">
-          <label className="compact-number-field">
-            <span>{t("competitors.productLimit")}</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              step={1}
-              value={productLimit}
-              onChange={(event) => setProductLimit(Number(event.target.value))}
-            />
-          </label>
-          <div className="collection-summary">
-            <Radar size={16} />
-            <span>{collectionSummary}</span>
-          </div>
-          <label className="cache-toggle" title={t("research.bypassCacheNote")}>
-            <input
-              type="checkbox"
-              checked={bypassCache}
-              onChange={(event) => setBypassCache(event.target.checked)}
-            />
-            <span>{t("research.bypassCache")}</span>
-          </label>
-          <button type="submit" disabled={discoveryLoading}>
-            {discoveryLoading ? <Loader2 className="spin" size={17} /> : <Search size={17} />}
-            {discoveryLoading ? t("competitors.discoveryRunning") : t("competitors.runDiscovery")}
-          </button>
-          </div>
-        </form>
-      ) : null}
-
-      {discoveryError ? <div className="alert danger">{discoveryError}</div> : null}
-      {discoveryLoading ? <LoadingPanel text={t("competitors.discoveryLoading")} /> : null}
-
-      {!discoveryLoading && activeCompetitorTab === "discovery" ? (
-        <section className="panel wide competitor-mode-panel">
-          <PanelTitle title={t("competitors.discoveryTitle")} subtitle={t("competitors.discoverySubtitle")} />
-          <div className="competitor-mode-grid">
-            <article className="list-card">
-              <h4>{t("competitors.discoveryInputs")}</h4>
-              <p>{t("competitors.discoveryInputsValue")}</p>
-            </article>
-            <article className="list-card">
-              <h4>{t("competitors.discoveryOutput")}</h4>
-              <p>{t("competitors.discoveryOutputValue")}</p>
-            </article>
-            <article className="list-card">
-              <h4>{t("competitors.discoverySourceTitle")}</h4>
-              <p>{t("competitors.discoverySourceBody")}</p>
-            </article>
-          </div>
-        </section>
-      ) : null}
-
-      {!discoveryLoading && activeCompetitorTab === "monitoring" && !monitoringCandidates.length ? (
-        <section className="empty-state competitor-empty-state">
-          <Radar size={36} />
-          <h3>{t("competitors.monitoringEmptyTitle")}</h3>
-          <p>{t("competitors.monitoringEmptyBody")}</p>
-          <button type="button" onClick={() => setActiveCompetitorTab("discovery")}>
-            <Search size={17} />
-            {t("competitors.goDiscovery")}
-          </button>
-        </section>
-      ) : null}
-
-      {!discoveryLoading && activeCompetitorTab === "discovery" && discoveryReport ? (
-        <section className="panel wide competitor-results-panel">
-          <PanelTitle
-            title={t("competitors.resultsTitle")}
-            subtitle={formatMessage(t("competitors.resultsSubtitle"), {
-              candidates: discoveryReport.summary.candidate_count,
-              source: discoveryReport.source.source_name,
-            })}
-          />
-          <div className="competitor-audit-grid">
-            <div>
-              <span>{t("competitors.sourceStatus")}</span>
-              <strong>{discoveryReport.source.status}</strong>
-              <p>{discoveryReport.source.next_action}</p>
-            </div>
-            <div>
-              <span>{t("competitors.collectedProducts")}</span>
-              <strong>{formatInteger(discoveryReport.source.collected_items_count)}</strong>
-              <p>{formatMessage(t("competitors.queryCount"), { count: discoveryReport.data_volume.query_count })}</p>
-            </div>
-            <div>
-              <span>{t("competitors.filteredProducts")}</span>
-              <strong>{formatInteger(discoveryReport.data_volume.excluded_products || 0)}</strong>
-              <p>{formatMessage(t("competitors.filteredProductsNote"), { count: discoveryReport.data_volume.excluded_products || 0 })}</p>
-            </div>
-            <div>
-              <span>{t("competitors.strongBreakout")}</span>
-              <strong>{formatInteger(discoveryReport.summary.strong_breakout || 0)}</strong>
-              <p>{formatMessage(t("competitors.needTikTokValidation"), { count: discoveryReport.summary.needs_tiktok_validation || 0 })}</p>
-            </div>
-          </div>
-          {discoveryReport.warnings.length ? (
-            <div className="alert subtle">{discoveryReport.warnings.join(" ")}</div>
-          ) : null}
-          <div className="competitor-bucket-list">
-            {discoveryBuckets.map((bucket) => (
-              <section className="competitor-bucket-section" key={bucket.key}>
-                <div className="competitor-bucket-head">
-                  <div>
-                    <h4>{bucket.title}</h4>
-                    <p>{bucket.subtitle}</p>
-                  </div>
-                  <span>{bucket.candidates.length}</span>
-                </div>
-                <div className="competitor-result-list">
-                  {bucket.candidates.map((candidate, index) => {
-                    const candidateKey = competitorCandidateKey(candidate);
-                    return (
-                      <CompetitorCandidateCard
-                        actionDisabled={isMonitoringCandidate(candidate)}
-                        actionLabel={isMonitoringCandidate(candidate) ? t("competitors.addedToMonitoring") : t("competitors.addToTeardown")}
-                        candidate={candidate}
-                        key={`${candidate.id}-${index}`}
-                        onAction={() => addMonitoringCandidate(candidate)}
-                        onTikTokAction={() => verifyCandidateOnTikTok(candidate)}
-                        t={t}
-                        tiktokActionLabel={candidate.tiktok_validation ? t("competitors.revalidateTikTok") : t("competitors.validateTikTok")}
-                        tiktokActionLoading={tiktokVerificationLoadingKey === candidateKey}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {!discoveryLoading && activeCompetitorTab === "monitoring" && monitoringCandidates.length ? (
-        <section className="panel wide competitor-results-panel">
-          <PanelTitle
-            title={t("competitors.monitoringResultsTitle")}
-            subtitle={formatMessage(t("competitors.monitoringResultsSubtitle"), {
-              count: monitoringCandidates.length,
-            })}
-          />
-          <div className="deep-dive-preset-panel">
-            <div>
-              <strong>{t("competitors.deepDivePreset")}</strong>
-              <p>{formatMessage(t("competitors.deepDivePresetSummary"), {
-                amazon: activeDeepDivePreset.amazonReviewLimit,
-                reddit: activeDeepDivePreset.redditLimit,
-                detail: activeDeepDivePreset.redditDetailLimit,
-                comments: activeDeepDivePreset.redditCommentsPerPost,
-                web: activeDeepDivePreset.webCandidateLimit,
-                aiReviews: activeDeepDivePreset.aiReviewLimit,
-                aiPosts: activeDeepDivePreset.aiRedditPostLimit,
-              })}</p>
-            </div>
-            <div className="deep-dive-preset-buttons" role="group" aria-label={t("competitors.deepDivePreset")}>
-              {COMPETITOR_DEEP_DIVE_PRESET_KEYS.map((presetKey) => (
-                <button
-                  aria-pressed={deepDivePreset === presetKey}
-                  className={deepDivePreset === presetKey ? "active" : ""}
-                  disabled={Boolean(deepDiveLoadingKey)}
-                  key={presetKey}
-                  onClick={() => setDeepDivePreset(presetKey)}
-                  type="button"
-                >
-                  {t(`competitors.preset.${presetKey}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="competitor-result-list">
-            {monitoringCandidates.map((candidate, index) => {
-              const candidateKey = competitorCandidateKey(candidate);
-              return (
-                <CompetitorCandidateCard
-                  actionLabel={t("competitors.removeFromTeardown")}
-                  candidate={candidate}
-                  key={`${candidate.id}-${index}`}
-                  onAction={() => removeMonitoringCandidate(candidate)}
-                  onTikTokAction={() => verifyCandidateOnTikTok(candidate)}
-                  secondaryActionIcon={deepDiveLoadingKey === candidateKey ? "stop" : "sparkles"}
-                  secondaryActionLabel={deepDiveLoadingKey === candidateKey ? t("competitors.stopDeepDive") : t("competitors.runDeepDive")}
-                  onSecondaryAction={() => (
-                    deepDiveLoadingKey === candidateKey
-                      ? cancelDeepDive(t("competitors.deepDiveStopped"))
-                      : runDeepDive(candidate)
-                  )}
-                  t={t}
-                  tiktokActionLabel={candidate.tiktok_validation ? t("competitors.revalidateTikTok") : t("competitors.validateTikTok")}
-                  tiktokActionLoading={tiktokVerificationLoadingKey === candidateKey}
-                  variant="monitoring"
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {deepDiveError ? <div className="alert danger">{deepDiveError}</div> : null}
-      {deepDiveMessage ? <div className="alert subtle">{deepDiveMessage}</div> : null}
-      {tiktokVerificationMessage ? <div className="alert subtle">{tiktokVerificationMessage}</div> : null}
-      {deepDiveLoadingKey ? (
-        <section className="panel wide competitor-stop-panel">
-          <LoadingPanel text={t("competitors.deepDiveLoading")} />
-          <button type="button" onClick={() => cancelDeepDive(t("competitors.deepDiveStopped"))}>
-            <Square size={15} />
-            {t("competitors.stopDeepDive")}
-          </button>
-        </section>
-      ) : null}
-      {!deepDiveLoadingKey && selectedDeepDiveReport ? (
-        <CompetitorDeepDiveView report={selectedDeepDiveReport} t={t} />
-      ) : null}
-
-      {activeCompetitorTab === "monitoring" && monitoringCandidates.length ? (
-        <section className="panel wide competitor-next-panel">
-        <PanelTitle title={t("competitors.nextTitle")} subtitle={t("competitors.nextSubtitle")} />
-        <div className="competitor-next-grid">
-          <article className="list-card">
-            <h4>{t("competitors.seedTitle")}</h4>
-            <p>{t("competitors.seedBody")}</p>
-          </article>
-          <article className="list-card">
-            <h4>{t("competitors.schemaTitle")}</h4>
-            <p>{t("competitors.schemaBody")}</p>
-          </article>
-          <article className="list-card">
-            <h4>{t("competitors.reviewTitle")}</h4>
-            <p>{t("competitors.reviewBody")}</p>
-          </article>
-        </div>
-      </section>
-      ) : null}
-    </div>
-  );
-}
-
-function competitorCandidateKey(candidate: CompetitorCandidate): string {
-  return candidate.id || candidate.asin || candidate.product_url || candidate.title;
-}
-
-function createRunId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function competitorScoreBreakdownLabel(key: string, t: Translator): string {
-  if (key === "base") return t("competitors.weight.base");
-  return t(`competitors.weight.${key}`, key);
-}
-
-function CompetitorCandidateCard({
-  actionDisabled = false,
-  actionLabel,
-  candidate,
-  onAction,
-  onSecondaryAction,
-  onTikTokAction,
-  secondaryActionIcon = "sparkles",
-  secondaryActionLabel,
-  secondaryActionLoading = false,
-  t,
-  tiktokActionLabel,
-  tiktokActionLoading = false,
-  variant = "discovery",
-}: {
-  actionDisabled?: boolean;
-  actionLabel: string;
-  candidate: CompetitorCandidate;
-  onAction: () => void;
-  onSecondaryAction?: () => void;
-  onTikTokAction?: () => void;
-  secondaryActionIcon?: "sparkles" | "stop";
-  secondaryActionLabel?: string;
-  secondaryActionLoading?: boolean;
-  t: Translator;
-  tiktokActionLabel?: string;
-  tiktokActionLoading?: boolean;
-  variant?: "discovery" | "monitoring";
-}) {
-  const tiktokValidation = candidate.tiktok_validation;
-  return (
-    <article className="competitor-result-card">
-      {candidate.image_url ? (
-        <img src={candidate.image_url} alt="" loading="lazy" />
-      ) : (
-        <div className="competitor-image-placeholder"><ShoppingBag size={22} /></div>
-      )}
-      <div className="competitor-result-body">
-        <div className="competitor-result-head">
-          <div>
-            <span className={`priority-pill priority-${candidate.priority.toLowerCase()}`}>
-              {candidate.priority} · {candidate.score}
-            </span>
-            {candidate.breakout_label ? (
-              <span className={`breakout-pill breakout-${(candidate.breakout_tier || "low_evidence").replace(/_/g, "-")}`}>
-                {candidate.breakout_label}
-              </span>
-            ) : null}
-            <h4><a href={candidate.product_url} target="_blank" rel="noreferrer">{candidate.title}</a></h4>
-            <p>{candidate.brand || t("amazon.unknownBrand")} · {candidate.platform} · {candidate.asin || "-"}</p>
-          </div>
-          <div className="competitor-commerce-signal">
-            <strong>{candidate.price_text || formatCurrency(candidate.price_value)}</strong>
-            <span>{candidate.rating_value || "-"} / {formatInteger(candidate.review_count)}</span>
-            <button
-              className={variant === "monitoring" ? "secondary" : ""}
-              disabled={actionDisabled}
-              onClick={onAction}
-              type="button"
-            >
-              {variant === "monitoring" ? <Trash2 size={14} /> : <Radar size={14} />}
-              {actionLabel}
-            </button>
-            {onTikTokAction && tiktokActionLabel ? (
-              <button
-                className="tiktok"
-                disabled={tiktokActionLoading}
-                onClick={onTikTokAction}
-                type="button"
-              >
-                {tiktokActionLoading ? <Loader2 className="spin" size={14} /> : <Megaphone size={14} />}
-                {tiktokActionLabel}
-              </button>
-            ) : null}
-            {onSecondaryAction && secondaryActionLabel ? (
-              <button
-                className="primary"
-                disabled={secondaryActionLoading}
-                onClick={onSecondaryAction}
-                type="button"
-              >
-                {secondaryActionLoading ? (
-                  <Loader2 className="spin" size={14} />
-                ) : secondaryActionIcon === "stop" ? (
-                  <Square size={14} />
-                ) : (
-                  <Sparkles size={14} />
-                )}
-                {secondaryActionLabel}
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="chips competitor-source-chips">
-          {candidate.is_sponsored ? <span>{t("amazon.sponsored")}</span> : null}
-          {candidate.badges.slice(0, 3).map((badge) => <span key={badge}>{badge}</span>)}
-          {candidate.matched_queries.slice(0, 2).map((query) => <span key={query}>{query}</span>)}
-        </div>
-        {candidate.score_breakdown?.length ? (
-          <div className="competitor-score-breakdown" aria-label={t("competitors.scoreBreakdown")}>
-            {candidate.score_breakdown.map((item) => (
-              <span className={item.points < 0 ? "negative" : ""} key={item.key}>
-                <b>{competitorScoreBreakdownLabel(item.key, t)}</b>
-                {item.points > 0 ? "+" : ""}{item.points}
-                {item.key !== "base" ? <em>{item.weight.toFixed(2)}x</em> : null}
-              </span>
-            ))} 
-          </div>
-        ) : null}
-        {tiktokValidation ? (
-          <div className={`tiktok-validation-card tiktok-${tiktokValidation.status}`}>
-            <div className="tiktok-validation-head">
-              <div>
-                <strong>{tiktokValidation.label} · {tiktokValidation.score}</strong>
-                <p>{formatMessage(t("competitors.tiktokValidationSummary"), {
-                  videos: tiktokValidation.video_count,
-                  views: formatCompactNumber(tiktokValidation.total_views),
-                  comments: tiktokValidation.comment_samples,
-                })}</p>
-              </div>
-              <span>{t("competitors.tiktokQuery")}: {tiktokValidation.query}</span>
-            </div>
-            {tiktokValidation.matched_terms?.length ? (
-              <div className="chips competitor-source-chips">
-                {tiktokValidation.matched_terms.slice(0, 6).map((term) => <span key={term}>{term}</span>)}
-              </div>
-            ) : null}
-            {tiktokValidation.video_evidence?.length ? (
-              <div className="tiktok-evidence-list">
-                {tiktokValidation.video_evidence.slice(0, 3).map((video, index) => (
-                  <article className="tiktok-evidence-item" key={video.url || `${candidate.id}-tiktok-${index}`}>
-                    <div>
-                      <a href={video.url} target="_blank" rel="noreferrer">{video.title || t("tiktok.evidenceTitle")}</a>
-                      <p>
-                        {video.author || t("tiktok.unknownAuthor")} · {formatCompactNumber(video.view_count)} {t("tiktok.views")} · {formatCompactNumber(video.like_count)} {t("tiktok.likes")} · {formatCompactNumber(video.comment_count)} {t("tiktok.comments")}
-                      </p>
-                    </div>
-                    {video.snippet ? <p className="summary-text">{video.snippet}</p> : null}
-                    {video.comment_samples?.length ? (
-                      <div className="tiktok-comment-preview">
-                        {video.comment_samples.slice(0, 2).map((comment, commentIndex) => (
-                          <p key={`${video.url}-comment-${commentIndex}`}>
-                            <b>{comment.author || "TikTok"}</b>: {comment.text}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="tiktok-no-evidence">{t("competitors.tiktokNoVideoEvidence")}</p>
-            )}
-            {tiktokValidation.warnings?.length ? (
-              <p className="tiktok-warning-text">{tiktokValidation.warnings.slice(0, 2).join(" ")}</p>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="competitor-reason-grid">
-          <div>
-            <h5>{t("competitors.whyTrack")}</h5>
-            <ul>
-              {candidate.why_worth_tracking.map((reason) => <li key={reason}>{reason}</li>)}
-            </ul>
-          </div>
-          <div>
-            <h5>{t("competitors.risks")}</h5>
-            <ul>
-              {(candidate.risks.length ? candidate.risks : [t("competitors.noRisks")]).map((risk) => <li key={risk}>{risk}</li>)}
-            </ul>
-          </div>
-        </div>
-        {candidate.claim_evidence.length ? (
-          <p className="competitor-claim">{candidate.claim_evidence[0]}</p>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function CompetitorDeepDiveView({ report, t }: { report: CompetitorDeepDiveReport; t: Translator }) {
-  const product = report.product;
-  return (
-    <section className="panel wide competitor-deep-dive">
-      <PanelTitle
-        title={t("competitors.deepDiveTitle")}
-        subtitle={`${product.brand || t("amazon.unknownBrand")} · ${product.asin || product.product_url || ""}`}
-      />
-
-      <div className="deep-dive-hero">
-        {product.image_url ? <img src={product.image_url} alt="" loading="lazy" /> : <div className="competitor-image-placeholder"><ShoppingBag size={24} /></div>}
-        <div>
-          <p className="eyebrow">{t("competitors.deepDiveVerdict")}</p>
-          <h3>{report.verdict.text}</h3>
-          <CompetitorCitationLinks citations={report.verdict.citations} t={t} />
-          <div className="chips competitor-source-chips">
-            <span>Amazon · {report.source_status.amazon}</span>
-            <span>Reddit · {report.source_status.reddit}</span>
-            <span>Web · {report.source_status.web}</span>
-            <span>{report.sales_proxy.confidence} {t("report.confidence")}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="data-volume-grid deep-dive-volume">
-        <div className="volume-stat">
-          <span>{t("competitors.amazonReviewVolume")}</span>
-          <strong>{formatInteger(report.data_volume.amazon_reviews_collected)}</strong>
-          <p>{formatMessage(t("competitors.amazonReviewVolumeNote"), {
-            requested: report.data_volume.amazon_reviews_requested,
-            ai: report.data_volume.ai_reviews,
-          })}</p>
-        </div>
-        <div className="volume-stat">
-          <span>{t("competitors.redditVolume")}</span>
-          <strong>{formatInteger(report.data_volume.reddit_posts_collected)}</strong>
-          <p>{formatMessage(t("competitors.redditVolumeNote"), {
-            requested: report.data_volume.reddit_posts_requested,
-            detail: report.data_volume.reddit_detail_posts_requested ?? report.reddit.data_volume.comment_enrichment_post_limit,
-            perPost: report.data_volume.reddit_comments_per_post_requested ?? report.reddit.data_volume.comments_per_enriched_post_limit,
-            comments: report.data_volume.reddit_comments_collected,
-            ai: report.data_volume.ai_reddit_posts,
-          })}</p>
-        </div>
-        <div className="volume-stat">
-          <span>{t("competitors.webVolume")}</span>
-          <strong>{formatInteger(report.data_volume.web_sources_read)}</strong>
-          <p>{formatMessage(t("competitors.webVolumeNote"), {
-            candidates: report.data_volume.web_candidates,
-          })}</p>
-        </div>
-        <div className="volume-stat">
-          <span>{t("competitors.aiEvidenceVolume")}</span>
-          <strong>{formatInteger(report.data_volume.ai_evidence_items)}</strong>
-          <p>{formatMessage(t("competitors.aiEvidenceVolumeNote"), {
-            reviews: report.data_volume.ai_reviews,
-            posts: report.data_volume.ai_reddit_posts,
-          })}</p>
-        </div>
-      </div>
-
-      {report.llm_analysis.status !== "ok" && report.llm_analysis.enabled ? (
-        <div className="alert warning">{report.llm_analysis.message || t("llm.unavailableMessage")}</div>
-      ) : null}
-      {report.warnings.length ? <div className="alert subtle">{report.warnings.join(" ")}</div> : null}
-
-      <div className="deep-dive-section-grid">
-        <CompetitorInsightSection title={t("competitors.breakoutAssessment")} items={report.breakout_assessment} t={t} />
-        <CompetitorInsightSection title={t("competitors.whyItSells")} items={report.why_it_sells} t={t} />
-        <CompetitorInsightSection title={t("competitors.userLove")} items={report.user_love} t={t} />
-        <CompetitorInsightSection title={t("competitors.userComplaints")} items={report.user_complaints} t={t} />
-        <CompetitorInsightSection title={t("competitors.rdTeardown")} items={report.rd_teardown} t={t} />
-        <CompetitorInsightSection title={t("competitors.brandCommunication")} items={report.brand_communication} t={t} />
-        <CompetitorInsightSection title={t("competitors.salesProxyInterpretation")} items={report.sales_proxy_interpretation} t={t} />
-        <CompetitorInsightSection title={t("competitors.deepDiveRisks")} items={report.risks} t={t} />
-      </div>
-
-      <div className="deep-dive-sales-proxy">
-        <h4>{t("competitors.salesProxySignals")}</h4>
-        <div className="stack">
-          {report.sales_proxy.signals.map((signal) => (
-            <article className="list-card" key={`${signal.name}-${signal.value}`}>
-              <h4>{signal.name} · {signal.value}</h4>
-              <p>{signal.interpretation}</p>
-            </article>
-          ))}
-        </div>
-        <ul>
-          {report.sales_proxy.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
-        </ul>
-      </div>
-
-      <div className="two-col deep-dive-evidence-preview">
-        <div>
-          <h4>{t("competitors.amazonReviewEvidence")}</h4>
-          <div className="comment-list">
-            {report.amazon.review_samples.slice(0, 12).map((review, index) => (
-              <div className="comment-item" key={review.id || `${product.asin}-deep-review-${index}`}>
-                <p>{review.title ? `${review.title}: ` : ""}{review.body}</p>
-                <span>{review.rating_value || "-"} ★ · {review.date_text || (review.verified_purchase ? t("amazon.verified") : t("amazon.unverified"))}</span>
-              </div>
-            ))}
-            {!report.amazon.review_samples.length ? <p className="no-comments">{t("amazon.noReviewSamples")}</p> : null}
-          </div>
-        </div>
-        <div>
-          <h4>{t("competitors.redditEvidence")}</h4>
-          <div className="comment-list">
-            {report.reddit.posts.slice(0, 8).map((post, index) => (
-              <div className="comment-item" key={post.id || `${post.url}-${index}`}>
-                <p><a href={post.url} target="_blank" rel="noreferrer">{post.title}</a></p>
-                <span>r/{post.subreddit || "unknown"} · {formatInteger(post.comments || 0)} {t("report.postComments")}</span>
-              </div>
-            ))}
-            {!report.reddit.posts.length ? <p className="no-comments">{t("report.noCommentBodies")}</p> : null}
-          </div>
-        </div>
-      </div>
-
-      {report.web.articles.length ? (
-        <div className="deep-dive-web-sources">
-          <h4>{t("competitors.webEvidence")}</h4>
-          <div className="article-list">
-            {report.web.articles.slice(0, 6).map((article, index) => (
-              <article className="article-card" key={`${article.url}-${index}`}>
-                <div className="article-card-head">
-                  <div>
-                    <span className="evidence-index">W{index + 1}</span>
-                    <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
-                    <p>{article.domain} · {article.source_type} · {formatInteger(article.readable_chars)} {t("articles.readableChars")}</p>
-                  </div>
-                  <span className={`authority-badge ${article.authority_level.toLowerCase()}`}>
-                    {article.authority_level} · {article.authority_score}
-                  </span>
-                </div>
-                <div className="article-snippets">
-                  {article.evidence_snippets.slice(0, 3).map((snippet, snippetIndex) => (
-                    <p key={`${article.url}-snippet-${snippetIndex}`}>{snippet}</p>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="deep-dive-section-grid">
-        <CompetitorEvidenceChain title={t("competitors.deepDiveEvidenceChain")} items={report.evidence_chain} t={t} />
-        <CompetitorInsightSection title={t("competitors.deepDiveDataGaps")} items={report.data_gaps} t={t} />
-      </div>
-
-      <div className="method-grid">
-        <div>
-          <h4>{t("report.query")}</h4>
-          <p>{report.method.query}</p>
-        </div>
-        <div>
-          <h4>{t("report.notes")}</h4>
-          <ul>
-            {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CompetitorInsightSection({ items, t, title }: { title: string; items: CompetitorDeepDiveItem[]; t: Translator }) {
-  return (
-    <div className="deep-dive-section">
-      <h4>{title}</h4>
-      <div className="stack">
-        {items.map((item, index) => (
-          <article className="list-card" key={`${title}-${item.title}-${index}`}>
-            <h4>{item.title}</h4>
-            <p>{item.detail}</p>
-            <CompetitorCitationLinks citations={item.citations} t={t} />
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompetitorEvidenceChain({
-  items,
-  t,
-  title,
-}: {
-  title: string;
-  items: CompetitorDeepDiveReport["evidence_chain"];
-  t: Translator;
-}) {
-  return (
-    <div className="deep-dive-section">
-      <h4>{title}</h4>
-      <div className="stack">
-        {items.map((item, index) => (
-          <article className="list-card" key={`${item.claim}-${index}`}>
-            <h4>{item.claim}</h4>
-            <p>{item.detail}</p>
-            <CompetitorCitationLinks citations={item.citations} t={t} />
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompetitorCitationLinks({ citations, t }: { citations: CompetitorDeepDiveItem["citations"]; t: Translator }) {
-  if (!citations.length) return <p className="muted">{t("competitors.noCitations")}</p>;
-  return (
-    <div className="source-links competitor-citations">
-      {citations.map((citation) => (
-        <a href={citation.url} key={`${citation.id}-${citation.url}`} target="_blank" rel="noreferrer" title={citation.excerpt}>
-          {citation.id} · {citation.source}/{citation.kind}
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function ResearchPage({
-  launchIntent,
-  locale,
-  onResearchSettingsChange,
-  researchSettings,
-  t,
-}: {
-  launchIntent?: ResearchLaunchIntent | null;
-  onResearchSettingsChange: (settings: Partial<ResearchSettings>) => void;
-  researchSettings: ResearchSettings;
-} & LocalizedProps) {
-  const [initialSession] = useState<ResearchSession>(() => loadResearchSession());
-  const [category, setCategory] = useState(initialSession.category);
-  const [activeSource, setActiveSource] = useState<ResearchSource>(initialSession.activeSource);
-  const [articleUrls, setArticleUrls] = useState(initialSession.articleUrls);
-  const [bypassCache, setBypassCache] = useState(false);
-  const [redditReport, setRedditReport] = useState<AnalysisReport | null>(initialSession.redditReport);
-  const [amazonReport, setAmazonReport] = useState<AmazonReport | null>(initialSession.amazonReport);
-  const [youtubeReport, setYoutubeReport] = useState<YouTubeReport | null>(initialSession.youtubeReport);
-  const [tiktokReport, setTikTokReport] = useState<TikTokReport | null>(initialSession.tiktokReport);
-  const [articleDiscoveryReport, setArticleDiscoveryReport] = useState<ArticleDiscoveryReport | null>(
-    initialSession.articleDiscoveryReport,
-  );
-  const [articleReport, setArticleReport] = useState<ArticleReport | null>(initialSession.articleReport);
-  const [combinedReport, setCombinedReport] = useState<CombinedInsightReport | null>(initialSession.combinedReport);
-  const [runningSources, setRunningSources] = useState<ResearchSource[]>([]);
-  const runningSourcesRef = useRef<Set<ResearchSource>>(new Set());
-  const [articleDiscoveryLoading, setArticleDiscoveryLoading] = useState(false);
-  const [errorsBySource, setErrorsBySource] = useState<Partial<Record<ResearchSource, string>>>({});
-  const [articleDiscoveryError, setArticleDiscoveryError] = useState<string | null>(null);
-  const [historyItems, setHistoryItems] = useState<ResearchHistorySummary[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState<ResearchHistoryItem | null>(null);
-  const [historyStoragePath, setHistoryStoragePath] = useState(".cache/research-history.json");
-  const [historyMessage, setHistoryMessage] = useState<string | null>(null);
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const [sourceSettingsSource, setSourceSettingsSource] = useState<SourceSettingsSource | null>(null);
-  const [tiktokLoginLoading, setTikTokLoginLoading] = useState(false);
-  const [tiktokLoginMessage, setTikTokLoginMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    saveResearchSession({
-      category,
-      activeSource,
-      articleUrls,
-      redditReport,
-      amazonReport,
-      youtubeReport,
-      tiktokReport,
-      articleDiscoveryReport,
-      articleReport,
-      combinedReport,
-    });
-  }, [category, activeSource, articleUrls, redditReport, amazonReport, youtubeReport, tiktokReport, articleDiscoveryReport, articleReport, combinedReport]);
-
-  useEffect(() => {
-    refreshHistory();
-  }, []);
-
-  useEffect(() => {
-    if (!launchIntent) return;
-    if (launchIntent.category) {
-      setCategory(launchIntent.category);
-    }
-    setActiveSource(launchIntent.source);
-    setSourceSettingsSource(null);
-    setHistoryMessage(null);
-    setHistoryOpen(Boolean(launchIntent.openHistory));
-    if (launchIntent.openHistory) {
-      void refreshHistory();
-    }
-  }, [launchIntent?.nonce, launchIntent?.source, launchIntent?.category, launchIntent?.openHistory]);
-
-  async function refreshHistory(): Promise<ResearchHistorySummary[]> {
-    try {
-      const result = await api.getHistory();
-      setHistoryItems(result.items);
-      setHistoryStoragePath(result.storage_path);
-      return result.items;
-    } catch {
-      // History is a convenience layer; analysis remains usable if history cannot load.
-      return [];
-    }
-  }
-
-  function hasCurrentReports(): boolean {
-    return Boolean(redditReport || amazonReport || youtubeReport || tiktokReport || articleReport || combinedReport);
-  }
-
-  async function saveCurrentHistory() {
-    if (!hasCurrentReports()) {
-      setHistoryMessage(t("history.noReport"));
-      return;
-    }
-    setHistoryBusy(true);
-    setHistoryMessage(null);
-    try {
-      const result = await api.saveHistory({
-        category,
-        reddit_report: redditReport,
-        amazon_report: amazonReport,
-        youtube_report: youtubeReport,
-        tiktok_report: tiktokReport,
-        article_report: articleReport,
-        combined_report: combinedReport,
-      });
-      setHistoryItems((items) => [result.item, ...items.filter((item) => item.id !== result.item.id)]);
-      setHistoryStoragePath(result.storage_path);
-      setHistoryMessage(t("history.saved"));
-    } catch (err) {
-      setHistoryMessage(err instanceof Error ? err.message : t("history.saveError"));
-    } finally {
-      setHistoryBusy(false);
-    }
-  }
-
-  async function openHistory() {
-    setHistoryOpen(true);
-    setHistoryMessage(null);
-    await refreshHistory();
-  }
-
-  function closeHistory() {
-    setHistoryOpen(false);
-    setHistoryMessage(null);
-  }
-
-  async function selectHistoryItem(id: string) {
-    setHistoryBusy(true);
-    setHistoryMessage(null);
-    try {
-      const result = await api.getHistoryItem(id);
-      setSelectedHistoryItem(result.item);
-      setHistoryStoragePath(result.storage_path);
-    } catch (err) {
-      setHistoryMessage(err instanceof Error ? err.message : t("history.loadError"));
-    } finally {
-      setHistoryBusy(false);
-    }
-  }
-
-  function restoreHistoryItem(item: ResearchHistoryItem) {
-    setCategory(item.category);
-    setRedditReport(item.reddit_report || null);
-    setAmazonReport(item.amazon_report || null);
-    setYoutubeReport(item.youtube_report || null);
-    setTikTokReport(item.tiktok_report || null);
-    setArticleDiscoveryReport(null);
-    setArticleReport(item.article_report || null);
-    setCombinedReport(item.combined_report || null);
-    setActiveSource(item.combined_report ? "combined" : item.article_report ? "articles" : item.tiktok_report ? "tiktok" : item.youtube_report ? "youtube" : item.amazon_report ? "amazon" : "reddit");
-    setHistoryOpen(false);
-    setHistoryMessage(t("history.loaded"));
-  }
-
-  async function deleteHistoryItem(id: string) {
-    setHistoryBusy(true);
-    setHistoryMessage(null);
-    try {
-      const result = await api.deleteHistoryItem(id);
-      setHistoryItems(result.items);
-      setHistoryStoragePath(result.storage_path);
-      if (selectedHistoryItem?.id === id) {
-        setSelectedHistoryItem(null);
-      }
-      setHistoryMessage(t("history.deleted"));
-    } catch (err) {
-      setHistoryMessage(err instanceof Error ? err.message : t("history.deleteError"));
-    } finally {
-      setHistoryBusy(false);
-    }
-  }
-
-  function reportMatchesCurrentCategory(report: { category?: string } | null): boolean {
-    return Boolean(report?.category && report.category.trim().toLowerCase() === category.trim().toLowerCase());
-  }
-
-  async function ensureCombinedInputs(request: AnalyzeRequest) {
-    const shouldFetchReddit = bypassCache || !reportMatchesCurrentCategory(redditReport);
-    const shouldFetchAmazon = bypassCache || !reportMatchesCurrentCategory(amazonReport);
-    const redditPromise: Promise<AnalysisReport | null> = shouldFetchReddit
-      ? api.analyze(request)
-      : Promise.resolve(redditReport);
-    const amazonPromise: Promise<AmazonReport | null> = shouldFetchAmazon
-      ? api.analyzeAmazon({
-        ...request,
-        limit: researchSettings.amazonProductLimit,
-        amazonKeywordLimit: researchSettings.amazonKeywordLimit,
-      })
-      : Promise.resolve(amazonReport);
-    const [redditResult, amazonResult] = await Promise.allSettled([redditPromise, amazonPromise]);
-    const partialErrors: string[] = [];
-    let nextReddit: AnalysisReport | null = redditReport;
-    let nextAmazon: AmazonReport | null = amazonReport;
-
-    if (redditResult.status === "fulfilled") {
-      nextReddit = redditResult.value;
-      if (nextReddit) setRedditReport(nextReddit);
-    } else {
-      partialErrors.push(`${t("source.reddit")}: ${redditResult.reason instanceof Error ? redditResult.reason.message : t("research.errorFallback")}`);
-      if (shouldFetchReddit) nextReddit = null;
-    }
-
-    if (amazonResult.status === "fulfilled") {
-      nextAmazon = amazonResult.value;
-      if (nextAmazon) setAmazonReport(nextAmazon);
-    } else {
-      partialErrors.push(`${t("source.amazon")}: ${amazonResult.reason instanceof Error ? amazonResult.reason.message : t("research.errorFallback")}`);
-      if (shouldFetchAmazon) nextAmazon = null;
-    }
-
-    if (!nextReddit && !nextAmazon) {
-      throw new Error(partialErrors.join("；") || t("combined.needSourceData"));
-    }
-    return { nextReddit, nextAmazon, partialMessage: partialErrors.join("；") };
-  }
-
-  function discoveredUrls(report: ArticleDiscoveryReport | null = articleDiscoveryReport): string[] {
-    return report ? report.candidates.map((candidate) => candidate.url) : [];
-  }
-
-  function useDiscoveredArticleUrls(report: ArticleDiscoveryReport | null = articleDiscoveryReport) {
-    const urls = discoveredUrls(report);
-    if (!urls.length) return;
-    setArticleUrls(urls.join("\n"));
-  }
-
-  function appendArticleUrl(url: string) {
-    const existing = parseArticleUrls(articleUrls);
-    if (existing.includes(url)) return;
-    setArticleUrls([...existing, url].join("\n"));
-  }
-
-  async function discoverArticles() {
-    setArticleDiscoveryLoading(true);
-    setArticleDiscoveryError(null);
-    try {
-      const report = await api.discoverArticles({
-        category,
-        queryLimit: researchSettings.articleQueryLimit,
-        resultsPerQuery: researchSettings.articleResultsPerQuery,
-        candidateLimit: researchSettings.articleCandidateLimit,
-        includeIndustryReports: true,
-        bypassCache,
-      });
-      setArticleDiscoveryReport(report);
-      useDiscoveredArticleUrls(report);
-    } catch (err) {
-      setArticleDiscoveryError(err instanceof Error ? err.message : t("articles.discoveryError"));
-    } finally {
-      setArticleDiscoveryLoading(false);
-    }
-  }
-
-  async function openTikTokLoginBrowser() {
-    setTikTokLoginLoading(true);
-    setTikTokLoginMessage(null);
-    clearSourceError("tiktok");
-    try {
-      const result = await api.openTikTokLoginBrowser();
-      if (!result.ok) {
-        throw new Error(result.message || t("tiktok.loginBrowserError"));
-      }
-      setTikTokLoginMessage(formatMessage(t("tiktok.loginBrowserOpened"), { path: result.profile_dir }));
-    } catch (err) {
-      setSourceError("tiktok", err instanceof Error ? err.message : t("tiktok.loginBrowserError"));
-    } finally {
-      setTikTokLoginLoading(false);
-    }
-  }
-
-  function runTargetsFor(source: ResearchSource): ResearchSource[] {
-    return source === "combined" ? ["combined", "reddit", "amazon"] : [source];
-  }
-
-  function isRunBlocked(source: ResearchSource): boolean {
-    return runTargetsFor(source).some((target) => runningSourcesRef.current.has(target));
-  }
-
-  function startSourceRun(source: ResearchSource): boolean {
-    const targets = runTargetsFor(source);
-    if (targets.some((target) => runningSourcesRef.current.has(target))) return false;
-    const next = new Set(runningSourcesRef.current);
-    targets.forEach((target) => next.add(target));
-    runningSourcesRef.current = next;
-    setRunningSources(Array.from(next));
-    return true;
-  }
-
-  function finishSourceRun(source: ResearchSource): void {
-    const next = new Set(runningSourcesRef.current);
-    runTargetsFor(source).forEach((target) => next.delete(target));
-    runningSourcesRef.current = next;
-    setRunningSources(Array.from(next));
-  }
-
-  function clearSourceError(source: ResearchSource): void {
-    setErrorsBySource((current) => {
-      if (!current[source]) return current;
-      const next = { ...current };
-      delete next[source];
-      return next;
-    });
-  }
-
-  function setSourceError(source: ResearchSource, message: string): void {
-    setErrorsBySource((current) => ({ ...current, [source]: message }));
-  }
-
-  async function run(event?: FormEvent) {
-    event?.preventDefault();
-    const source = activeSource;
-    if (!startSourceRun(source)) return;
-    clearSourceError(source);
-    try {
-      const request: AnalyzeRequest = {
-        category,
-        ...researchSettings,
-        redditDetailLimit: researchSettings.redditDetailLimit,
-        redditCommentsPerPost: researchSettings.redditCommentsPerPost,
-        useLlm: true,
-        bypassCache,
-      };
-      if (source === "combined") {
-        const { nextReddit, nextAmazon, partialMessage } = await ensureCombinedInputs(request);
-        setCombinedReport(await api.analyzeCombined({
-          category,
-          reddit_report: nextReddit,
-          amazon_report: nextAmazon,
-          useLlm: true,
-          locale,
-        }));
-        if (partialMessage) {
-          setSourceError(source, partialMessage);
-        }
-      } else if (source === "amazon") {
-        setAmazonReport(await api.analyzeAmazon({
-          ...request,
-          limit: researchSettings.amazonProductLimit,
-          amazonKeywordLimit: researchSettings.amazonKeywordLimit,
-        }));
-      } else if (source === "youtube") {
-        setYoutubeReport(await api.analyzeYoutube({
-          ...request,
-          limit: researchSettings.youtubeVideoLimit,
-          youtubeTranscriptVideoLimit: researchSettings.youtubeTranscriptVideoLimit,
-          youtubeCommentVideoLimit: researchSettings.youtubeCommentVideoLimit,
-          youtubeCommentsPerVideo: researchSettings.youtubeCommentsPerVideo,
-        }));
-      } else if (source === "tiktok") {
-        setTikTokReport(await api.analyzeTikTok({
-          ...request,
-          limit: researchSettings.tiktokVideoLimit,
-          tiktokCommentsPerVideo: researchSettings.tiktokCommentsPerVideo,
-        }));
-      } else if (source === "articles") {
-        const urls = parseArticleUrls(articleUrls);
-        if (!urls.length) {
-          throw new Error(t("articles.urlRequired"));
-        }
-        setArticleReport(await api.analyzeArticles({
-          category,
-          urls,
-          limit: Math.min(researchSettings.articleReadLimit, urls.length),
-          bypassCache,
-        }));
-      } else {
-        setRedditReport(await api.analyze(request));
-      }
-    } catch (err) {
-      setSourceError(source, err instanceof Error ? err.message : t("research.errorFallback"));
-    } finally {
-      finishSourceRun(source);
-    }
-  }
-
-  const activeSourceLoading = runningSources.includes(activeSource);
-  const activeRunBlocked = isRunBlocked(activeSource);
-  const activeLoadingSource: ResearchSource = activeSourceLoading && runningSources.includes("combined") && activeSource !== "combined"
-    ? "combined"
-    : activeSource;
-  const loadingText = activeLoadingSource === "amazon"
-    ? t("research.amazonLoading")
-    : activeLoadingSource === "youtube"
-      ? t("youtube.loading")
-    : activeLoadingSource === "tiktok"
-      ? t("tiktok.loading")
-    : activeLoadingSource === "articles"
-      ? t("articles.loading")
-    : activeLoadingSource === "combined"
-      ? t("combined.loading")
-      : t("research.loading");
-  const backgroundSources = runningSources.includes("combined")
-    ? runningSources.filter((source) => source === "combined" || !["reddit", "amazon"].includes(source))
-    : runningSources;
-  const visibleBackgroundSources = backgroundSources.filter((source) => source !== activeSource);
-  const backgroundRunMessage = visibleBackgroundSources.length && !activeSourceLoading
-    ? formatMessage(t(activeRunBlocked ? "research.blockedByRun" : "research.backgroundRun"), {
-      source: visibleBackgroundSources.map((source) => t(`source.${source}`)).join(" / "),
-    })
-    : "";
-  const activeError = errorsBySource[activeSource];
-
-  const status = activeSource === "amazon" && amazonReport
-    ? `${sourceLabel(amazonReport.source_mode, locale)} · ${confidenceLabel(amazonReport.confidence, locale)}`
-    : activeSource === "youtube" && youtubeReport
-      ? `${sourceLabel(youtubeReport.source_mode, locale)} · ${confidenceLabel(youtubeReport.confidence, locale)}`
-    : activeSource === "tiktok" && tiktokReport
-      ? `${sourceLabel(tiktokReport.source_mode, locale)} · ${confidenceLabel(tiktokReport.confidence, locale)}`
-    : activeSource === "articles" && articleReport
-      ? `${sourceLabel(articleReport.source_mode, locale)} · ${articleReport.data_volume.collected_articles} ${t("articles.items")}`
-    : activeSource === "combined" && combinedReport
-      ? `${t("source.combined")} · ${combinedReport.data_summary.evidence_items} ${t("combined.evidenceItems")}`
-    : activeSource === "reddit" && redditReport
-      ? `${sourceLabel(redditReport.source_mode, locale)} · ${confidenceLabel(redditReport.coverage.confidence, locale)}`
-      : t("research.ready");
-  const collectionSummary = activeSource === "amazon"
-    ? describeAmazonResearchSettings(researchSettings, locale)
-    : activeSource === "youtube"
-      ? describeYoutubeResearchSettings(researchSettings, locale)
-    : activeSource === "tiktok"
-      ? describeTikTokResearchSettings(researchSettings, locale)
-    : activeSource === "articles"
-      ? describeArticleResearchSettings(researchSettings, locale)
-    : activeSource === "combined"
-      ? formatMessage(t("combined.summary"), {
-        reddit: redditReport?.coverage.posts ?? 0,
-        amazon: amazonReport?.metrics.products ?? 0,
-      })
-    : describeResearchSettings(researchSettings, locale);
-
-  return (
-    <div className="page">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">{t("research.eyebrow")}</p>
-          <h2>{t("research.title")}</h2>
-          <p>{t("research.description")}</p>
-        </div>
-        <div className="research-header-actions">
-          <button type="button" disabled={historyBusy || !hasCurrentReports()} onClick={saveCurrentHistory}>
-            {historyBusy ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-            {t("history.saveCurrent")}
-          </button>
-          <button type="button" className={historyOpen ? "active" : ""} onClick={historyOpen ? closeHistory : openHistory}>
-            <FolderOpen size={16} />
-            {historyOpen ? t("history.backToResearch") : t("history.open")}
-          </button>
-          <div className="status-pill">{status}</div>
-        </div>
-      </header>
-
-      {historyMessage ? <div className="alert subtle history-message">{historyMessage}</div> : null}
-
-      {sourceSettingsSource ? (
-        <SourceCollectionSettingsView
-          onClose={() => setSourceSettingsSource(null)}
-          onResearchSettingsChange={onResearchSettingsChange}
-          researchSettings={researchSettings}
-          source={sourceSettingsSource}
-          t={t}
-        />
-      ) : historyOpen ? (
-        <HistoryResearchView
-          busy={historyBusy}
-          items={historyItems}
-          locale={locale}
-          onDelete={deleteHistoryItem}
-          onRestore={restoreHistoryItem}
-          onSelect={selectHistoryItem}
-          selectedItem={selectedHistoryItem}
-          storagePath={historyStoragePath}
-          t={t}
-        />
-      ) : (
-        <>
-
-      <div className="source-tabs" role="tablist" aria-label="Research source">
-        <button
-          className={activeSource === "combined" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("combined")}
-        >
-          <Sparkles size={16} />
-          {t("source.combined")}
-        </button>
-        <button
-          className={activeSource === "reddit" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("reddit")}
-        >
-          <MessageSquare size={16} />
-          {t("source.reddit")}
-        </button>
-        <button
-          className={activeSource === "amazon" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("amazon")}
-        >
-          <ShoppingBag size={16} />
-          {t("source.amazon")}
-        </button>
-        <button
-          className={activeSource === "youtube" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("youtube")}
-        >
-          <Youtube size={16} />
-          {t("source.youtube")}
-        </button>
-        <button
-          className={activeSource === "tiktok" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("tiktok")}
-        >
-          <Megaphone size={16} />
-          {t("source.tiktok")}
-        </button>
-        <button
-          className={activeSource === "articles" ? "active" : ""}
-          type="button"
-          onClick={() => setActiveSource("articles")}
-        >
-          <FileText size={16} />
-          {t("source.articles")}
-        </button>
-      </div>
-
-      <form className={`query-panel${activeSource === "articles" ? " article-query-panel" : ""}`} onSubmit={run}>
-        <label className="search-field">
-          <Search size={17} />
-          <input
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            placeholder={t("research.placeholder")}
-            required
-          />
-        </label>
-        <div className="collection-summary">
-          <CalendarRange size={16} />
-          <span>{collectionSummary}</span>
-        </div>
-        <label className="cache-toggle" title={t("research.bypassCacheNote")}>
-          <input
-            type="checkbox"
-            checked={bypassCache}
-            onChange={(event) => setBypassCache(event.target.checked)}
-          />
-          <span>{t("research.bypassCache")}</span>
-        </label>
-        {activeSource !== "combined" ? (
-          <button
-            type="button"
-            className="secondary-action"
-            disabled={activeSourceLoading || articleDiscoveryLoading}
-            onClick={() => setSourceSettingsSource(activeSource)}
-          >
-            <Settings size={17} />
-            {t("sourceSettings.open")}
-          </button>
-        ) : null}
-        {activeSource === "articles" ? (
-          <button type="button" className="secondary-action" disabled={articleDiscoveryLoading || activeSourceLoading} onClick={discoverArticles}>
-            {articleDiscoveryLoading ? <Loader2 className="spin" size={17} /> : <Search size={17} />}
-            {articleDiscoveryLoading ? t("articles.discovering") : t("articles.discover")}
-          </button>
-        ) : null}
-        {activeSource === "tiktok" ? (
-          <button
-            type="button"
-            className="secondary-action"
-            disabled={activeSourceLoading || tiktokLoginLoading}
-            onClick={openTikTokLoginBrowser}
-          >
-            {tiktokLoginLoading ? <Loader2 className="spin" size={17} /> : <KeyRound size={17} />}
-            {tiktokLoginLoading ? t("tiktok.loginBrowserOpening") : t("tiktok.loginBrowserOpen")}
-          </button>
-        ) : null}
-        <button type="submit" disabled={activeRunBlocked || (activeSource === "articles" && articleDiscoveryLoading)}>
-          {activeSourceLoading ? <Loader2 className="spin" size={17} /> : activeSource === "combined" ? <Sparkles size={17} /> : activeSource === "articles" ? <FileText size={17} /> : activeSource === "youtube" ? <Youtube size={17} /> : activeSource === "tiktok" ? <Megaphone size={17} /> : <RefreshCw size={17} />}
-          {activeSource === "combined"
-            ? t("combined.generate")
-            : activeSource === "articles"
-              ? bypassCache ? t("articles.refresh") : t("articles.collect")
-              : activeSource === "youtube"
-                ? bypassCache ? t("youtube.refresh") : t("youtube.collect")
-              : activeSource === "tiktok"
-                ? bypassCache ? t("tiktok.refresh") : t("tiktok.collect")
-              : bypassCache ? t("research.refresh") : t("research.analyze")}
-        </button>
-        {activeSource === "articles" ? (
-          <label className="article-url-field">
-            <span><FileText size={16} /> {t("articles.urlsLabel")}</span>
-            <textarea
-              value={articleUrls}
-              onChange={(event) => setArticleUrls(event.target.value)}
-              placeholder={t("articles.urlsPlaceholder")}
-              rows={5}
-              required
-            />
-          </label>
-        ) : null}
-      </form>
-
-      {backgroundRunMessage ? <div className="alert subtle">{backgroundRunMessage}</div> : null}
-      {activeSource === "tiktok" && tiktokLoginMessage ? <div className="alert subtle">{tiktokLoginMessage}</div> : null}
-      {activeError ? <div className="alert danger">{activeError}</div> : null}
-      {articleDiscoveryError && activeSource === "articles" ? <div className="alert danger">{articleDiscoveryError}</div> : null}
-      {activeSourceLoading ? (
-        <LoadingPanel text={loadingText} />
-      ) : null}
-      {articleDiscoveryLoading && activeSource === "articles" ? <LoadingPanel text={t("articles.discoveryLoading")} /> : null}
-      {!activeSourceLoading && activeSource === "reddit" && !redditReport ? <EmptyState t={t} /> : null}
-      {!activeSourceLoading && activeSource === "amazon" && !amazonReport ? <EmptyState t={t} /> : null}
-      {!activeSourceLoading && activeSource === "youtube" && !youtubeReport ? <YouTubeEmptyState t={t} /> : null}
-      {!activeSourceLoading && activeSource === "tiktok" && !tiktokReport ? <TikTokEmptyState t={t} /> : null}
-      {!activeSourceLoading && activeSource === "articles" && !articleReport ? <ArticleEmptyState t={t} /> : null}
-      {!activeSourceLoading && activeSource === "combined" && !combinedReport ? (
-        <CombinedEmptyState redditReady={Boolean(redditReport)} amazonReady={Boolean(amazonReport)} t={t} />
-      ) : null}
-      {activeSource === "reddit" && redditReport ? <ReportView locale={locale} report={redditReport} t={t} /> : null}
-      {activeSource === "amazon" && amazonReport ? <AmazonReportView locale={locale} report={amazonReport} t={t} /> : null}
-      {activeSource === "youtube" && youtubeReport ? <YouTubeReportView locale={locale} report={youtubeReport} t={t} /> : null}
-      {activeSource === "tiktok" && tiktokReport ? <TikTokReportView locale={locale} report={tiktokReport} t={t} /> : null}
-      {activeSource === "articles" && articleDiscoveryReport ? (
-        <ArticleDiscoveryView
-          onAppendUrl={appendArticleUrl}
-          onUseUrls={() => useDiscoveredArticleUrls()}
-          report={articleDiscoveryReport}
-          selectedUrls={parseArticleUrls(articleUrls)}
-          t={t}
-        />
-      ) : null}
-      {activeSource === "articles" && articleReport ? <ArticleReportView locale={locale} report={articleReport} t={t} /> : null}
-      {activeSource === "combined" && combinedReport ? (
-        <CombinedInsightView locale={locale} report={combinedReport} t={t} />
-      ) : null}
-        </>
-      )}
-    </div>
-  );
-}
-
-function SourceCollectionSettingsView({
-  onClose,
-  onResearchSettingsChange,
-  researchSettings,
-  source,
-  t,
-}: {
-  onClose: () => void;
-  onResearchSettingsChange: (settings: Partial<ResearchSettings>) => void;
-  researchSettings: ResearchSettings;
-  source: SourceSettingsSource;
-  t: Translator;
-}) {
-  const [draft, setDraft] = useState<ResearchSettings>(researchSettings);
-  const [researchDefaults, setResearchDefaults] = useState<ResearchDefaults | null>(null);
-  const [agentReachSettings, setAgentReachSettings] = useState<AgentReachSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([api.getResearchSettings(), api.getAgentReachSettings()])
-      .then(([defaults, agentReach]) => {
-        if (cancelled) return;
-        setResearchDefaults(defaults);
-        setAgentReachSettings(agentReach);
-        setDraft((current) => ({
-          ...current,
-          mode: defaults.mode,
-          timeRange: defaults.timeRange,
-          limit: defaults.limit,
-          llmEvidencePosts: defaults.llmEvidencePosts,
-          llmCommentSamplesPerPost: defaults.llmCommentSamplesPerPost,
-          redditDetailLimit: agentReach.detail_limit,
-          redditCommentsPerPost: agentReach.comments_per_post,
-          amazonProductLimit: defaults.amazonProductLimit,
-          amazonKeywordLimit: defaults.amazonKeywordLimit,
-          amazonDetailLimit: defaults.amazonDetailLimit,
-          amazonDiscussionLimit: defaults.amazonDiscussionLimit,
-          amazonReviewsPerProduct: defaults.amazonReviewsPerProduct,
-          amazonLlmProductLimit: defaults.amazonLlmProductLimit,
-          amazonLlmReviewSamplesPerProduct: defaults.amazonLlmReviewSamplesPerProduct,
-        }));
-      })
-      .catch((err) => {
-        if (!cancelled) setMessage(err instanceof Error ? err.message : t("sourceSettings.loadError"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function updateDraft<K extends keyof ResearchSettings>(key: K, value: ResearchSettings[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  function buildResearchUpdatePayload(settings: ResearchSettings): ResearchDefaults {
-    const fallback = researchDefaults;
-    return {
-      mode: settings.mode,
-      timeRange: settings.timeRange,
-      limit: settings.limit,
-      maxPostLimit: fallback?.maxPostLimit ?? 500,
-      llmEvidencePosts: settings.llmEvidencePosts,
-      llmCommentSamplesPerPost: settings.llmCommentSamplesPerPost,
-      amazonProductLimit: settings.amazonProductLimit,
-      maxAmazonProductLimit: fallback?.maxAmazonProductLimit ?? 100,
-      amazonKeywordLimit: settings.amazonKeywordLimit,
-      maxAmazonKeywordLimit: fallback?.maxAmazonKeywordLimit ?? 20,
-      amazonDetailLimit: settings.amazonDetailLimit,
-      amazonDiscussionLimit: settings.amazonDiscussionLimit,
-      amazonReviewsPerProduct: settings.amazonReviewsPerProduct,
-      amazonLlmProductLimit: settings.amazonLlmProductLimit,
-      amazonLlmReviewSamplesPerProduct: settings.amazonLlmReviewSamplesPerProduct,
-      env_path: fallback?.env_path ?? ".env",
-    };
-  }
-
-  async function saveSourceSettings() {
-    setSaving(true);
-    setMessage(null);
-    try {
-      let nextSettings: Partial<ResearchSettings> = { ...draft };
-      if (source === "reddit" || source === "amazon") {
-        const updated = await api.updateResearchSettings(buildResearchUpdatePayload(draft));
-        nextSettings = {
-          ...nextSettings,
-          mode: updated.mode,
-          timeRange: updated.timeRange,
-          limit: updated.limit,
-          llmEvidencePosts: updated.llmEvidencePosts,
-          llmCommentSamplesPerPost: updated.llmCommentSamplesPerPost,
-          amazonProductLimit: updated.amazonProductLimit,
-          amazonKeywordLimit: updated.amazonKeywordLimit,
-          amazonDetailLimit: updated.amazonDetailLimit,
-          amazonDiscussionLimit: updated.amazonDiscussionLimit,
-          amazonReviewsPerProduct: updated.amazonReviewsPerProduct,
-          amazonLlmProductLimit: updated.amazonLlmProductLimit,
-          amazonLlmReviewSamplesPerProduct: updated.amazonLlmReviewSamplesPerProduct,
-        };
-        setResearchDefaults(updated);
-      }
-      if (source === "reddit" && agentReachSettings) {
-        const updatedAgentReach = await api.updateAgentReachSettings({
-          enabled: agentReachSettings.enabled,
-          backend: agentReachSettings.backend,
-          timeout_seconds: agentReachSettings.timeout_seconds,
-          detail_limit: draft.redditDetailLimit,
-          comments_per_post: draft.redditCommentsPerPost,
-        });
-        setAgentReachSettings(updatedAgentReach);
-        nextSettings = {
-          ...nextSettings,
-          redditDetailLimit: updatedAgentReach.detail_limit,
-          redditCommentsPerPost: updatedAgentReach.comments_per_post,
-        };
-      }
-      onResearchSettingsChange(nextSettings);
-      setMessage(t("sourceSettings.saved"));
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : t("sourceSettings.saveError"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const sourceIcon = source === "reddit"
-    ? <MessageSquare size={18} />
-    : source === "amazon"
-      ? <ShoppingBag size={18} />
-      : source === "youtube"
-        ? <Youtube size={18} />
-        : <FileText size={18} />;
-
-  if (loading) {
-    return <LoadingPanel text={t("sourceSettings.loading")} />;
-  }
-
-  return (
-    <section className="panel wide source-settings-page">
-      <div className="source-settings-head">
-        <button type="button" className="secondary-action" onClick={onClose}>
-          <ArrowLeft size={16} />
-          {t("sourceSettings.back")}
-        </button>
-        <div>
-          <p className="eyebrow">{t("sourceSettings.eyebrow")}</p>
-          <h3>{sourceIcon}{t(`sourceSettings.${source}.title`)}</h3>
-          <p>{t(`sourceSettings.${source}.subtitle`)}</p>
-        </div>
-      </div>
-
-      <div className="field-stack source-settings-grid">
-        {source === "reddit" ? (
-          <>
-            <label>
-              {t("settings.sourceMode")}
-              <select value={draft.mode} onChange={(event) => updateDraft("mode", event.target.value as ResearchSettings["mode"])}>
-                <option value="auto">{t("settings.modeAuto")}</option>
-                <option value="agent_reach">{t("settings.modeAgentReach")}</option>
-                <option value="oauth">{t("settings.modeOauth")}</option>
-                <option value="rss">{t("settings.modeRss")}</option>
-                <option value="sample">{t("settings.modeSample")}</option>
-              </select>
-            </label>
-            <label>
-              {t("settings.timeRange")}
-              <select value={draft.timeRange} onChange={(event) => updateDraft("timeRange", event.target.value as ResearchSettings["timeRange"])}>
-                <option value="day">{t("settings.day")}</option>
-                <option value="week">{t("settings.week")}</option>
-                <option value="month">{t("settings.month")}</option>
-                <option value="year">{t("settings.year")}</option>
-                <option value="all">{t("settings.all")}</option>
-              </select>
-            </label>
-            <SourceNumberField label={t("settings.totalPostLimit")} max={researchDefaults?.maxPostLimit ?? 500} min={5} value={draft.limit} onChange={(value) => updateDraft("limit", value)} />
-            <SourceNumberField label={t("settings.detailLimit")} max={100} min={0} value={draft.redditDetailLimit} onChange={(value) => updateDraft("redditDetailLimit", value)} />
-            <SourceNumberField label={t("settings.commentsPerPost")} max={200} min={0} value={draft.redditCommentsPerPost} onChange={(value) => updateDraft("redditCommentsPerPost", value)} />
-            <SourceNumberField label={t("settings.aiEvidencePosts")} max={100} min={1} value={draft.llmEvidencePosts} onChange={(value) => updateDraft("llmEvidencePosts", value)} />
-            <SourceNumberField label={t("settings.aiCommentSamples")} max={50} min={0} value={draft.llmCommentSamplesPerPost} onChange={(value) => updateDraft("llmCommentSamplesPerPost", value)} />
-            <div className="settings-path wide-field">
-              <Database size={16} />
-              <span>{formatMessage(t("settings.volumeSummary"), {
-                posts: draft.limit,
-                details: draft.redditDetailLimit,
-                comments: draft.redditCommentsPerPost,
-                aiPosts: draft.llmEvidencePosts,
-                aiComments: draft.llmCommentSamplesPerPost,
-              })}</span>
-            </div>
-          </>
-        ) : null}
-
-        {source === "amazon" ? (
-          <>
-            <SourceNumberField label={t("settings.amazonKeywordLimit")} max={researchDefaults?.maxAmazonKeywordLimit ?? 20} min={1} value={draft.amazonKeywordLimit} onChange={(value) => updateDraft("amazonKeywordLimit", value)} />
-            <SourceNumberField label={t("settings.amazonProductLimit")} max={researchDefaults?.maxAmazonProductLimit ?? 100} min={1} value={draft.amazonProductLimit} onChange={(value) => updateDraft("amazonProductLimit", value)} />
-            <SourceNumberField label={t("settings.amazonDetailLimit")} max={100} min={0} value={draft.amazonDetailLimit} onChange={(value) => updateDraft("amazonDetailLimit", value)} />
-            <SourceNumberField label={t("settings.amazonDiscussionLimit")} max={100} min={0} value={draft.amazonDiscussionLimit} onChange={(value) => updateDraft("amazonDiscussionLimit", value)} />
-            <SourceNumberField label={t("settings.amazonReviewsPerProduct")} max={100} min={0} value={draft.amazonReviewsPerProduct} onChange={(value) => updateDraft("amazonReviewsPerProduct", value)} />
-            <SourceNumberField label={t("settings.amazonAiProducts")} max={100} min={1} value={draft.amazonLlmProductLimit} onChange={(value) => updateDraft("amazonLlmProductLimit", value)} />
-            <SourceNumberField label={t("settings.amazonAiReviews")} max={50} min={0} value={draft.amazonLlmReviewSamplesPerProduct} onChange={(value) => updateDraft("amazonLlmReviewSamplesPerProduct", value)} />
-            <div className="settings-path wide-field">
-              <ShoppingBag size={16} />
-              <span>{formatMessage(t("settings.amazonVolumeSummary"), {
-                keywords: draft.amazonKeywordLimit,
-                products: draft.amazonProductLimit,
-                total: draft.amazonKeywordLimit * draft.amazonProductLimit,
-                details: draft.amazonDetailLimit,
-                discussions: draft.amazonDiscussionLimit,
-                reviews: draft.amazonReviewsPerProduct,
-                aiProducts: draft.amazonLlmProductLimit,
-                aiReviews: draft.amazonLlmReviewSamplesPerProduct,
-              })}</span>
-            </div>
-          </>
-        ) : null}
-
-        {source === "articles" ? (
-          <>
-            <SourceNumberField label={t("sourceSettings.articleQueryLimit")} max={30} min={1} value={draft.articleQueryLimit} onChange={(value) => updateDraft("articleQueryLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.articleResultsPerQuery")} max={20} min={1} value={draft.articleResultsPerQuery} onChange={(value) => updateDraft("articleResultsPerQuery", value)} />
-            <SourceNumberField label={t("sourceSettings.articleCandidateLimit")} max={80} min={1} value={draft.articleCandidateLimit} onChange={(value) => updateDraft("articleCandidateLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.articleReadLimit")} max={80} min={1} value={draft.articleReadLimit} onChange={(value) => updateDraft("articleReadLimit", value)} />
-            <div className="settings-path wide-field">
-              <FileText size={16} />
-              <span>{formatMessage(t("sourceSettings.articleSummary"), {
-                queries: draft.articleQueryLimit,
-                results: draft.articleResultsPerQuery,
-                candidates: draft.articleCandidateLimit,
-                read: draft.articleReadLimit,
-              })}</span>
-            </div>
-          </>
-        ) : null}
-
-        {source === "youtube" ? (
-          <>
-            <SourceNumberField label={t("sourceSettings.youtubeVideoLimit")} max={50} min={1} value={draft.youtubeVideoLimit} onChange={(value) => updateDraft("youtubeVideoLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.youtubeTranscriptVideoLimit")} max={20} min={0} value={draft.youtubeTranscriptVideoLimit} onChange={(value) => updateDraft("youtubeTranscriptVideoLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.youtubeCommentVideoLimit")} max={20} min={0} value={draft.youtubeCommentVideoLimit} onChange={(value) => updateDraft("youtubeCommentVideoLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.youtubeCommentsPerVideo")} max={50} min={0} value={draft.youtubeCommentsPerVideo} onChange={(value) => updateDraft("youtubeCommentsPerVideo", value)} />
-            <div className="settings-path wide-field">
-              <Youtube size={16} />
-              <span>{formatMessage(t("sourceSettings.youtubeSummary"), {
-                videos: draft.youtubeVideoLimit,
-                transcripts: draft.youtubeTranscriptVideoLimit,
-                commentVideos: draft.youtubeCommentVideoLimit,
-                comments: draft.youtubeCommentsPerVideo,
-              })}</span>
-            </div>
-          </>
-        ) : null}
-
-        {source === "tiktok" ? (
-          <>
-            <SourceNumberField label={t("sourceSettings.tiktokVideoLimit")} max={30} min={1} value={draft.tiktokVideoLimit} onChange={(value) => updateDraft("tiktokVideoLimit", value)} />
-            <SourceNumberField label={t("sourceSettings.tiktokCommentsPerVideo")} max={50} min={1} value={draft.tiktokCommentsPerVideo} onChange={(value) => updateDraft("tiktokCommentsPerVideo", value)} />
-            <div className="settings-path wide-field">
-              <Megaphone size={16} />
-              <span>{formatMessage(t("sourceSettings.tiktokSummary"), {
-                videos: draft.tiktokVideoLimit,
-                comments: draft.tiktokCommentsPerVideo,
-              })}</span>
-            </div>
-          </>
-        ) : null}
-
-        <div className="source-settings-actions wide-field">
-          <button type="button" className="secondary-action" onClick={onClose}>{t("sourceSettings.back")}</button>
-          <button type="button" disabled={saving} onClick={saveSourceSettings}>
-            {saving ? <Loader2 className="spin" size={17} /> : <Save size={17} />}
-            {t("sourceSettings.save")}
-          </button>
-        </div>
-        {message ? <div className="alert subtle wide-field">{message}</div> : null}
-      </div>
-    </section>
-  );
-}
-
-function SourceNumberField({
-  label,
-  max,
-  min,
-  onChange,
-  value,
-}: {
-  label: string;
-  max: number;
-  min: number;
-  onChange: (value: number) => void;
-  value: number;
-}) {
-  return (
-    <label>
-      {label}
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={1}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function HistoryResearchView({
-  busy,
-  items,
-  locale,
-  onDelete,
-  onRestore,
-  onSelect,
-  selectedItem,
-  storagePath,
-  t,
-}: {
-  busy: boolean;
-  items: ResearchHistorySummary[];
-  locale: Locale;
-  onDelete: (id: string) => void;
-  onRestore: (item: ResearchHistoryItem) => void;
-  onSelect: (id: string) => void;
-  selectedItem: ResearchHistoryItem | null;
-  storagePath: string;
-  t: Translator;
-}) {
-  const [activeReportTab, setActiveReportTab] = useState<HistoryReportTab>("combined");
-  const reportTabs = selectedItem ? historyReportTabs(selectedItem, t) : [];
-
-  useEffect(() => {
-    if (selectedItem && reportTabs.length) {
-      setActiveReportTab(reportTabs[0].key);
-    }
-  }, [selectedItem?.id]);
-
-  return (
-    <section className="history-workspace">
-      <div className="history-workspace-head">
-        <div>
-          <h3>{t("history.title")}</h3>
-          <p>{formatMessage(t("history.storage"), { path: storagePath })}</p>
-        </div>
-        <span>{formatMessage(t("history.recordCount"), { count: items.length })}</span>
-      </div>
-
-      <div className="history-browser-grid">
-        <section className="history-record-panel">
-          <PanelTitle title={t("history.records")} subtitle={t("history.recordsSubtitle")} />
-          {items.length ? (
-            <div className="history-record-list">
-              {items.map((item) => (
-                <article className={`history-record${selectedItem?.id === item.id ? " active" : ""}`} key={item.id}>
-                  <button type="button" className="history-record-main" disabled={busy} onClick={() => onSelect(item.id)}>
-                    <span>{shortDate(item.saved_at, locale)}</span>
-                    <strong>{item.category}</strong>
-                    <p>{item.summary || t("history.noSummary")}</p>
-                    <HistoryChips item={item} t={t} />
-                  </button>
-                  <button type="button" className="history-record-delete" disabled={busy} onClick={() => onDelete(item.id)} title={t("history.delete")}>
-                    <Trash2 size={15} />
-                  </button>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="history-empty">{t("history.empty")}</p>
-          )}
-        </section>
-
-        <section className="history-detail-panel">
-          {busy && !selectedItem ? <LoadingPanel text={t("history.loading")} /> : null}
-          {!busy && !selectedItem ? (
-            <div className="empty-state history-detail-empty">
-              <FolderOpen size={36} />
-              <h3>{t("history.selectTitle")}</h3>
-              <p>{t("history.selectBody")}</p>
-            </div>
-          ) : null}
-          {selectedItem ? (
-            <div className="history-detail">
-              <div className="history-detail-head">
-                <div>
-                  <p className="eyebrow">{t("history.fullResults")}</p>
-                  <h3>{selectedItem.category}</h3>
-                  <p>{shortDate(selectedItem.saved_at, locale)} · {selectedItem.summary || t("history.noSummary")}</p>
-                  <HistoryChips item={selectedItem} t={t} />
-                </div>
-                <div className="history-detail-actions">
-                  <button type="button" disabled={busy} onClick={() => onRestore(selectedItem)}>
-                    <FolderOpen size={15} />
-                    {t("history.restore")}
-                  </button>
-                  <button type="button" className="danger-action" disabled={busy} onClick={() => onDelete(selectedItem.id)}>
-                    <Trash2 size={15} />
-                    {t("history.delete")}
-                  </button>
-                </div>
-              </div>
-
-              <div className="history-report-tabs" role="tablist" aria-label={t("history.reportTabs")}>
-                {reportTabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    className={activeReportTab === tab.key ? "active" : ""}
-                    onClick={() => setActiveReportTab(tab.key)}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                    <span>{tab.count}</span>
-                  </button>
-                ))}
-              </div>
-
-              <section className="history-report-page">
-                {activeReportTab === "combined" && selectedItem.combined_report ? (
-                  <CombinedInsightView locale={locale} report={selectedItem.combined_report} t={t} />
-                ) : null}
-                {activeReportTab === "reddit" && selectedItem.reddit_report ? (
-                  <ReportView locale={locale} report={selectedItem.reddit_report} t={t} />
-                ) : null}
-                {activeReportTab === "amazon" && selectedItem.amazon_report ? (
-                  <AmazonReportView locale={locale} report={selectedItem.amazon_report} t={t} />
-                ) : null}
-                {activeReportTab === "youtube" && selectedItem.youtube_report ? (
-                  <YouTubeReportView locale={locale} report={selectedItem.youtube_report} t={t} />
-                ) : null}
-                {activeReportTab === "tiktok" && selectedItem.tiktok_report ? (
-                  <TikTokReportView locale={locale} report={selectedItem.tiktok_report} t={t} />
-                ) : null}
-                {activeReportTab === "articles" && selectedItem.article_report ? (
-                  <ArticleReportView locale={locale} report={selectedItem.article_report} t={t} />
-                ) : null}
-              </section>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function historyReportTabs(item: ResearchHistoryItem, t: Translator): Array<{
-  key: HistoryReportTab;
-  label: string;
-  count: number;
-  icon: ReactNode;
-}> {
-  const tabs: Array<{
-    key: HistoryReportTab;
-    label: string;
-    count: number;
-    icon: ReactNode;
-  }> = [];
-  if (item.combined_report) {
-    tabs.push({
-      key: "combined",
-      label: t("source.combined"),
-      count: item.evidence_items,
-      icon: <Sparkles size={15} />,
-    });
-  }
-  if (item.reddit_report) {
-    tabs.push({
-      key: "reddit",
-      label: t("source.reddit"),
-      count: item.reddit_posts,
-      icon: <MessageSquare size={15} />,
-    });
-  }
-  if (item.amazon_report) {
-    tabs.push({
-      key: "amazon",
-      label: t("source.amazon"),
-      count: item.amazon_products,
-      icon: <ShoppingBag size={15} />,
-    });
-  }
-  if (item.youtube_report) {
-    tabs.push({
-      key: "youtube",
-      label: t("source.youtube"),
-      count: item.youtube_videos,
-      icon: <Youtube size={15} />,
-    });
-  }
-  if (item.tiktok_report) {
-    tabs.push({
-      key: "tiktok",
-      label: t("source.tiktok"),
-      count: item.tiktok_videos,
-      icon: <Megaphone size={15} />,
-    });
-  }
-  if (item.article_report) {
-    tabs.push({
-      key: "articles",
-      label: t("source.articles"),
-      count: item.article_count,
-      icon: <FileText size={15} />,
-    });
-  }
-  return tabs;
-}
-
-function HistoryChips({ item, t }: { item: ResearchHistorySummary; t: Translator }) {
-  return (
-    <div className="history-chips">
-      {item.has_combined ? <span>{t("source.combined")} · {item.evidence_items}</span> : null}
-      {item.has_reddit ? <span>{t("source.reddit")} · {item.reddit_posts}</span> : null}
-      {item.has_amazon ? <span>{t("source.amazon")} · {item.amazon_products}</span> : null}
-      {item.has_youtube ? <span>{t("source.youtube")} · {item.youtube_videos}</span> : null}
-      {item.has_tiktok ? <span>{t("source.tiktok")} · {item.tiktok_videos}</span> : null}
-      {item.has_articles ? <span>{t("source.articles")} · {item.article_count}</span> : null}
-    </div>
-  );
-}
-
-function EmptyState({ t }: { t: Translator }) {
-  return (
-    <section className="empty-state">
-      <MessageSquare size={36} />
-      <h3>{t("research.emptyTitle")}</h3>
-      <p>{t("research.emptyBody")}</p>
-    </section>
-  );
-}
-
-function ArticleEmptyState({ t }: { t: Translator }) {
-  return (
-    <section className="empty-state">
-      <FileText size={36} />
-      <h3>{t("articles.emptyTitle")}</h3>
-      <p>{t("articles.emptyBody")}</p>
-    </section>
-  );
-}
-
-function YouTubeEmptyState({ t }: { t: Translator }) {
-  return (
-    <section className="empty-state">
-      <Youtube size={36} />
-      <h3>{t("youtube.emptyTitle")}</h3>
-      <p>{t("youtube.emptyBody")}</p>
-    </section>
-  );
-}
-
-function TikTokEmptyState({ t }: { t: Translator }) {
-  return (
-    <section className="empty-state">
-      <Megaphone size={36} />
-      <h3>{t("tiktok.emptyTitle")}</h3>
-      <p>{t("tiktok.emptyBody")}</p>
-    </section>
-  );
-}
-
-function LoadingPanel({ text }: { text: string }) {
-  return (
-    <section className="loading-panel">
-      <Loader2 className="spin" size={22} />
-      <span>{text}</span>
-    </section>
-  );
-}
-
-function CombinedEmptyState({
-  redditReady,
-  amazonReady,
-  t,
-}: {
-  redditReady: boolean;
-  amazonReady: boolean;
-  t: Translator;
-}) {
-  return (
-    <section className="empty-state">
-      <Sparkles size={36} />
-      <h3>{t("combined.emptyTitle")}</h3>
-      <p>
-        {formatMessage(t("combined.emptyBody"), {
-          reddit: redditReady ? t("combined.ready") : t("combined.missing"),
-          amazon: amazonReady ? t("combined.ready") : t("combined.missing"),
-        })}
-      </p>
-    </section>
-  );
-}
-
-function CombinedInsightView({ report, t }: { report: CombinedInsightReport } & LocalizedProps) {
-  const exportBaseName = `insight-${slugify(report.category)}-${report.generated_at.slice(0, 10)}`;
-  return (
-    <div className="report-grid combined-grid">
-      <section className="panel wide verdict-panel">
-        <div className="combined-head">
-          <PanelTitle title={t("combined.title")} subtitle={t("combined.subtitle")} />
-          <div className="combined-actions">
-            <button
-              type="button"
-              className="secondary-action"
-              onClick={() => downloadText(`${exportBaseName}.md`, combinedReportToMarkdown(report, t), "text/markdown")}
-            >
-              <FileText size={16} />
-              {t("combined.exportMarkdown")}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadText(`${exportBaseName}.html`, combinedReportToHtml(report, t), "text/html")}
-            >
-              <Download size={16} />
-              {t("combined.exportHtml")}
-            </button>
-          </div>
-        </div>
-        {report.llm_analysis.status !== "ok" ? (
-          <div className="alert warning">{report.llm_analysis.message || t("combined.localFallback")}</div>
-        ) : null}
-        <div className="verdict-copy">
-          <span>{t("combined.verdict")}</span>
-          <strong>{report.verdict.text}</strong>
-          <CitationLinks citations={report.verdict.citations} t={t} />
-        </div>
-        <div className="combined-summary-grid">
-          <div><span>{t("combined.redditPosts")}</span><b>{report.data_summary.reddit_posts}</b></div>
-          <div><span>{t("combined.redditComments")}</span><b>{report.data_summary.reddit_comments}</b></div>
-          <div><span>{t("combined.amazonProducts")}</span><b>{report.data_summary.amazon_products}</b></div>
-          <div><span>{t("combined.amazonReviews")}</span><b>{report.data_summary.amazon_review_samples}</b></div>
-        </div>
-      </section>
-
-      <InsightSection
-        icon={<Lightbulb size={18} />}
-        title={t("combined.opportunities")}
-        subtitle={t("combined.opportunitiesSubtitle")}
-        items={report.opportunities}
-        t={t}
-      />
-      <InsightSection
-        icon={<ShieldAlert size={18} />}
-        title={t("combined.risks")}
-        subtitle={t("combined.risksSubtitle")}
-        items={report.risks}
-        t={t}
-      />
-      <InsightSection
-        icon={<FlaskConical size={18} />}
-        title={t("combined.rdRecommendations")}
-        subtitle={t("combined.rdSubtitle")}
-        items={report.rd_recommendations}
-        t={t}
-      />
-      <InsightSection
-        icon={<Megaphone size={18} />}
-        title={t("combined.brandCommunication")}
-        subtitle={t("combined.brandSubtitle")}
-        items={report.brand_communication}
-        t={t}
-      />
-
-      <section className="panel wide evidence-chain-panel">
-        <PanelTitle title={t("combined.evidenceChain")} subtitle={t("combined.evidenceChainSubtitle")} />
-        <div className="evidence-chain-list">
-          {report.evidence_chain.map((item, index) => (
-            <article className="insight-item" key={`${item.claim}-${index}`}>
-              <span className="evidence-index">#{index + 1}</span>
-              <h4>{item.claim}</h4>
-              <p>{item.detail}</p>
-              <CitationLinks citations={item.citations} t={t} />
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <InsightSection
-        icon={<Database size={18} />}
-        title={t("combined.dataGaps")}
-        subtitle={t("combined.dataGapsSubtitle")}
-        items={report.data_gaps}
-        t={t}
-        wide
-      />
-    </div>
-  );
-}
-
-function InsightSection({
-  icon,
-  title,
-  subtitle,
-  items,
-  t,
-  wide = false,
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
-  items: CombinedInsightItem[];
-  t: Translator;
-  wide?: boolean;
-}) {
-  return (
-    <section className={`panel insight-section${wide ? " wide" : ""}`}>
-      <div className="insight-section-title">
-        {icon}
-        <PanelTitle title={title} subtitle={subtitle} />
-      </div>
-      <div className="stack">
-        {items.map((item, index) => (
-          <article className="insight-item" key={`${item.title}-${index}`}>
-            <h4>{item.title}</h4>
-            <p>{item.detail}</p>
-            <CitationLinks citations={item.citations} t={t} />
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CitationLinks({ citations, t }: { citations: InsightCitation[]; t: Translator }) {
-  return (
-    <div className="citation-links">
-      {citations.map((citation) => (
-        <a key={citation.id} href={citation.url} target="_blank" rel="noreferrer" className="citation-link">
-          <Link2 size={13} />
-          {citation.source === "reddit" ? t("source.reddit") : t("source.amazon")} · {citation.kind} · {citation.id}
-          <span className="citation-preview" role="tooltip">
-            <strong>{citation.title}</strong>
-            <small>{citation.reference}</small>
-            <span>{citation.excerpt}</span>
-          </span>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function ArticleDiscoveryView({
-  onAppendUrl,
-  onUseUrls,
-  report,
-  selectedUrls,
-  t,
-}: {
-  onAppendUrl: (url: string) => void;
-  onUseUrls: () => void;
-  report: ArticleDiscoveryReport;
-  selectedUrls: string[];
-  t: Translator;
-}) {
-  return (
-    <div className="report-grid article-discovery-grid">
-      <section className="panel wide article-discovery-panel">
-        <div className="combined-head">
-          <PanelTitle
-            title={t("articles.discoveryTitle")}
-            subtitle={formatMessage(t("articles.discoverySubtitle"), {
-              provider: report.source.source_name,
-              count: report.data_volume.candidate_count,
-            })}
-          />
-          <div className="combined-actions">
-            <button type="button" onClick={onUseUrls}>
-              <FileText size={16} />
-              {t("articles.useDiscovered")}
-            </button>
-          </div>
-        </div>
-        <div className="competitor-audit-grid article-discovery-audit">
-          <div>
-            <span>{t("articles.discoveryQueries")}</span>
-            <strong>{formatInteger(report.data_volume.query_count)}</strong>
-            <p>{formatMessage(t("articles.discoveryResultsPerQuery"), { count: report.data_volume.results_per_query })}</p>
-          </div>
-          <div>
-            <span>{t("articles.discoveryRawResults")}</span>
-            <strong>{formatInteger(report.data_volume.raw_results)}</strong>
-            <p>{formatMessage(t("articles.discoveryUniqueResults"), { count: report.data_volume.unique_results })}</p>
-          </div>
-          <div>
-            <span>{t("articles.discoveryCandidates")}</span>
-            <strong>{formatInteger(report.data_volume.candidate_count)}</strong>
-            <p>{report.source.next_action}</p>
-          </div>
-        </div>
-        {report.warnings.length ? (
-          <div className="alert subtle">{report.warnings.slice(0, 4).join(" ")}</div>
-        ) : null}
-        <div className="query-chip-list">
-          <span>{t("articles.generatedQueries")}</span>
-          {report.queries.slice(0, 12).map((query) => <b key={query}>{query}</b>)}
-        </div>
-        <div className="article-discovery-list">
-          {report.candidates.map((candidate) => (
-            <ArticleDiscoveryCandidateCard
-              candidate={candidate}
-              key={candidate.url}
-              onAppendUrl={onAppendUrl}
-              selected={selectedUrls.includes(candidate.url)}
-              t={t}
-            />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ArticleDiscoveryCandidateCard({
-  candidate,
-  onAppendUrl,
-  selected,
-  t,
-}: {
-  candidate: ArticleDiscoveryCandidate;
-  onAppendUrl: (url: string) => void;
-  selected: boolean;
-  t: Translator;
-}) {
-  return (
-    <article className="article-discovery-card">
-      <div className="article-card-head">
-        <div>
-          <a href={candidate.url} target="_blank" rel="noreferrer">{candidate.title || candidate.url}</a>
-          <p>
-            {candidate.domain} · {articleSourceTypeLabel(candidate.source_type, t)} · {t("articles.score")} {candidate.score}
-          </p>
-        </div>
-        <button type="button" disabled={selected} onClick={() => onAppendUrl(candidate.url)}>
-          {selected ? t("articles.urlAdded") : t("articles.addUrl")}
-        </button>
-      </div>
-      {candidate.snippet ? <p className="summary-text">{candidate.snippet}</p> : null}
-      <div className="article-discovery-meta">
-        <span>{t("articles.fromQuery")}: {candidate.query}</span>
-        <span>{t("articles.rank")}: {candidate.rank}</span>
-      </div>
-      {candidate.reasons.length ? (
-        <div className="chips article-chip-row">
-          {candidate.reasons.map((reason) => <span key={`${candidate.url}-${reason}`}>{reason}</span>)}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function YouTubeReportView({ locale, report, t }: { report: YouTubeReport } & LocalizedProps) {
-  return (
-    <div className="report-grid youtube-grid">
-      <section className="metric-card hero-metric">
-        <span>{t("youtube.videos")}</span>
-        <strong>{formatInteger(report.metrics.videos)}</strong>
-        <p>{confidenceLabel(report.confidence, locale)} · {sourceLabel(report.source_mode, locale)}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("youtube.totalViews")}</span>
-        <strong>{formatCompactNumber(report.metrics.total_views)}</strong>
-        <p>{formatMessage(t("youtube.avgViews"), { count: formatCompactNumber(report.metrics.average_views) })}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("youtube.comments")}</span>
-        <strong>{formatInteger(report.data_volume.comment_samples)}</strong>
-        <p>{formatMessage(t("youtube.publicCommentCount"), { count: formatCompactNumber(report.metrics.total_comment_count) })}</p>
-      </section>
-
-      <section className="panel wide data-volume-panel">
-        <PanelTitle title={t("youtube.auditTitle")} subtitle={t("youtube.auditSubtitle")} />
-        <div className="data-volume-grid">
-          <div className="volume-stat">
-            <span>{t("youtube.requestedVideos")}</span>
-            <strong>{formatInteger(report.data_volume.collected_videos)}</strong>
-            <p>{formatMessage(t("youtube.requestedVideosNote"), {
-              requested: report.data_volume.requested_videos,
-              collected: report.data_volume.collected_videos,
-            })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("youtube.transcripts")}</span>
-            <strong>{formatInteger(report.data_volume.videos_with_transcripts)}</strong>
-            <p>{formatMessage(t("youtube.transcriptsNote"), {
-              limit: report.data_volume.transcript_video_limit,
-              chars: formatInteger(report.data_volume.transcript_chars),
-            })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("youtube.commentSamples")}</span>
-            <strong>{formatInteger(report.data_volume.comment_samples)}</strong>
-            <p>{formatMessage(t("youtube.commentSamplesNote"), {
-              videos: report.data_volume.comment_video_limit,
-              comments: report.data_volume.comments_per_video_limit,
-            })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("youtube.channels")}</span>
-            <strong>{formatInteger(report.metrics.channels)}</strong>
-            <p>{report.source.next_action}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("youtube.channelTitle")} subtitle={t("youtube.channelSubtitle")} />
-        <div className="chips">
-          {report.channels.length ? report.channels.map((channel) => (
-            <span key={channel.name}>{channel.name} <b>{channel.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("youtube.signalTitle")} subtitle={t("youtube.signalSubtitle")} />
-        <div className="chips">
-          {report.product_signals.length ? report.product_signals.map((signal) => (
-            <span key={signal.name}>{signal.name} <b>{signal.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-
-      {report.warnings.length ? (
-        <section className="panel wide">
-          <PanelTitle title={t("youtube.warningTitle")} subtitle={t("youtube.warningSubtitle")} />
-          <ul className="article-note-list">
-            {report.warnings.slice(0, 12).map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="panel wide">
-        <PanelTitle title={t("youtube.evidenceTitle")} subtitle={formatMessage(t("youtube.evidenceSubtitle"), { count: report.videos.length })} />
-        <div className="article-list youtube-video-list">
-          {report.videos.map((video, index) => (
-            <article className="article-card youtube-video-card" key={video.id || `${video.url}-${index}`}>
-              <div className="article-card-head">
-                <div>
-                  <span className="evidence-index">#{index + 1}</span>
-                  <a href={video.url} target="_blank" rel="noreferrer">{video.title}</a>
-                  <p>
-                    {video.channel || t("youtube.unknownChannel")} · {shortDate(video.upload_date || video.fetched_at, locale)} · {formatDuration(video.duration_seconds)} · {formatCompactNumber(video.view_count)} {t("youtube.views")}
-                  </p>
-                </div>
-                {video.thumbnail ? <img className="youtube-thumb" src={video.thumbnail} alt="" loading="lazy" /> : null}
-              </div>
-              {video.description ? <p className="summary-text">{video.description}</p> : null}
-              {video.tags.length ? (
-                <div className="chips article-chip-row">
-                  {video.tags.slice(0, 8).map((tag) => <span key={`${video.id}-${tag}`}>{tag}</span>)}
-                </div>
-              ) : null}
-              {video.transcript ? (
-                <div className="youtube-transcript-preview">
-                  <h5>{t("youtube.transcriptPreview")}</h5>
-                  <p>{video.transcript}</p>
-                </div>
-              ) : null}
-              {video.comment_samples.length ? (
-                <div className="comment-list">
-                  {video.comment_samples.slice(0, 10).map((comment, commentIndex) => (
-                    <div className="comment-item" key={comment.id || `${video.id}-comment-${commentIndex}`}>
-                      <p>{comment.text}</p>
-                      <span>{comment.author || "YouTube"} · {comment.like_count ?? 0}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.methodTitle")} subtitle={t("report.methodSubtitle")} />
-        <div className="method-grid">
-          <div>
-            <h4>{t("report.query")}</h4>
-            <p>{report.method.query}</p>
-          </div>
-          <div>
-            <h4>{t("report.notes")}</h4>
-            <ul>
-              {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TikTokReportView({ locale, report, t }: { report: TikTokReport } & LocalizedProps) {
-  return (
-    <div className="report-grid youtube-grid">
-      <section className="metric-card hero-metric">
-        <span>{t("tiktok.videos")}</span>
-        <strong>{formatInteger(report.metrics.videos)}</strong>
-        <p>{confidenceLabel(report.confidence, locale)} · {sourceLabel(report.source_mode, locale)}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("tiktok.totalViews")}</span>
-        <strong>{formatCompactNumber(report.metrics.total_views)}</strong>
-        <p>{formatMessage(t("tiktok.avgViews"), { count: formatCompactNumber(report.metrics.average_views) })}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("tiktok.detailComments")}</span>
-        <strong>{formatInteger(report.data_volume.comment_samples)}</strong>
-        <p>{formatMessage(t("tiktok.publicCommentCount"), { count: formatCompactNumber(report.metrics.total_comment_count) })}</p>
-      </section>
-
-      <section className="panel wide data-volume-panel">
-        <PanelTitle title={t("tiktok.auditTitle")} subtitle={t("tiktok.auditSubtitle")} />
-        <div className="data-volume-grid">
-          <div className="volume-stat">
-            <span>{t("tiktok.requestedVideos")}</span>
-            <strong>{formatInteger(report.data_volume.collected_videos)}</strong>
-            <p>{formatMessage(t("tiktok.requestedVideosNote"), {
-              requested: report.data_volume.requested_videos,
-              collected: report.data_volume.collected_videos,
-            })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("tiktok.detailPages")}</span>
-            <strong>{formatInteger(report.data_volume.detail_pages_visited)}</strong>
-            <p>{t("tiktok.detailPagesNote")}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("tiktok.commentSamples")}</span>
-            <strong>{formatInteger(report.data_volume.comment_samples)}</strong>
-            <p>{formatMessage(t("tiktok.commentSamplesNote"), {
-              videos: report.data_volume.videos_with_comment_samples,
-              comments: report.data_volume.comments_per_video_limit,
-            })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("tiktok.authors")}</span>
-            <strong>{formatInteger(report.metrics.authors)}</strong>
-            <p>{report.source.next_action}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("tiktok.authorTitle")} subtitle={t("tiktok.authorSubtitle")} />
-        <div className="chips">
-          {report.authors.length ? report.authors.map((author) => (
-            <span key={author.name}>{author.name} <b>{author.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("tiktok.hashtagTitle")} subtitle={t("tiktok.hashtagSubtitle")} />
-        <div className="chips">
-          {report.hashtags.length ? report.hashtags.map((hashtag) => (
-            <span key={hashtag.name}>#{hashtag.name} <b>{hashtag.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("tiktok.signalTitle")} subtitle={t("tiktok.signalSubtitle")} />
-        <div className="chips">
-          {report.product_signals.length ? report.product_signals.map((signal) => (
-            <span key={signal.name}>{signal.name} <b>{signal.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-
-      {report.warnings.length ? (
-        <section className="panel wide">
-          <PanelTitle title={t("tiktok.warningTitle")} subtitle={t("tiktok.warningSubtitle")} />
-          <ul className="article-note-list">
-            {report.warnings.slice(0, 12).map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="panel wide">
-        <PanelTitle title={t("tiktok.evidenceTitle")} subtitle={formatMessage(t("tiktok.evidenceSubtitle"), { count: report.videos.length })} />
-        <div className="article-list youtube-video-list">
-          {report.videos.map((video, index) => (
-            <article className="article-card youtube-video-card" key={video.id || `${video.url}-${index}`}>
-              <div className="article-card-head">
-                <div>
-                  <span className="evidence-index">#{index + 1}</span>
-                  <a href={video.url} target="_blank" rel="noreferrer">{video.title || video.caption || video.url}</a>
-                  <p>
-                    {video.author || t("tiktok.unknownAuthor")} · {shortDate(video.published_at || video.fetched_at, locale)} · {formatCompactNumber(video.view_count)} {t("tiktok.views")} · {formatCompactNumber(video.like_count)} {t("tiktok.likes")}
-                  </p>
-                </div>
-                {video.cover_url ? <img className="youtube-thumb" src={video.cover_url} alt="" loading="lazy" /> : null}
-              </div>
-              {video.caption ? <p className="summary-text">{video.caption}</p> : null}
-              {video.hashtags.length ? (
-                <div className="chips article-chip-row">
-                  {video.hashtags.slice(0, 10).map((tag) => <span key={`${video.id}-${tag}`}>#{tag}</span>)}
-                </div>
-              ) : null}
-              <div className="chips article-chip-row">
-                <span>{formatCompactNumber(video.comment_count)} {t("tiktok.comments")}</span>
-                <span>{formatCompactNumber(video.share_count)} {t("tiktok.shares")}</span>
-                <span>{formatCompactNumber(video.save_count)} {t("tiktok.saves")}</span>
-              </div>
-              {video.comment_samples.length ? (
-                <div className="comment-list">
-                  {video.comment_samples.slice(0, 12).map((comment, commentIndex) => (
-                    <div className="comment-item" key={comment.id || `${video.id}-tiktok-comment-${commentIndex}`}>
-                      <p>{comment.text}</p>
-                      <span>{comment.author || "TikTok"} · {comment.like_count ?? 0}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="no-comments">{t("tiktok.noCommentSamples")}</p>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.methodTitle")} subtitle={t("report.methodSubtitle")} />
-        <div className="method-grid">
-          <div>
-            <h4>{t("report.query")}</h4>
-            <p>{report.method.query}</p>
-          </div>
-          <div>
-            <h4>{t("report.notes")}</h4>
-            <ul>
-              {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ArticleReportView({ locale, report, t }: { report: ArticleReport } & LocalizedProps) {
-  return (
-    <div className="report-grid article-grid">
-      <section className="metric-card hero-metric">
-        <span>{t("articles.collected")}</span>
-        <strong>{report.data_volume.collected_articles}</strong>
-        <p>{report.source.source_name} · {report.source.status}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("articles.highAuthority")}</span>
-        <strong>{report.data_volume.high_authority_articles}</strong>
-        <p>{formatMessage(t("articles.mediumLowAuthority"), {
-          medium: report.data_volume.medium_authority_articles,
-          low: report.data_volume.low_authority_articles,
-        })}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("articles.evidenceSnippets")}</span>
-        <strong>{report.data_volume.evidence_snippets}</strong>
-        <p>{formatMessage(t("articles.failedArticles"), { count: report.data_volume.failed_articles })}</p>
-      </section>
-
-      <section className="panel wide data-volume-panel">
-        <PanelTitle title={t("articles.auditTitle")} subtitle={t("articles.auditSubtitle")} />
-        <div className="data-volume-grid">
-          <div className="volume-stat">
-            <span>{t("articles.requestedArticles")}</span>
-            <strong>{report.data_volume.requested_articles}</strong>
-            <p>{formatMessage(t("articles.requestedArticlesNote"), { collected: report.data_volume.collected_articles })}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("articles.sourceStatus")}</span>
-            <strong>{report.source.status}</strong>
-            <p>{report.source.next_action}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("articles.sourceTypes")}</span>
-            <strong>{report.summary.source_types.length}</strong>
-            <p>{report.summary.source_types.map((item) => `${articleSourceTypeLabel(item.name, t)} ${item.count}`).join(" / ") || t("articles.noSummary")}</p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("articles.domains")}</span>
-            <strong>{report.summary.top_domains.length}</strong>
-            <p>{report.summary.top_domains.slice(0, 3).map((item) => item.name).join(" / ") || t("articles.noSummary")}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("articles.brandMentions")} subtitle={t("articles.brandMentionsSubtitle")} />
-        <div className="chips">
-          {report.summary.top_brands.length ? report.summary.top_brands.map((brand) => (
-            <span key={brand.name}>{brand.name} <b>{brand.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("articles.productSignals")} subtitle={t("articles.productSignalsSubtitle")} />
-        <div className="chips">
-          {report.summary.top_signals.length ? report.summary.top_signals.map((signal) => (
-            <span key={signal.name}>{signal.name} <b>{signal.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-
-      {report.warnings.length ? (
-        <section className="panel wide">
-          <PanelTitle title={t("articles.warningTitle")} subtitle={t("articles.warningSubtitle")} />
-          <ul className="article-note-list">
-            {report.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="panel wide">
-        <PanelTitle title={t("articles.articleEvidenceTitle")} subtitle={formatMessage(t("articles.articleEvidenceSubtitle"), { count: report.articles.length })} />
-        <div className="article-list">
-          {report.articles.map((article, index) => (
-            <article className="article-card" key={`${article.url}-${index}`}>
-              <div className="article-card-head">
-                <div>
-                  <span className="evidence-index">#{index + 1}</span>
-                  <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
-                  <p>
-                    {article.domain} · {articleSourceTypeLabel(article.source_type, t)} · {formatInteger(article.readable_chars)} {t("articles.readableChars")} · {shortDate(article.fetched_at, locale)}
-                  </p>
-                </div>
-                <span className={`authority-badge ${article.authority_level.toLowerCase()}`}>
-                  {confidenceLabel(article.authority_level, locale)} · {article.authority_score}
-                </span>
-              </div>
-              {article.brand_mentions.length || article.product_signals.length ? (
-                <div className="chips article-chip-row">
-                  {article.brand_mentions.slice(0, 8).map((brand) => <span key={`${article.url}-${brand}`}>{brand}</span>)}
-                  {article.product_signals.slice(0, 8).map((signal) => <span key={`${article.url}-${signal}`}>{signal}</span>)}
-                </div>
-              ) : null}
-              <div className="article-reason-grid">
-                <div>
-                  <h5>{t("articles.authorityEvidence")}</h5>
-                  <ul>
-                    {(article.authority_evidence.length ? article.authority_evidence : [t("articles.noAuthorityEvidence")]).map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-                <div>
-                  <h5>{t("articles.cautions")}</h5>
-                  <ul>
-                    {(article.cautions.length ? article.cautions : [t("articles.noCautions")]).map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-              </div>
-              <div className="article-snippets">
-                {article.evidence_snippets.map((snippet, snippetIndex) => (
-                  <p key={`${article.url}-snippet-${snippetIndex}`}>{snippet}</p>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.methodTitle")} subtitle={t("report.methodSubtitle")} />
-        <div className="method-grid">
-          <div>
-            <h4>{t("report.query")}</h4>
-            <p>{report.method.query}</p>
-          </div>
-          <div>
-            <h4>{t("report.notes")}</h4>
-            <ul>
-              {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function articleSourceTypeLabel(value: string, t: Translator): string {
-  return t(`articles.sourceType.${value}`, value.replace(/_/g, " "));
-}
-
-function ReportView({ locale, report, t }: { report: AnalysisReport } & LocalizedProps) {
-  const volume = report.data_volume;
-  const brandSizeMentions = useMemo(
-    () => [
-      ...report.brands.map((item) => ({ ...item, type: t("report.brand") })),
-      ...report.sizes.map((item) => ({ ...item, type: t("report.size") })),
-    ].slice(0, 10),
-    [report.brands, report.sizes, t],
-  );
-
-  return (
-    <div className="report-grid">
-      <section className="metric-card hero-metric">
-        <span>{t("report.marketSignal")}</span>
-        <strong>{report.market_signal.score}/100</strong>
-        <p>{report.market_signal.summary}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("report.coverage")}</span>
-        <strong>{report.coverage.posts}</strong>
-        <p>
-          {report.coverage.subreddits} {t("report.subreddits")} · {confidenceLabel(report.coverage.confidence, locale)}
-        </p>
-      </section>
-      <section className="metric-card">
-        <span>{t("report.sentiment")}</span>
-        <strong>{pct(report.sentiment.negative_share)}</strong>
-        <p>{t("report.sentimentNote")}</p>
-      </section>
-
-      <section className="panel wide data-volume-panel">
-        <PanelTitle title={t("report.volumeTitle")} subtitle={t("report.volumeSubtitle")} />
-        <div className="data-volume-grid">
-          <div className="volume-stat">
-            <span>{t("report.collectedPosts")}</span>
-            <strong>{volume.collected_posts}</strong>
-            <p>
-              {formatMessage(t("report.collectedPostsNote"), {
-                requested: volume.requested_posts,
-                actual: volume.collected_posts,
-              })}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("report.collectedComments")}</span>
-            <strong>{volume.collected_comments}</strong>
-            <p>
-              {formatMessage(t("report.collectedCommentsNote"), {
-                posts: volume.posts_with_collected_comments,
-                detailLimit: volume.comment_enrichment_post_limit,
-                commentLimit: volume.comments_per_enriched_post_limit,
-              })}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("report.aiEvidencePosts")}</span>
-            <strong>{volume.llm_requested ? volume.ai_evidence_posts : 0}</strong>
-            <p>
-              {volume.llm_requested
-                ? formatMessage(t("report.aiEvidencePostsNote"), {
-                  limit: volume.ai_evidence_post_limit,
-                  actual: volume.ai_evidence_posts,
-                })
-                : t("report.noAiRequested")}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("report.aiCommentSamples")}</span>
-            <strong>{volume.llm_requested ? volume.ai_comment_samples : 0}</strong>
-            <p>
-              {volume.llm_requested
-                ? formatMessage(t("report.aiCommentSamplesNote"), {
-                  limit: volume.ai_comment_samples_per_post_limit,
-                  actual: volume.ai_comment_samples,
-                })
-                : t("report.noAiRequested")}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.painTitle")} subtitle={t("report.painSubtitle")} />
-        <TopicBarChart points={report.pain_points} />
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("report.trendTitle")} subtitle={t("report.trendSubtitle")} />
-        {report.trend.length ? <TrendChart trend={report.trend} /> : <div className="chart-empty">{t("report.noTrend")}</div>}
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("report.sentimentMixTitle")} subtitle={t("report.sentimentMixSubtitle")} />
-        <SentimentChart
-          labels={{
-            positive: t("chart.positive"),
-            neutral: t("chart.neutral"),
-            negative: t("chart.negative"),
-          }}
-          sentiment={report.sentiment}
-        />
-      </section>
-      <section className="panel">
-        <PanelTitle title={t("report.sourceCoverageTitle")} subtitle={t("report.sourceCoverageSubtitle")} />
-        <CoverageChart subreddits={report.coverage.top_subreddits} />
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("report.opportunityTitle")} subtitle={t("report.opportunitySubtitle")} />
-        <div className="stack">
-          {report.opportunities.map((item) => (
-            <article className="list-card" key={item.title}>
-              <h4>{item.title}</h4>
-              <p>{item.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("report.brandSizeTitle")} subtitle={t("report.brandSizeSubtitle")} />
-        <div className="chips">
-          {brandSizeMentions.length ? (
-            brandSizeMentions.map((item) => (
-              <span key={`${item.type}-${item.name}`}>
-                {item.name} <b>{item.type} · {item.count}</b>
-              </span>
-            ))
-          ) : (
-            <p className="muted">{t("report.noMentions")}</p>
-          )}
-        </div>
-      </section>
-
-      {report.llm_analysis.enabled ? <LlmPanel report={report} t={t} /> : null}
-
-      <section className="panel wide">
-        <PanelTitle
-          title={t("report.evidenceTitle")}
-          subtitle={formatMessage(t("report.evidenceSubtitle"), { count: report.posts.length })}
-        />
-        <div className="evidence-list">
-          {report.posts.map((post, index) => {
-            const commentItems = (post.comment_items || []).filter((comment) => String(comment.text || "").trim());
-            return (
-              <article className="evidence-card" key={`${post.url}-${index}`}>
-                <div className="evidence-card-head">
-                  <div>
-                    <span className="evidence-index">#{index + 1}</span>
-                    <a href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
-                    <p>
-                      r/{post.subreddit || "unknown"} · {shortDate(post.created_utc, locale)} · {t("report.postComments")}{" "}
-                      {post.comments ?? 0}
-                    </p>
-                  </div>
-                  <span>{post.source}</span>
-                </div>
-                <p className="evidence-excerpt">{post.excerpt || t("report.noSnippet")}</p>
-                <div className="comment-audit">
-                  <MessageSquare size={15} />
-                  <span>
-                    {t("report.commentBodies")} {commentItems.length}
-                  </span>
-                </div>
-                {commentItems.length ? (
-                  <div className="comment-list">
-                    {commentItems.slice(0, 20).map((comment, commentIndex) => (
-                      <div className="comment-item" key={comment.id || `${post.url}-comment-${commentIndex}`}>
-                        <p>{comment.text}</p>
-                        <span>
-                          {comment.author ? `u/${comment.author}` : "Reddit"} · {comment.score ?? 0}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-comments">{t("report.noCommentBodies")}</p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.methodTitle")} subtitle={t("report.methodSubtitle")} />
-        <div className="method-grid">
-          <div>
-            <h4>{t("report.query")}</h4>
-            <p>{report.method.query}</p>
-          </div>
-          <div>
-            <h4>{t("report.notes")}</h4>
-            <ul>
-              {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-              {report.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AmazonReportView({ locale, report, t }: { report: AmazonReport } & LocalizedProps) {
-  const priceRange = report.metrics.price_min !== null && report.metrics.price_max !== null
-    ? `${formatCurrency(report.metrics.price_min)}-${formatCurrency(report.metrics.price_max)}`
-    : t("amazon.noPrice");
-
-  return (
-    <div className="report-grid">
-      <section className="metric-card hero-metric">
-        <span>{t("amazon.products")}</span>
-        <strong>{report.metrics.products}</strong>
-        <p>{confidenceLabel(report.confidence, locale)} · {sourceLabel(report.source_mode, locale)}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("amazon.priceRange")}</span>
-        <strong>{priceRange}</strong>
-        <p>{formatMessage(t("amazon.priceAvg"), { price: formatCurrency(report.metrics.price_avg) })}</p>
-      </section>
-      <section className="metric-card">
-        <span>{t("amazon.ratingReviews")}</span>
-        <strong>{report.metrics.rating_avg?.toFixed(1) || "-"}</strong>
-        <p>{formatMessage(t("amazon.totalReviews"), { count: formatInteger(report.metrics.total_review_count) })}</p>
-      </section>
-
-      <section className="panel wide data-volume-panel">
-        <PanelTitle title={t("amazon.volumeTitle")} subtitle={t("amazon.volumeSubtitle")} />
-        <div className="data-volume-grid">
-          <div className="volume-stat">
-            <span>{t("amazon.keywordCoverage")}</span>
-            <strong>{report.data_volume.query_count}</strong>
-            <p>
-              {formatMessage(t("amazon.keywordCoverageNote"), {
-                perQuery: report.data_volume.requested_products_per_query,
-                raw: report.data_volume.raw_collected_products,
-                unique: report.data_volume.unique_products,
-              })}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("amazon.collectedProducts")}</span>
-            <strong>{report.data_volume.collected_products}</strong>
-            <p>
-              {formatMessage(t("amazon.collectedProductsNote"), {
-                requested: report.data_volume.requested_products,
-                actual: report.data_volume.collected_products,
-              })}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("amazon.reviewSamples")}</span>
-            <strong>{report.data_volume.collected_review_samples}</strong>
-            <p>
-              {formatMessage(t("amazon.reviewSamplesNote"), {
-                products: report.data_volume.products_with_review_samples,
-                limit: report.data_volume.discussion_product_limit,
-              })}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("amazon.aiProducts")}</span>
-            <strong>{report.data_volume.llm_requested ? report.data_volume.ai_products : 0}</strong>
-            <p>
-              {report.data_volume.llm_requested
-                ? formatMessage(t("amazon.aiProductsNote"), {
-                  limit: report.data_volume.ai_product_limit,
-                  actual: report.data_volume.ai_products,
-                })
-                : t("report.noAiRequested")}
-            </p>
-          </div>
-          <div className="volume-stat">
-            <span>{t("amazon.aiReviews")}</span>
-            <strong>{report.data_volume.llm_requested ? report.data_volume.ai_review_samples : 0}</strong>
-            <p>
-              {report.data_volume.llm_requested
-                ? formatMessage(t("amazon.aiReviewsNote"), {
-                  limit: report.data_volume.ai_review_samples_per_product_limit,
-                  actual: report.data_volume.ai_review_samples,
-                })
-                : t("report.noAiRequested")}
-            </p>
-          </div>
-        </div>
-        {report.data_volume.per_query_counts.length ? (
-          <div className="query-chip-list" aria-label={t("amazon.queriesUsed")}>
-            <span>{t("amazon.queriesUsed")}</span>
-            {report.data_volume.per_query_counts.map((item) => (
-              <b key={item.query}>{item.query} · {item.count}</b>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("amazon.brandTitle")} subtitle={t("amazon.brandSubtitle")} />
-        <div className="chips">
-          {report.brands.length ? report.brands.map((brand) => (
-            <span key={brand.name}>{brand.name} <b>{brand.count}</b></span>
-          )) : <p className="muted">{t("report.noMentions")}</p>}
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("amazon.priceBandsTitle")} subtitle={t("amazon.priceBandsSubtitle")} />
-        <div className="chips">
-          {report.price_bands.map((band) => (
-            <span key={band.name}>{band.name} <b>{band.count}</b></span>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle title={t("amazon.salesSignalsTitle")} subtitle={t("amazon.salesSignalsSubtitle")} />
-        <div className="stack">
-          <article className="list-card">
-            <h4>{t("amazon.reviewCountSignal")}</h4>
-            <p>{formatMessage(t("amazon.reviewCountSignalBody"), { count: formatInteger(report.metrics.total_review_count) })}</p>
-          </article>
-          <article className="list-card">
-            <h4>{t("amazon.sponsoredSignal")}</h4>
-            <p>{formatMessage(t("amazon.sponsoredSignalBody"), { count: report.metrics.sponsored_count })}</p>
-          </article>
-        </div>
-      </section>
-
-      {report.llm_analysis.enabled ? <LlmPanel report={report} t={t} /> : null}
-
-      <section className="panel wide">
-        <PanelTitle title={t("amazon.productsTitle")} subtitle={formatMessage(t("amazon.productsSubtitle"), { count: report.products.length })} />
-        <div className="amazon-products">
-          {report.products.map((product, index) => (
-            <article className="amazon-product-card" key={product.asin || `${product.product_url}-${index}`}>
-              <div className="amazon-product-head">
-                <div>
-                  <span className="evidence-index">#{product.rank || index + 1}</span>
-                  <a href={product.product_url} target="_blank" rel="noreferrer">{product.title || product.asin}</a>
-                  <p>
-                    {product.brand || t("amazon.unknownBrand")} · {product.asin} · {product.price_text || t("amazon.noPrice")}
-                  </p>
-                </div>
-                <span>{product.rating_value || "-"} / {formatInteger(product.review_count || 0)}</span>
-              </div>
-              {product.badges.length || product.is_sponsored ? (
-                <div className="chips product-badges">
-                  {product.is_sponsored ? <span>{t("amazon.sponsored")}</span> : null}
-                  {product.badges.map((badge) => <span key={badge}>{badge}</span>)}
-                </div>
-              ) : null}
-              {product.bullet_points.length ? (
-                <ul className="product-bullets">
-                  {product.bullet_points.slice(0, 5).map((point) => <li key={point}>{point}</li>)}
-                </ul>
-              ) : null}
-              {product.review_samples.length ? (
-                <div className="comment-list">
-                  {product.review_samples.slice(0, 5).map((review, reviewIndex) => (
-                    <div className="comment-item" key={`${product.asin}-review-${reviewIndex}`}>
-                      <p>{review.title ? `${review.title}: ` : ""}{review.body}</p>
-                      <span>
-                        {review.rating_value || "-"} ★ · {review.verified_purchase ? t("amazon.verified") : t("amazon.unverified")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="no-comments">{t("amazon.noReviewSamples")}</p>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <PanelTitle title={t("report.methodTitle")} subtitle={t("report.methodSubtitle")} />
-        <div className="method-grid">
-          <div>
-            <h4>{t("report.query")}</h4>
-            <p>{report.method.query}</p>
-          </div>
-          <div>
-            <h4>{t("report.notes")}</h4>
-            <ul>
-              {report.method.notes.map((note) => <li key={note}>{note}</li>)}
-              {report.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function combinedReportToMarkdown(report: CombinedInsightReport, t: Translator): string {
-  const lines = [
-    `# ${t("combined.title")} - ${report.category}`,
-    "",
-    `> ${report.verdict.text}`,
-    "",
-    citationMarkdown(report.verdict.citations),
-    "",
-    summaryMarkdown(report, t),
-    "",
-    itemSectionMarkdown(t("combined.opportunities"), report.opportunities),
-    itemSectionMarkdown(t("combined.risks"), report.risks),
-    itemSectionMarkdown(t("combined.rdRecommendations"), report.rd_recommendations),
-    itemSectionMarkdown(t("combined.brandCommunication"), report.brand_communication),
-    chainSectionMarkdown(t("combined.evidenceChain"), report.evidence_chain),
-    itemSectionMarkdown(t("combined.dataGaps"), report.data_gaps),
-  ];
-  return lines.filter((line) => line !== null).join("\n");
-}
-
-function combinedReportToHtml(report: CombinedInsightReport, t: Translator): string {
-  const sectionHtml = (title: string, items: CombinedInsightItem[]) => `
-    <section>
-      <h2>${escapeHtml(title)}</h2>
-      ${items.map((item) => `
-        <article>
-          <h3>${escapeHtml(item.title)}</h3>
-          <p>${escapeHtml(item.detail)}</p>
-          ${citationsHtml(item.citations)}
-        </article>
-      `).join("")}
-    </section>`;
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(t("combined.title"))} - ${escapeHtml(report.category)}</title>
-  <style>
-    body{font-family:Inter,Arial,sans-serif;margin:40px;color:#172033;line-height:1.6;background:#f7f8fb}
-    main{max-width:960px;margin:auto;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:32px}
-    h1{margin-top:0} h2{margin-top:32px;border-top:1px solid #e2e8f0;padding-top:24px}
-    article{margin:16px 0;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}
-    .verdict{font-size:20px;font-weight:800}
-    .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}
-    .meta div{background:#eef2f7;border-radius:8px;padding:10px}
-    a{color:#0f766e;text-decoration:none}
-    .citations{display:flex;flex-wrap:wrap;gap:8px}
-    .citations a{border:1px solid #cbd5e1;border-radius:999px;padding:4px 8px;background:white;font-size:12px}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>${escapeHtml(t("combined.title"))} - ${escapeHtml(report.category)}</h1>
-    <p class="verdict">${escapeHtml(report.verdict.text)}</p>
-    ${citationsHtml(report.verdict.citations)}
-    ${summaryHtml(report, t)}
-    ${sectionHtml(t("combined.opportunities"), report.opportunities)}
-    ${sectionHtml(t("combined.risks"), report.risks)}
-    ${sectionHtml(t("combined.rdRecommendations"), report.rd_recommendations)}
-    ${sectionHtml(t("combined.brandCommunication"), report.brand_communication)}
-    <section>
-      <h2>${escapeHtml(t("combined.evidenceChain"))}</h2>
-      ${report.evidence_chain.map((item) => `
-        <article>
-          <h3>${escapeHtml(item.claim)}</h3>
-          <p>${escapeHtml(item.detail)}</p>
-          ${citationsHtml(item.citations)}
-        </article>
-      `).join("")}
-    </section>
-    ${sectionHtml(t("combined.dataGaps"), report.data_gaps)}
-  </main>
-</body>
-</html>`;
-}
-
-function summaryMarkdown(report: CombinedInsightReport, t: Translator): string {
-  return [
-    `## ${t("combined.dataSummary")}`,
-    "",
-    `- ${t("combined.redditPosts")}: ${report.data_summary.reddit_posts}`,
-    `- ${t("combined.redditComments")}: ${report.data_summary.reddit_comments}`,
-    `- ${t("combined.amazonProducts")}: ${report.data_summary.amazon_products}`,
-    `- ${t("combined.amazonReviews")}: ${report.data_summary.amazon_review_samples}`,
-    `- ${t("combined.evidenceItems")}: ${report.data_summary.evidence_items}`,
-  ].join("\n");
-}
-
-function summaryHtml(report: CombinedInsightReport, t: Translator): string {
-  return `<div class="meta">
-    <div><strong>${escapeHtml(t("combined.redditPosts"))}</strong><br>${report.data_summary.reddit_posts}</div>
-    <div><strong>${escapeHtml(t("combined.redditComments"))}</strong><br>${report.data_summary.reddit_comments}</div>
-    <div><strong>${escapeHtml(t("combined.amazonProducts"))}</strong><br>${report.data_summary.amazon_products}</div>
-    <div><strong>${escapeHtml(t("combined.amazonReviews"))}</strong><br>${report.data_summary.amazon_review_samples}</div>
-  </div>`;
-}
-
-function itemSectionMarkdown(title: string, items: CombinedInsightItem[]): string {
-  return [
-    `## ${title}`,
-    "",
-    ...items.flatMap((item, index) => [
-      `### ${index + 1}. ${item.title}`,
-      item.detail,
-      "",
-      citationMarkdown(item.citations),
-      "",
-    ]),
-  ].join("\n");
-}
-
-function chainSectionMarkdown(title: string, items: CombinedEvidenceChainItem[]): string {
-  return [
-    `## ${title}`,
-    "",
-    ...items.flatMap((item, index) => [
-      `### ${index + 1}. ${item.claim}`,
-      item.detail,
-      "",
-      citationMarkdown(item.citations),
-      "",
-    ]),
-  ].join("\n");
-}
-
-function citationMarkdown(citations: InsightCitation[]): string {
-  if (!citations.length) return "_No citation available._";
-  return citations.map((citation) => `- [${citation.id} ${citation.source}/${citation.kind}: ${citation.title}](${citation.url})`).join("\n");
-}
-
-function citationsHtml(citations: InsightCitation[]): string {
-  return `<div class="citations">${citations.map((citation) => (
-    `<a href="${escapeHtml(citation.url)}">${escapeHtml(`${citation.id} ${citation.source}/${citation.kind}`)}</a>`
-  )).join("")}</div>`;
 }
 
 function downloadText(filename: string, content: string, mimeType: string) {
@@ -4655,85 +2511,12 @@ function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "report";
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function formatCurrency(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
-}
-
-function formatInteger(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "0";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatCompactNumber(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "0";
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return "-";
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.floor(seconds % 60).toString().padStart(2, "0");
-  if (minutes < 60) return `${minutes}:${remainder}`;
-  const hours = Math.floor(minutes / 60);
-  const hourMinutes = (minutes % 60).toString().padStart(2, "0");
-  return `${hours}:${hourMinutes}:${remainder}`;
-}
-
-function LlmPanel({ report, t }: { report: { llm_analysis: AnalysisReport["llm_analysis"] }; t: Translator }) {
-  const llm = report.llm_analysis;
-  if (llm.status !== "ok") {
-    return (
-      <section className="panel wide">
-        <PanelTitle title={t("llm.title")} subtitle={t("llm.unavailableSubtitle")} />
-        <div className="alert warning">{llm.message || t("llm.unavailableMessage")}</div>
-      </section>
-    );
-  }
-
-  const result = llm.result || {};
+function LoadingPanel({ text }: { text: string }) {
   return (
-    <section className="panel wide">
-      <PanelTitle title={t("llm.title")} subtitle={`${llm.provider} · ${llm.model}`} />
-      <p className="summary-text">{result.executive_summary}</p>
-      <div className="two-col">
-        <div>
-          <h4>{t("llm.takeaways")}</h4>
-          <ul>
-            {(result.strategic_takeaways || []).map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-        <div>
-          <h4>{t("llm.dataGaps")}</h4>
-          <ul>
-            {(result.data_gaps || []).map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-      </div>
-      <div className="stack">
-        {(result.opportunity_areas || []).map((item) => (
-          <article className="list-card" key={item.title}>
-            <h4>{item.title}</h4>
-            <p>{item.rationale}</p>
-            <div className="source-links">
-              <span>{item.confidence} {t("report.confidence")}</span>
-              {item.evidence_urls?.map((url) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer">{t("report.source")}</a>
-              ))}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
+    <div className="loading-panel">
+      <Loader2 className="spin" />
+      <span>{text}</span>
+    </div>
   );
 }
 
@@ -4746,99 +2529,26 @@ function PanelTitle({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-function SettingsPage({
-  locale,
-  t,
-  onResearchSettingsChange,
-}: {
-  onResearchSettingsChange: (settings: Partial<ResearchSettings>) => void;
-} & LocalizedProps) {
+function SettingsPage({ t }: LocalizedProps) {
   const [settings, setSettings] = useState<LLMSettings | null>(null);
-  const [redditSettings, setRedditSettings] = useState<RedditSettings | null>(null);
-  const [researchDefaults, setResearchDefaults] = useState<ResearchDefaults | null>(null);
-  const [agentReachSettings, setAgentReachSettings] = useState<AgentReachSettings | null>(null);
-  const [webSearchSettings, setWebSearchSettings] = useState<WebSearchSettings | null>(null);
-  const [redditClientId, setRedditClientId] = useState("");
-  const [redditClientSecret, setRedditClientSecret] = useState("");
-  const [redditUserAgent, setRedditUserAgent] = useState("");
-  const [clearRedditClientId, setClearRedditClientId] = useState(false);
-  const [clearRedditClientSecret, setClearRedditClientSecret] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [clearApiKey, setClearApiKey] = useState(false);
-  const [webSearchApiKey, setWebSearchApiKey] = useState("");
-  const [webSearchEngineId, setWebSearchEngineId] = useState("");
-  const [clearWebSearchApiKey, setClearWebSearchApiKey] = useState(false);
-  const [clearWebSearchEngineId, setClearWebSearchEngineId] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [redditSaving, setRedditSaving] = useState(false);
-  const [researchSaving, setResearchSaving] = useState(false);
-  const [agentReachSaving, setAgentReachSaving] = useState(false);
-  const [webSearchSaving, setWebSearchSaving] = useState(false);
-  const [agentReachReconnecting, setAgentReachReconnecting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [redditMessage, setRedditMessage] = useState<string | null>(null);
-  const [researchMessage, setResearchMessage] = useState<string | null>(null);
-  const [agentReachMessage, setAgentReachMessage] = useState<string | null>(null);
-  const [webSearchMessage, setWebSearchMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getLLMSettings(),
-      api.getRedditSettings(),
-      api.getResearchSettings(),
-      api.getAgentReachSettings(),
-      api.getWebSearchSettings(),
-    ])
-      .then(([llmData, redditData, researchData, agentReachData, webSearchData]) => {
+    api.getLLMSettings()
+      .then((llmData) => {
         setSettings(llmData);
-        setRedditSettings(redditData);
-        setResearchDefaults(researchData);
-        setAgentReachSettings(agentReachData);
-        setWebSearchSettings(webSearchData);
-        onResearchSettingsChange({
-          mode: researchData.mode,
-          timeRange: researchData.timeRange,
-          limit: researchData.limit,
-          amazonProductLimit: researchData.amazonProductLimit,
-          amazonKeywordLimit: researchData.amazonKeywordLimit,
-        });
-        setRedditClientId(redditData.client_id);
-        setRedditUserAgent(redditData.user_agent);
-        setWebSearchEngineId(webSearchData.search_engine_id || "");
       })
       .catch((err) => setMessage(err instanceof Error ? err.message : t("settings.loadError")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function update<K extends keyof LLMSettings>(key: K, value: LLMSettings[K]) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
-  }
-
-  function updateAgentReach<K extends keyof AgentReachSettings>(key: K, value: AgentReachSettings[K]) {
-    if (!agentReachSettings) return;
-    setAgentReachSettings({ ...agentReachSettings, [key]: value });
-  }
-
-  function updateWebSearch<K extends keyof WebSearchSettings>(key: K, value: WebSearchSettings[K]) {
-    if (!webSearchSettings) return;
-    setWebSearchSettings({ ...webSearchSettings, [key]: value });
-  }
-
-  function updateResearchDefault<K extends keyof ResearchDefaults>(key: K, value: ResearchDefaults[K]) {
-    if (!researchDefaults) return;
-    const next = { ...researchDefaults, [key]: value };
-    setResearchDefaults(next);
-    if (key === "mode" || key === "timeRange" || key === "limit" || key === "amazonProductLimit" || key === "amazonKeywordLimit") {
-      onResearchSettingsChange({
-        mode: next.mode,
-        timeRange: next.timeRange,
-        limit: next.limit,
-        amazonProductLimit: next.amazonProductLimit,
-        amazonKeywordLimit: next.amazonKeywordLimit,
-      });
-    }
   }
 
   function applyProvider(name: string) {
@@ -4856,26 +2566,6 @@ function SettingsPage({
     });
     setApiKey("");
     setClearApiKey(false);
-  }
-
-  function applyWebSearchProvider(name: string) {
-    if (!webSearchSettings) return;
-    const provider = webSearchSettings.providers.find((item) => item.name === name);
-    if (!provider) return;
-    setWebSearchSettings({
-      ...webSearchSettings,
-      provider: provider.name,
-      api_key_env: provider.api_key_env,
-      api_key_configured: false,
-      requires_search_engine_id: provider.requires_search_engine_id,
-      search_engine_id_env: provider.search_engine_id_env,
-      search_engine_id: "",
-      search_engine_id_configured: !provider.requires_search_engine_id,
-    });
-    setWebSearchApiKey("");
-    setWebSearchEngineId("");
-    setClearWebSearchApiKey(false);
-    setClearWebSearchEngineId(false);
   }
 
   async function save(event: FormEvent) {
@@ -4904,148 +2594,7 @@ function SettingsPage({
     }
   }
 
-  async function saveReddit() {
-    if (!redditSettings) return;
-    setRedditSaving(true);
-    setRedditMessage(null);
-    try {
-      const updated = await api.updateRedditSettings({
-        client_id: redditClientId.trim() || undefined,
-        client_secret: redditClientSecret.trim() || undefined,
-        clear_client_id: clearRedditClientId,
-        clear_client_secret: clearRedditClientSecret,
-        user_agent: redditUserAgent.trim(),
-      });
-      setRedditSettings(updated);
-      setRedditClientId(updated.client_id);
-      setRedditClientSecret("");
-      setClearRedditClientId(false);
-      setClearRedditClientSecret(false);
-      setRedditMessage(updated.oauth_ready ? t("settings.redditSavedReady") : t("settings.redditSavedIncomplete"));
-    } catch (err) {
-      setRedditMessage(err instanceof Error ? err.message : t("settings.redditSaveError"));
-    } finally {
-      setRedditSaving(false);
-    }
-  }
-
-  async function saveResearchDefaults() {
-    if (!researchDefaults) return;
-    setResearchSaving(true);
-    setResearchMessage(null);
-    try {
-      const [updated, updatedAgentReach] = await Promise.all([
-        api.updateResearchSettings({
-          mode: researchDefaults.mode,
-          timeRange: researchDefaults.timeRange,
-          limit: researchDefaults.limit,
-          llmEvidencePosts: researchDefaults.llmEvidencePosts,
-          llmCommentSamplesPerPost: researchDefaults.llmCommentSamplesPerPost,
-          amazonProductLimit: researchDefaults.amazonProductLimit,
-          amazonKeywordLimit: researchDefaults.amazonKeywordLimit,
-          amazonDetailLimit: researchDefaults.amazonDetailLimit,
-          amazonDiscussionLimit: researchDefaults.amazonDiscussionLimit,
-          amazonReviewsPerProduct: researchDefaults.amazonReviewsPerProduct,
-          amazonLlmProductLimit: researchDefaults.amazonLlmProductLimit,
-          amazonLlmReviewSamplesPerProduct: researchDefaults.amazonLlmReviewSamplesPerProduct,
-        }),
-        agentReachSettings
-          ? api.updateAgentReachSettings({
-            enabled: agentReachSettings.enabled,
-            backend: agentReachSettings.backend,
-            timeout_seconds: agentReachSettings.timeout_seconds,
-            detail_limit: agentReachSettings.detail_limit,
-            comments_per_post: agentReachSettings.comments_per_post,
-          })
-          : Promise.resolve(null),
-      ]);
-      setResearchDefaults(updated);
-      if (updatedAgentReach) {
-        setAgentReachSettings(updatedAgentReach);
-      }
-      onResearchSettingsChange({
-        mode: updated.mode,
-        timeRange: updated.timeRange,
-        limit: updated.limit,
-        amazonProductLimit: updated.amazonProductLimit,
-        amazonKeywordLimit: updated.amazonKeywordLimit,
-      });
-      setResearchMessage(t("settings.researchSaved"));
-    } catch (err) {
-      setResearchMessage(err instanceof Error ? err.message : t("settings.researchSaveError"));
-    } finally {
-      setResearchSaving(false);
-    }
-  }
-
-  async function saveAgentReach() {
-    if (!agentReachSettings) return;
-    setAgentReachSaving(true);
-    setAgentReachMessage(null);
-    try {
-      const updated = await api.updateAgentReachSettings({
-        enabled: agentReachSettings.enabled,
-        backend: agentReachSettings.backend,
-        timeout_seconds: agentReachSettings.timeout_seconds,
-        detail_limit: agentReachSettings.detail_limit,
-        comments_per_post: agentReachSettings.comments_per_post,
-      });
-      setAgentReachSettings(updated);
-      setAgentReachMessage(updated.health.ready ? t("settings.agentReachSavedReady") : t("settings.agentReachSavedInstall"));
-    } catch (err) {
-      setAgentReachMessage(err instanceof Error ? err.message : t("settings.agentReachSaveError"));
-    } finally {
-      setAgentReachSaving(false);
-    }
-  }
-
-  async function saveWebSearch() {
-    if (!webSearchSettings) return;
-    setWebSearchSaving(true);
-    setWebSearchMessage(null);
-    try {
-      const updated = await api.updateWebSearchSettings({
-        provider: webSearchSettings.provider,
-        api_key: webSearchApiKey.trim() || undefined,
-        clear_api_key: clearWebSearchApiKey,
-        search_engine_id: webSearchEngineId.trim() || undefined,
-        clear_search_engine_id: clearWebSearchEngineId,
-      });
-      setWebSearchSettings(updated);
-      setWebSearchApiKey("");
-      setWebSearchEngineId(updated.search_engine_id || "");
-      setClearWebSearchApiKey(false);
-      setClearWebSearchEngineId(false);
-      setWebSearchMessage(updated.api_key_configured ? t("settings.webSearchSavedReady") : t("settings.webSearchSavedMissing"));
-    } catch (err) {
-      setWebSearchMessage(err instanceof Error ? err.message : t("settings.webSearchSaveError"));
-    } finally {
-      setWebSearchSaving(false);
-    }
-  }
-
-  async function reconnectAgentReach() {
-    if (!agentReachSettings) return;
-    setAgentReachReconnecting(true);
-    setAgentReachMessage(null);
-    try {
-      const result = await api.reconnectAgentReach();
-      setAgentReachSettings({ ...agentReachSettings, health: result.health });
-      if (result.ok) {
-        setAgentReachMessage(t("settings.agentReachReconnectReady"));
-      } else if (!result.health.opencli_installed) {
-        setAgentReachMessage(t("settings.agentReachReconnectMissing"));
-      } else {
-        setAgentReachMessage(t("settings.agentReachReconnectDisconnected"));
-      }
-    } catch (err) {
-      setAgentReachMessage(err instanceof Error ? err.message : t("settings.agentReachReconnectError"));
-    } finally {
-      setAgentReachReconnecting(false);
-    }
-  }
-
-  if (loading || !settings || !researchDefaults || !webSearchSettings) {
+  if (loading || !settings) {
     return <LoadingPanel text={t("settings.loading")} />;
   }
 
@@ -5057,283 +2606,9 @@ function SettingsPage({
           <h2>{t("settings.title")}</h2>
           <p>{t("settings.description")}</p>
         </div>
-        <div className="status-pill">
-          {redditSettings?.oauth_ready ? t("settings.statusOauthReady") : t("settings.statusRssFallback")}
-        </div>
       </header>
 
       <form className="settings-form" onSubmit={save}>
-        {agentReachSettings ? (
-          <section className="panel agent-reach-panel">
-            <PanelTitle title={t("settings.agentReachTitle")} subtitle={t("settings.agentReachSubtitle")} />
-            <div className="field-stack agent-grid">
-              <label className="switch left toggle-row">
-                <input
-                  type="checkbox"
-                  checked={agentReachSettings.enabled}
-                  onChange={(event) => updateAgentReach("enabled", event.target.checked)}
-                />
-                <span>{t("settings.agentReachEnable")}</span>
-              </label>
-              <label>
-                {t("settings.backend")}
-                <select
-                  value={agentReachSettings.backend}
-                  onChange={(event) => updateAgentReach("backend", event.target.value as AgentReachSettings["backend"])}
-                >
-                  <option value="auto">{t("settings.backendAuto")}</option>
-                  <option value="opencli">{t("settings.backendOpencli")}</option>
-                  <option value="rdt">{t("settings.backendRdt")}</option>
-                </select>
-              </label>
-              <label>
-                {t("settings.timeoutSeconds")}
-                <input
-                  type="number"
-                  min={10}
-                  max={600}
-                  step={1}
-                  value={agentReachSettings.timeout_seconds}
-                  onChange={(event) => updateAgentReach("timeout_seconds", Number(event.target.value))}
-                />
-              </label>
-              <div className="settings-path wide-field">
-                <Database size={16} />
-                <span>
-                  {agentReachSettings.health.ready
-                    ? `${t("settings.agentReachHealthReady")} ${agentReachSettings.health.recommended_backend}`
-                    : agentReachSettings.health.opencli_installed && !agentReachSettings.health.opencli_connected
-                      ? t("settings.agentReachOpencliDisconnected")
-                      : t("settings.agentReachNotReady")}
-                </span>
-              </div>
-              <div className="health-grid wide-field">
-                <span className={agentReachSettings.health.agent_reach_installed ? "ok" : "missing"}>agent-reach</span>
-                <span className={agentReachSettings.health.mcporter_installed ? "ok" : "missing"}>mcporter</span>
-                <span className={agentReachSettings.health.mcporter_exa_configured ? "ok" : "missing"}>Exa MCP</span>
-                <span className={agentReachSettings.health.opencli_connected ? "ok" : "missing"}>
-                  {agentReachSettings.health.opencli_installed ? t("settings.opencliExtension") : t("settings.opencli")}
-                </span>
-                <span className={agentReachSettings.health.rdt_installed ? "ok" : "missing"}>rdt-cli</span>
-              </div>
-              <div className="agent-health-panels wide-field">
-                <div className="settings-path">
-                  <MessageSquare size={16} />
-                  <span>
-                    {agentReachSettings.health.ready
-                      ? `${t("settings.agentReachRedditReady")} ${agentReachSettings.health.recommended_backend}`
-                      : t("settings.agentReachRedditMissing")}
-                  </span>
-                </div>
-                <div className="settings-path">
-                  <Search size={16} />
-                  <span>
-                    {agentReachSettings.health.web_search_ready
-                      ? t("settings.agentReachSearchReady")
-                      : t("settings.agentReachSearchMissing")}
-                  </span>
-                </div>
-              </div>
-              <div className="settings-path wide-field">
-                <Database size={16} />
-                <span>
-                  {formatMessage(t("settings.agentReachSearchConfig"), {
-                    config: agentReachSettings.health.mcporter_config_path || "-",
-                    url: agentReachSettings.health.exa_mcp_url || "-",
-                  })}
-                </span>
-              </div>
-              <div className="agent-actions wide-field">
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={agentReachReconnecting || agentReachSaving}
-                  onClick={reconnectAgentReach}
-                >
-                  {agentReachReconnecting ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-                  {agentReachReconnecting ? t("settings.reconnectingOpencli") : t("settings.reconnectOpencli")}
-                </button>
-                <button type="button" disabled={agentReachSaving || agentReachReconnecting} onClick={saveAgentReach}>
-                  {agentReachSaving ? <Loader2 className="spin" size={17} /> : <Save size={17} />}
-                  {t("settings.saveAgentReach")}
-                </button>
-              </div>
-              {agentReachMessage ? <div className="alert subtle wide-field">{agentReachMessage}</div> : null}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="panel web-search-panel">
-          <PanelTitle title={t("settings.webSearchTitle")} subtitle={t("settings.webSearchSubtitle")} />
-          <div className="field-stack credential-grid">
-            <label>
-              {t("settings.webSearchProvider")}
-              <select value={webSearchSettings.provider} onChange={(event) => applyWebSearchProvider(event.target.value)}>
-                {webSearchSettings.providers.map((provider) => (
-                  <option key={provider.name} value={provider.name}>{provider.label}</option>
-                ))}
-              </select>
-            </label>
-            {webSearchSettings.api_key_required ? (
-              <label>
-                {t("settings.apiKey")}
-                <input
-                  type="password"
-                  value={webSearchApiKey}
-                  disabled={clearWebSearchApiKey}
-                  placeholder={webSearchSettings.api_key_configured ? t("settings.apiKeyKeep") : t("settings.webSearchApiKeyPaste")}
-                  onChange={(event) => setWebSearchApiKey(event.target.value)}
-                />
-              </label>
-            ) : (
-              <div className="settings-path">
-                <Search size={16} />
-                <span>{t("settings.webSearchAgentReachRoute")}</span>
-              </div>
-            )}
-            {webSearchSettings.requires_search_engine_id ? (
-              <label className="wide-field">
-                {t("settings.webSearchEngineId")}
-                <input
-                  value={webSearchEngineId}
-                  disabled={clearWebSearchEngineId}
-                  placeholder={webSearchSettings.search_engine_id_configured ? t("settings.webSearchEngineIdKeep") : t("settings.webSearchEngineIdPaste")}
-                  onChange={(event) => setWebSearchEngineId(event.target.value)}
-                />
-              </label>
-            ) : null}
-            <div className="credential-actions">
-              <div className="settings-path">
-                <Search size={16} />
-                <span>
-                  {webSearchSettings.provider === "agent_reach"
-                    ? t("settings.webSearchAgentReach")
-                    : webSearchSettings.api_key_configured
-                      ? t("settings.webSearchReady")
-                      : t("settings.webSearchMissing")}
-                </span>
-              </div>
-              <button type="button" disabled={webSearchSaving} onClick={saveWebSearch}>
-                {webSearchSaving ? <Loader2 className="spin" size={17} /> : <Save size={17} />}
-                {t("settings.saveWebSearch")}
-              </button>
-            </div>
-            <div className="settings-checks">
-              {webSearchSettings.api_key_required ? (
-                <label className="switch left">
-                  <input
-                    type="checkbox"
-                    checked={clearWebSearchApiKey}
-                    onChange={(event) => {
-                      setClearWebSearchApiKey(event.target.checked);
-                      if (event.target.checked) setWebSearchApiKey("");
-                    }}
-                  />
-                  <span>{t("settings.clearWebSearchApiKey")}</span>
-                </label>
-              ) : null}
-              {webSearchSettings.requires_search_engine_id ? (
-                <label className="switch left">
-                  <input
-                    type="checkbox"
-                    checked={clearWebSearchEngineId}
-                    onChange={(event) => {
-                      setClearWebSearchEngineId(event.target.checked);
-                      if (event.target.checked) {
-                        setWebSearchEngineId("");
-                        updateWebSearch("search_engine_id", "");
-                      }
-                    }}
-                  />
-                  <span>{t("settings.clearWebSearchEngineId")}</span>
-                </label>
-              ) : null}
-            </div>
-            <div className="settings-path wide-field">
-              <Database size={16} />
-              <span>
-                {webSearchSettings.api_key_required
-                  ? formatMessage(t("settings.webSearchEnvSummary"), {
-                    key: webSearchSettings.api_key_env,
-                    cx: webSearchSettings.search_engine_id_env || "-",
-                  })
-                  : t("settings.webSearchAgentReachEnvSummary")}
-              </span>
-            </div>
-            {webSearchMessage ? <div className="alert subtle wide-field">{webSearchMessage}</div> : null}
-          </div>
-        </section>
-
-        {redditSettings ? (
-          <section className="panel reddit-panel">
-            <PanelTitle title={t("settings.redditTitle")} subtitle={t("settings.redditSubtitle")} />
-            <div className="field-stack credential-grid">
-              <label>
-                {t("settings.clientId")}
-                <input
-                  value={redditClientId}
-                  disabled={clearRedditClientId}
-                  placeholder={redditSettings.client_id_configured ? t("settings.clientIdSaved") : t("settings.clientIdPaste")}
-                  onChange={(event) => setRedditClientId(event.target.value)}
-                />
-              </label>
-              <label>
-                {t("settings.clientSecret")}
-                <input
-                  type="password"
-                  value={redditClientSecret}
-                  disabled={clearRedditClientSecret}
-                  placeholder={redditSettings.client_secret_configured ? t("settings.clientSecretKeep") : t("settings.clientSecretPaste")}
-                  onChange={(event) => setRedditClientSecret(event.target.value)}
-                />
-              </label>
-              <label className="wide-field">
-                {t("settings.userAgent")}
-                <input
-                  value={redditUserAgent}
-                  placeholder="InsightAgentRedditDemo/0.1 by yourname"
-                  onChange={(event) => setRedditUserAgent(event.target.value)}
-                />
-              </label>
-              <div className="credential-actions">
-                <div className="settings-path">
-                  <KeyRound size={16} />
-                  <span>{redditSettings.oauth_ready ? t("settings.oauthReady") : t("settings.oauthIncomplete")}</span>
-                </div>
-                <button type="button" disabled={redditSaving} onClick={saveReddit}>
-                  {redditSaving ? <Loader2 className="spin" size={17} /> : <Save size={17} />}
-                  {t("settings.saveRedditApi")}
-                </button>
-              </div>
-              <div className="settings-checks">
-                <label className="switch left">
-                  <input
-                    type="checkbox"
-                    checked={clearRedditClientId}
-                    onChange={(event) => {
-                      setClearRedditClientId(event.target.checked);
-                      if (event.target.checked) setRedditClientId("");
-                    }}
-                  />
-                  <span>{t("settings.clearClientId")}</span>
-                </label>
-                <label className="switch left">
-                  <input
-                    type="checkbox"
-                    checked={clearRedditClientSecret}
-                    onChange={(event) => {
-                      setClearRedditClientSecret(event.target.checked);
-                      if (event.target.checked) setRedditClientSecret("");
-                    }}
-                  />
-                  <span>{t("settings.clearClientSecret")}</span>
-                </label>
-              </div>
-              {redditMessage ? <div className="alert subtle wide-field">{redditMessage}</div> : null}
-            </div>
-          </section>
-        ) : null}
-
         <section className="panel">
           <PanelTitle title={t("settings.connectionTitle")} subtitle={t("settings.connectionSubtitle")} />
           <div className="field-stack">

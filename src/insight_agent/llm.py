@@ -345,7 +345,12 @@ def extract_json(text: str) -> dict[str, Any]:
     return json.loads(stripped)
 
 
-def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
+def call_openai_compatible_chat(
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
+) -> dict[str, Any]:
     values = read_settings_values()
     provider = selected_provider(values)
     settings = build_llm_settings_response(values)
@@ -360,6 +365,10 @@ def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
         "messages": messages,
         "temperature": settings["temperature"],
     }
+    if tools:
+        body["tools"] = tools
+    if tool_choice:
+        body["tool_choice"] = tool_choice
     headers = {"Content-Type": "application/json"}
     if provider.api_key_env:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -379,7 +388,21 @@ def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise LLMUnavailable(f"LLM request failed: {exc}") from exc
 
-    content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+    choice = payload.get("choices", [{}])[0]
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    return {
+        "provider": provider.name,
+        "model": settings["model_name"],
+        "message": message,
+        "finish_reason": choice.get("finish_reason"),
+        "usage": payload.get("usage") or {},
+        "raw": payload,
+    }
+
+
+def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
+    chat = call_openai_compatible_chat(messages)
+    content = chat.get("message", {}).get("content", "")
     if not content:
         raise LLMUnavailable("LLM returned an empty response.")
     try:
@@ -387,10 +410,10 @@ def call_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise LLMUnavailable("LLM response was not valid JSON.") from exc
     return {
-        "provider": provider.name,
-        "model": settings["model_name"],
+        "provider": chat.get("provider"),
+        "model": chat.get("model"),
         "result": parsed,
-        "usage": payload.get("usage") or {},
+        "usage": chat.get("usage") or {},
     }
 
 
