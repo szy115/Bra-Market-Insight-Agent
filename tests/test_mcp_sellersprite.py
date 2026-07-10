@@ -1,5 +1,6 @@
-from insight_agent import mcp_sellersprite
+import json
 
+from insight_agent import mcp_sellersprite
 
 SELLERSPRITE_SAMPLE_SCHEMA = [
     {
@@ -29,6 +30,109 @@ SELLERSPRITE_SAMPLE_SCHEMA = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "market_product_concentration",
+        "description": "SellerSprite product concentration",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "object",
+                    "properties": {
+                        "marketplace": {"type": "string"},
+                        "month": {"type": "string"},
+                        "nodeIdPath": {"type": "string"},
+                        "newProduct": {"type": "integer"},
+                        "topN": {"type": "integer"},
+                    },
+                    "required": ["marketplace", "nodeIdPath"],
+                }
+            },
+            "required": ["request"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA = [
+    {
+        "name": "market_research",
+        "description": "SellerSprite market research",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "object",
+                    "properties": {
+                        "marketplace": {"type": "string"},
+                        "departmentKeyword": {"type": "string"},
+                        "month": {"type": "string"},
+                        "size": {"type": "integer"},
+                        "page": {"type": "integer"},
+                        "newProduct": {"type": "integer"},
+                        "topNum": {"type": "integer"},
+                    },
+                    "required": ["marketplace", "departmentKeyword", "month", "size", "page"],
+                }
+            },
+            "required": ["request"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+SELLERSPRITE_KEYWORD_RESEARCH_REQUEST_SCHEMA = [
+    {
+        "name": "keyword_research",
+        "description": "SellerSprite keyword research",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "object",
+                    "properties": {
+                        "departments": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "keywords": {"type": "string"},
+                        "marketplace": {"type": "string"},
+                        "month": {"type": "string"},
+                        "page": {"type": "integer"},
+                        "size": {"type": "integer"},
+                    },
+                    "required": ["marketplace"],
+                }
+            },
+            "required": ["request"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+SELLERSPRITE_REVIEW_SCHEMA = [
+    {
+        "name": "review",
+        "description": "SellerSprite reviews",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "marketplace": {"type": "string"},
+                "asin": {"type": "string"},
+                "starList": {"type": "array", "items": {"type": "integer"}},
+                "typeList": {"type": "array", "items": {"type": "integer"}},
+                "page": {"type": "integer"},
+                "size": {"type": "integer"},
+                "startTimestamp": {"type": "integer"},
+                "endTimestamp": {"type": "integer"},
+            },
+            "required": ["marketplace", "asin"],
+            "additionalProperties": False,
+        },
+    }
 ]
 
 
@@ -75,7 +179,7 @@ def test_build_sellersprite_input_payload_filters_to_schema(monkeypatch) -> None
     assert payload == {
         "asin": "B012345678",
         "keyword": "minimizer bra",
-        "marketplace": "Amazon US",
+        "marketplace": "US",
     }
 
 
@@ -95,6 +199,184 @@ def test_build_sellersprite_input_payload_adds_keyword_array_and_country(monkeyp
     }
 
 
+def test_request_month_uses_previous_complete_month() -> None:
+    assert mcp_sellersprite._request_month(mcp_sellersprite.dt.date(2026, 7, 9)) == "202606"
+    assert mcp_sellersprite._request_month(mcp_sellersprite.dt.date(2026, 1, 9)) == "202512"
+
+
+def test_build_sellersprite_input_payload_wraps_request_object(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setattr(mcp_sellersprite.dt, "date", type("FixedDate", (mcp_sellersprite.dt.date,), {
+        "today": classmethod(lambda cls: cls(2026, 7, 7)),
+    }))
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_market_product_concentration",
+        "minimizer bra",
+        {
+            "marketplace": "Amazon US",
+            "category_node_id": "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002",
+            "head_listing_count": 10,
+            "new_product_window": "180d",
+            "prompt": "should not be sent",
+        },
+    )
+
+    assert payload == {
+        "request": {
+            "marketplace": "US",
+            "month": "202606",
+            "newProduct": 6,
+            "nodeIdPath": "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002",
+            "topN": 10,
+        }
+    }
+
+
+def test_demand_trend_request_omits_month_for_rolling_series(monkeypatch) -> None:
+    schema = [
+        {
+            "name": "market_product_demand_trend",
+            "description": "SellerSprite rolling category demand trend",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request": {
+                        "type": "object",
+                        "properties": {
+                            "marketplace": {"type": "string"},
+                            "month": {"type": "string"},
+                            "nodeIdPath": {"type": "string"},
+                            "newProduct": {"type": "integer"},
+                            "topN": {"type": "integer"},
+                        },
+                        "required": ["marketplace", "nodeIdPath"],
+                    }
+                },
+                "required": ["request"],
+            },
+        }
+    ]
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_market_product_demand_trend",
+        "minimizer bra",
+        {
+            "marketplace": "US",
+            "category_node_id": "7141123011:1045002",
+            "request": {"month": "202606"},
+        },
+    )
+
+    assert payload["request"]["nodeIdPath"] == "7141123011:1045002"
+    assert "month" not in payload["request"]
+    assert "newProduct" not in payload["request"]
+    assert "topN" not in payload["request"]
+
+
+def test_build_sellersprite_input_payload_overrides_model_invented_market_month(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+
+    class FixedDate(mcp_sellersprite.dt.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 9)
+
+    monkeypatch.setattr(mcp_sellersprite.dt, "date", FixedDate)
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_market_research",
+        "back smoothing bra",
+        {
+            "prompt": (
+                "使用 hot_product_pain_analysis Skill 做爆款痛点分析。"
+                "参数：marketplace=Amazon US；category=back smoothing bra；head_listing_count=10。"
+            ),
+            "marketplace": "Amazon US",
+            "category": "back smoothing bra",
+            "head_listing_count": 10,
+            "request": {
+                "marketplace": "US",
+                "departmentKeyword": "back smoothing bra",
+                "month": "202503",
+                "size": 10,
+                "page": 1,
+            },
+        },
+    )
+
+    assert payload["request"]["month"] == "202606"
+
+
+def test_build_sellersprite_input_payload_keeps_user_mentioned_market_month(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+
+    class FixedDate(mcp_sellersprite.dt.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 9)
+
+    monkeypatch.setattr(mcp_sellersprite.dt, "date", FixedDate)
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_market_research",
+        "back smoothing bra",
+        {
+            "prompt": "分析 2025-03 的 back smoothing bra 市场。",
+            "marketplace": "Amazon US",
+            "category": "back smoothing bra",
+            "request": {
+                "marketplace": "US",
+                "departmentKeyword": "back smoothing bra",
+                "month": "202503",
+                "size": 10,
+                "page": 1,
+            },
+        },
+    )
+
+    assert payload["request"]["month"] == "202503"
+
+
+def test_build_sellersprite_input_payload_does_not_infer_departments_from_category(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_KEYWORD_RESEARCH_REQUEST_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+
+    class FixedDate(mcp_sellersprite.dt.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 9)
+
+    monkeypatch.setattr(mcp_sellersprite.dt, "date", FixedDate)
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_keyword_research",
+        "minimizer bra",
+        {
+            "prompt": "分析 minimizer bra。",
+            "marketplace": "Amazon US",
+            "category": "minimizer bra",
+            "size": 10,
+            "page": 1,
+        },
+    )
+
+    assert payload == {
+        "request": {
+            "keywords": "minimizer bra",
+            "marketplace": "US",
+            "month": "202606",
+            "page": 1,
+            "size": 10,
+        }
+    }
+
+
 def test_normalize_sellersprite_result_parses_text_content_json() -> None:
     status, data = mcp_sellersprite.normalize_sellersprite_result(
         {
@@ -110,6 +392,326 @@ def test_normalize_sellersprite_result_parses_text_content_json() -> None:
     assert status == "ok"
     assert data["items"][0]["keyword"] == "minimizer bra"
     assert data["summary"] == "ok"
+    assert "raw" not in data
+    assert "text" not in data
+    assert "parsed_content" not in data
+
+
+def test_build_review_input_uses_skill_sample_size_and_recent_window(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+
+    payload = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_review",
+        "minimizer bra",
+        {
+            "skillId": "hot_product_pain_analysis",
+            "marketplace": "Amazon US",
+            "asin": "B08MVF8QDL",
+            "size": 20,
+            "starList": [1, 2, 3],
+            "params": {"review_sample_size": 30, "time_range": "180d"},
+        },
+    )
+
+    assert payload["marketplace"] == "US"
+    assert payload["asin"] == "B08MVF8QDL"
+    assert payload["size"] == 30
+    assert payload["page"] == 1
+    assert "starList" not in payload
+    assert 179 * 24 * 60 * 60 * 1000 <= payload["endTimestamp"] - payload["startTimestamp"] <= 181 * 24 * 60 * 60 * 1000
+
+
+def test_hot_product_concentration_buffers_candidates_and_excludes_mismatch(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    calls = []
+
+    def fake_call(_tool_name, arguments):
+        calls.append(arguments)
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "code": "OK",
+                            "data": [
+                                {"ranking": 1, "asin": "B000000001", "title": "Alpha Minimizer Bra", "imageUrl": "one.jpg"},
+                                {"ranking": 2, "asin": "B000000002", "title": "HSIA Sports Bras for Women", "imageUrl": "two.jpg"},
+                                {"ranking": 3, "asin": "B000000003", "title": "Beta Full Coverage Minimizer Bra", "imageUrl": "three.jpg"},
+                            ],
+                        }
+                    ),
+                }
+            ]
+        }
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
+    tool_input = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_market_product_concentration",
+        "minimizer bra",
+        {
+            "skillId": "hot_product_pain_analysis",
+            "marketplace": "US",
+            "category": "minimizer bra",
+            "category_node_id": "7141123011:1045002",
+            "head_listing_count": 2,
+            "listing_sample_size": 20,
+        },
+    )
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_market_product_concentration",
+        tool_input,
+    )
+
+    assert tool_input["request"]["topN"] == 20
+    assert mcp_sellersprite.INSIGHT_CONTEXT_KEY in tool_input
+    assert mcp_sellersprite.INSIGHT_CONTEXT_KEY not in calls[0]
+    assert result["status"] == "ok"
+    assert result["data"]["resolved_params"]["selected_product_asins"] == ["B000000001", "B000000003"]
+    assert result["data"]["product_selection"]["excluded"][0]["asin"] == "B000000002"
+
+
+def test_execute_review_balances_stars_and_recovers_from_family_variant(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    calls = []
+
+    def response(payload):
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    def fake_call(tool_name, arguments):
+        calls.append((tool_name, dict(arguments)))
+        asin = arguments.get("asin")
+        if tool_name == "asin_detail":
+            return response(
+                {
+                    "code": "OK",
+                    "data": {
+                        "parent": "B000PARENT",
+                        "variationList": [{"asin": "B000FAMILY"}],
+                    },
+                }
+            )
+        if asin != "B000FAMILY":
+            return response({"code": "OK", "data": {"page": 1, "total": 0, "items": []}})
+        stars = arguments.get("starList")
+        if stars == [1, 2, 3]:
+            return response(
+                {
+                    "code": "OK",
+                    "data": {
+                        "page": 1,
+                        "total": 2,
+                        "items": [
+                            {"author": "Low", "title": "Wire hurts", "content": "Digging", "date": 1500000000000, "star": 1},
+                            {"author": "Old", "title": "Old batch", "content": "Historical", "date": 900000000000, "star": 2},
+                        ],
+                    },
+                }
+            )
+        return response(
+            {
+                "code": "OK",
+                "data": {
+                    "page": 1,
+                    "total": 3,
+                    "items": [{"author": "High", "title": "Supportive", "content": "Fits well", "date": 1600000000000, "star": 5}],
+                },
+            }
+        )
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_review",
+        {
+            "marketplace": "US",
+            "asin": "B08MVF8QDL",
+            "size": 10,
+            "page": 1,
+            "startTimestamp": 1000000000000,
+            "endTimestamp": 2000000000000,
+            mcp_sellersprite.INSIGHT_CONTEXT_KEY: {"balanced_review": True},
+        },
+    )
+
+    sampling = result["data"]["review_sampling"]
+    items = result["data"]["data"]["items"]
+    assert result["status"] == "ok"
+    assert result["input"]["asin"] == "B08MVF8QDL"
+    assert sampling["selected_review_asin"] == "B000FAMILY"
+    assert sampling["scope"] == "variation_family"
+    assert sampling["attempt_count"] == 3
+    assert [item["star"] for item in items] == [1, 5]
+    assert all(call[1].get("startTimestamp") == 1000000000000 for call in calls if call[0] == "review")
+    assert "family variant" in result["summary"]
+
+
+def test_resolve_sellersprite_product_node_rejects_wrong_leaf_category() -> None:
+    resolution = mcp_sellersprite.resolve_sellersprite_product_node(
+        {
+            "data": [
+                {
+                    "nodeIdPath": "7141123011:7147440011:1040660:9522931011:14333511:2364767011:2364773011",
+                    "nodeLabelPath": "Clothing, Shoes & Jewelry:Women:Clothing:Lingerie, Sleep & Lounge:Lingerie:Accessories:Bra Extenders",
+                    "products": 266,
+                }
+            ]
+        },
+        "minimizer bra",
+    )
+
+    assert resolution["status"] == "no_match"
+    assert resolution["selected"] is None
+    assert resolution["candidates"][0]["match_score"] == 0.0
+
+
+def test_resolve_sellersprite_product_node_accepts_unique_high_confidence_leaf() -> None:
+    node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
+    resolution = mcp_sellersprite.resolve_sellersprite_product_node(
+        {
+            "data": [
+                {
+                    "nodeIdPath": node_id_path,
+                    "nodeLabelPath": "Clothing, Shoes & Jewelry:Women:Clothing:Lingerie, Sleep & Lounge:Lingerie:Bras:Minimizers",
+                    "products": 328,
+                },
+                {
+                    "nodeIdPath": node_id_path,
+                    "nodeLabelPath": "Clothing, Shoes & Jewelry:Women:Clothing:Lingerie, Sleep & Lounge:Lingerie:Bras:Minimizers",
+                    "products": 328,
+                },
+            ]
+        },
+        "minimizer bra",
+    )
+
+    assert resolution["status"] == "resolved"
+    assert resolution["selected"]["nodeIdPath"] == node_id_path
+    assert resolution["selected"]["match_score"] == 0.94
+    assert len(resolution["candidates"]) == 1
+
+
+def test_execute_product_node_exposes_resolved_skill_params(monkeypatch) -> None:
+    schema = [
+        {
+            "name": "product_node",
+            "description": "SellerSprite product node",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request": {
+                        "type": "object",
+                        "properties": {
+                            "keyword": {"type": "string"},
+                            "marketplace": {"type": "string"},
+                            "month": {"type": "string"},
+                        },
+                        "required": ["marketplace"],
+                    }
+                },
+                "required": ["request"],
+            },
+        }
+    ]
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
+    monkeypatch.setattr(
+        mcp_sellersprite,
+        "call_sellersprite_mcp_tool",
+        lambda *_args, **_kwargs: {
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        '{"data":[{"nodeIdPath":"'
+                        + node_id_path
+                        + '","nodeLabelPath":"Clothing, Shoes & Jewelry:Women:Clothing:Lingerie, Sleep & Lounge:Lingerie:Bras:Minimizers","products":328}]}'
+                    ),
+                }
+            ]
+        },
+    )
+
+    tool_input = mcp_sellersprite.build_sellersprite_input_payload(
+        "sellersprite_product_node",
+        "minimizer bra",
+        {"marketplace": "Amazon US", "category": "minimizer bra"},
+    )
+    result = mcp_sellersprite.execute_sellersprite_agent_tool("sellersprite_product_node", tool_input)
+
+    assert result["status"] == "ok"
+    assert result["data"]["node_resolution"]["status"] == "resolved"
+    assert result["data"]["resolved_params"]["category_node_id"] == node_id_path
+
+
+def test_execute_product_node_recovers_with_official_plural_leaf(monkeypatch) -> None:
+    schema = [
+        {
+            "name": "product_node",
+            "description": "SellerSprite product node",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request": {
+                        "type": "object",
+                        "properties": {
+                            "keyword": {"type": "string"},
+                            "marketplace": {"type": "string"},
+                            "month": {"type": "string"},
+                        },
+                        "required": ["marketplace"],
+                    }
+                },
+                "required": ["request"],
+            },
+        }
+    ]
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
+    queries = []
+
+    def fake_call(_tool_name, arguments):
+        query = arguments["request"]["keyword"]
+        queries.append(query)
+        if query == "minimizer bra":
+            rows = [
+                {
+                    "nodeIdPath": "7141123011:2364773011",
+                    "nodeLabelPath": "Clothing, Shoes & Jewelry:Women:Bra Extenders",
+                    "products": 266,
+                }
+            ]
+        elif query == "minimizer":
+            rows = []
+        else:
+            rows = [
+                {
+                    "nodeIdPath": node_id_path,
+                    "nodeLabelPath": "Clothing, Shoes & Jewelry:Women:Lingerie:Bras:Minimizers",
+                    "products": 328,
+                }
+            ]
+        return {"content": [{"type": "text", "text": json.dumps({"code": "OK", "data": rows})}]}
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_product_node",
+        {"request": {"marketplace": "US", "keyword": "minimizer bra", "month": "202606"}},
+    )
+
+    assert queries == ["minimizer bra", "minimizer", "Minimizers"]
+    assert result["status"] == "ok"
+    assert result["input"]["request"]["keyword"] == "Minimizers"
+    assert result["data"]["resolved_params"]["category_node_id"] == node_id_path
+    assert result["data"]["node_query_resolution"]["attempt_count"] == 3
 
 
 def test_execute_sellersprite_agent_tool_returns_needs_user_action_without_secret(monkeypatch) -> None:
@@ -126,3 +728,100 @@ def test_execute_sellersprite_agent_tool_returns_needs_user_action_without_secre
 
     assert result["status"] == "needs_user_action"
     assert "SellerSprite MCP requires authentication" in result["summary"]
+
+
+def test_execute_sellersprite_agent_tool_blocks_missing_required_request_param(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+
+    def fail_call(*args, **kwargs):
+        raise AssertionError("SellerSprite MCP should not be called with missing required params")
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fail_call)
+
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_market_product_concentration",
+        {"request": {"marketplace": "US", "month": "202606", "topN": 10}},
+    )
+
+    assert result["status"] == "needs_user_action"
+    assert result["data"]["missing_required"] == ["request.nodeIdPath"]
+    assert "request.nodeIdPath" in result["summary"]
+
+
+def test_execute_market_research_recovers_with_discriminative_core_keyword(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    requests = []
+
+    def fake_call(_tool_name, arguments):
+        request = arguments["request"]
+        requests.append(dict(request))
+        if request["departmentKeyword"] == "minimizer":
+            payload = '{"data":{"page":1,"size":10,"total":1,"items":[{"departmentName":"Minimizers"}]}}'
+        else:
+            payload = '{"data":{"page":1,"size":10,"total":0,"items":[]}}'
+        return {"content": [{"type": "text", "text": payload}]}
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_market_research",
+        {
+            "request": {
+                "marketplace": "US",
+                "departmentKeyword": "minimizer bra",
+                "month": "202606",
+                "page": 1,
+                "size": 10,
+            }
+        },
+    )
+
+    assert [request["departmentKeyword"] for request in requests] == ["minimizer bra", "minimizer"]
+    assert all(request["month"] == "202606" for request in requests)
+    assert result["status"] == "ok"
+    assert result["input"]["request"]["departmentKeyword"] == "minimizer"
+    assert result["data"]["data"]["total"] == 1
+    assert result["data"]["query_resolution"]["selected_keyword"] == "minimizer"
+    assert result["data"]["query_resolution"]["attempt_count"] == 2
+    assert "recovered" in result["summary"]
+
+
+def test_execute_market_research_stays_empty_when_controlled_fallback_is_empty(monkeypatch) -> None:
+    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
+    requests = []
+
+    def fake_call(_tool_name, arguments):
+        requests.append(dict(arguments["request"]))
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"data":{"page":1,"size":10,"total":0,"items":[]}}',
+                }
+            ]
+        }
+
+    monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
+    result = mcp_sellersprite.execute_sellersprite_agent_tool(
+        "sellersprite_market_research",
+        {
+            "request": {
+                "marketplace": "US",
+                "departmentKeyword": "minimizer bra",
+                "month": "202606",
+                "page": 1,
+                "size": 10,
+            }
+        },
+    )
+
+    assert [request["departmentKeyword"] for request in requests] == ["minimizer bra", "minimizer"]
+    assert result["status"] == "ok"
+    assert result["data"]["query_resolution"]["selected_keyword"] is None
+    assert result["data"]["query_resolution"]["attempt_count"] == 2
+    assert "returned 0 items" in result["summary"]

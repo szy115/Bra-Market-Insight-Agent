@@ -161,7 +161,7 @@ Fields:
 | evidence_id | Stable id for the evidence requirement |
 | tool | Tool expected to produce the evidence |
 | required_when | Predicate that decides when this evidence is required |
-| min_success | Minimum number of successful or partial-success tool results |
+| min_success | Minimum number of distinct successful or partial-success tool results; use an integer or `param:<canonical_name>` when the required count comes from a Skill parameter |
 | severity | `block` or `warn` |
 | if_missing | `call_missing_tool`, `continue_with_gap`, or `ask_user` |
 | artifact_requirement | What the final report must do if this evidence is absent or partial |
@@ -180,6 +180,8 @@ Severity rules:
 
 - `block`: do not generate the final Artifact until the evidence is collected or the user changes scope.
 - `warn`: allow generation, but pass the gap into the Artifact and explicitly mark the limitation.
+
+For per-item workflows, `min_success` may reference a numeric canonical parameter. Example: `param:head_listing_count` requires one distinct successful tool input for every requested head listing. Repeating the same ASIN or keyword does not increase the observed count.
 
 ## Recommended Tool Use
 

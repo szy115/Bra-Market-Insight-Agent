@@ -44,4 +44,7 @@ function Invoke-InsightPackageManager {
   )
 
   & $PackageManager.Command @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "$($PackageManager.Name) $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+  }
 }

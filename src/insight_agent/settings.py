@@ -70,6 +70,14 @@ class WebSearchProvider:
     search_engine_id_env: str | None = None
 
 
+@dataclass(frozen=True)
+class MCPDataSourceCredential:
+    id: str
+    label: str
+    canonical_env: str
+    accepted_env_names: tuple[str, ...]
+
+
 WEB_SEARCH_PROVIDERS = [
     WebSearchProvider("agent_reach", "Agent Reach / Exa Search"),
     WebSearchProvider("brave", "Brave Search API", "BRAVE_SEARCH_API_KEY"),
@@ -77,6 +85,26 @@ WEB_SEARCH_PROVIDERS = [
     WebSearchProvider("google_cse", "Google Programmable Search", "GOOGLE_CSE_API_KEY", True, "GOOGLE_CSE_ID"),
 ]
 WEB_SEARCH_PROVIDER_BY_NAME = {provider.name: provider for provider in WEB_SEARCH_PROVIDERS}
+
+MCP_DATA_SOURCE_CREDENTIALS = (
+    MCPDataSourceCredential(
+        id="sellersprite",
+        label="SellerSprite",
+        canonical_env="SELLERSPRITE_MCP_SECRET_KEY",
+        accepted_env_names=(
+            "SELLERSPRITE_MCP_SECRET_KEY",
+            "SELLERSPRITE_SECRET_KEY",
+            "SELLERSPRITE_API_KEY",
+        ),
+    ),
+    MCPDataSourceCredential(
+        id="sif",
+        label="Sif",
+        canonical_env="SIF_MCP_TOKEN",
+        accepted_env_names=("SIF_MCP_TOKEN", "SIF_API_KEY", "SIF_TOKEN"),
+    ),
+)
+MCP_DATA_SOURCE_BY_ID = {source.id: source for source in MCP_DATA_SOURCE_CREDENTIALS}
 
 
 def load_llm_providers() -> list[LLMProvider]:
@@ -135,6 +163,8 @@ def read_settings_values() -> dict[str, str]:
                 "REDDIT_",
                 "AGENT_REACH_",
                 "AMAZON_",
+                "SELLERSPRITE_",
+                "SIF_",
             )
         ):
             values[key] = value
@@ -212,6 +242,30 @@ def build_llm_settings_response(values: dict[str, str] | None = None) -> dict[st
         "timeout_seconds": int(env_values.get("INSIGHT_LLM_TIMEOUT", "90") or 90),
         "env_path": ".env",
         "providers": [asdict(provider) for provider in LLM_PROVIDERS],
+    }
+
+
+def mcp_data_source_secret(source: MCPDataSourceCredential, values: dict[str, str]) -> str:
+    for env_name in source.accepted_env_names:
+        value = values.get(env_name, "")
+        if configured_secret(value):
+            return value
+    return ""
+
+
+def build_mcp_settings_response(values: dict[str, str] | None = None) -> dict[str, Any]:
+    env_values = values if values is not None else read_settings_values()
+    return {
+        "env_path": ".env",
+        "sources": [
+            {
+                "id": source.id,
+                "label": source.label,
+                "env_name": source.canonical_env,
+                "configured": bool(mcp_data_source_secret(source, env_values)),
+            }
+            for source in MCP_DATA_SOURCE_CREDENTIALS
+        ],
     }
 
 
@@ -312,6 +366,42 @@ def update_llm_settings(payload: dict[str, Any]) -> dict[str, Any]:
     write_env_values(updates)
     sync_runtime_env(provider, read_env_values(ENV_PATH))
     return build_llm_settings_response(read_env_values(ENV_PATH))
+
+
+def update_mcp_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    credentials = payload.get("credentials")
+    if not isinstance(credentials, dict):
+        raise ValueError("MCP credentials payload is required")
+
+    unknown_sources = set(credentials) - set(MCP_DATA_SOURCE_BY_ID)
+    if unknown_sources:
+        raise ValueError(f"Unsupported MCP data source: {sorted(unknown_sources)[0]}")
+
+    current = read_settings_values()
+    updates: dict[str, str] = {}
+    for source in MCP_DATA_SOURCE_CREDENTIALS:
+        entry = credentials.get(source.id, {})
+        if not isinstance(entry, dict):
+            raise ValueError(f"Invalid credential payload for {source.id}")
+        clear_secret = bool(entry.get("clear"))
+        secret = str(entry.get("value") or "").strip()
+        if secret and not configured_secret(secret):
+            raise ValueError(f"Invalid credential value for {source.id}")
+        if clear_secret:
+            for env_name in source.accepted_env_names:
+                updates[env_name] = ""
+        elif secret:
+            updates[source.canonical_env] = secret
+        else:
+            existing_secret = mcp_data_source_secret(source, current)
+            if existing_secret:
+                updates[source.canonical_env] = existing_secret
+
+    if updates:
+        write_env_values(updates)
+    env_values = read_env_values(ENV_PATH)
+    sync_runtime_env(values=env_values)
+    return build_mcp_settings_response(env_values)
 
 
 def build_research_settings_response(values: dict[str, str] | None = None) -> dict[str, Any]:
@@ -634,6 +724,20 @@ def sync_runtime_env(provider: LLMProvider | None = None, values: dict[str, str]
         "TAVILY_API_KEY",
         "GOOGLE_CSE_API_KEY",
         "GOOGLE_CSE_ID",
+    ):
+        value = env_values.get(key, "")
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+    for key in (
+        "SELLERSPRITE_MCP_SECRET_KEY",
+        "SELLERSPRITE_SECRET_KEY",
+        "SELLERSPRITE_API_KEY",
+        "SIF_MCP_TOKEN",
+        "SIF_API_KEY",
+        "SIF_TOKEN",
     ):
         value = env_values.get(key, "")
         if value:

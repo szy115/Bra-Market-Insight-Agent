@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -98,10 +99,14 @@ def parse_evidence_contract(markdown_text: str) -> list[dict[str, Any]]:
         tool = str(row.get("tool") or "").strip()
         if not evidence_id or not tool:
             continue
-        try:
-            min_success = max(0, int(str(row.get("min_success") or "1").strip()))
-        except ValueError:
-            min_success = 1
+        raw_min_success = str(row.get("min_success") or "1").strip()
+        if raw_min_success.startswith("param:"):
+            min_success: int | str = raw_min_success
+        else:
+            try:
+                min_success = max(0, int(raw_min_success))
+            except ValueError:
+                min_success = 1
         rules.append(
             {
                 "evidence_id": evidence_id,
@@ -219,6 +224,32 @@ def required_when_matches(
     return False
 
 
+def resolve_min_success(value: Any, params: dict[str, Any]) -> int:
+    if isinstance(value, str) and value.startswith("param:"):
+        key = value.split(":", 1)[1].strip()
+        try:
+            return max(0, int(params.get(key) or 1))
+        except (TypeError, ValueError):
+            return 1
+    try:
+        return max(0, int(value or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def evidence_tool_identity(tool: dict[str, Any]) -> str:
+    input_payload = tool.get("input") if isinstance(tool.get("input"), dict) else {}
+    request = input_payload.get("request") if isinstance(input_payload.get("request"), dict) else {}
+    for key in ("asin", "keyword", "departmentKeyword", "nodeIdPath"):
+        value = input_payload.get(key)
+        if value not in (None, ""):
+            return f"{key}:{str(value).strip().lower()}"
+        value = request.get(key)
+        if value not in (None, ""):
+            return f"request.{key}:{str(value).strip().lower()}"
+    return json.dumps(input_payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
 def validate_evidence_contract(
     skill: dict[str, Any] | None,
     *,
@@ -240,11 +271,16 @@ def validate_evidence_contract(
         tool_name = str(rule.get("tool") or "").strip()
         if not tool_name:
             continue
-        min_success = int(rule.get("min_success") or 1)
-        observed_success = sum(
-            1
+        min_success = resolve_min_success(rule.get("min_success"), params)
+        successful_tools = [
+            tool
             for tool in tools
             if str(tool.get("name") or "") == tool_name and str(tool.get("status") or "") in success_statuses
+        ]
+        observed_success = (
+            len({evidence_tool_identity(tool) for tool in successful_tools})
+            if min_success > 1
+            else len(successful_tools)
         )
         if observed_success >= min_success:
             continue

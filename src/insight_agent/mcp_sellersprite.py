@@ -1,18 +1,63 @@
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
-import hashlib
 from functools import lru_cache
 from typing import Any
-
 
 SELLERSPRITE_AGENT_TOOL_PREFIX = "sellersprite_"
 SELLERSPRITE_MCP_URL = os.getenv("SELLERSPRITE_MCP_URL", "https://mcp.sellersprite.com/mcp")
 SELLERSPRITE_AUTH_ENV_NAMES = ["SELLERSPRITE_MCP_SECRET_KEY", "SELLERSPRITE_SECRET_KEY", "SELLERSPRITE_API_KEY"]
+INSIGHT_CONTEXT_KEY = "__insight_context"
+HOT_PRODUCT_SKILL_ID = "hot_product_pain_analysis"
+MARKET_RESEARCH_GENERIC_QUERY_TOKENS = {
+    "a",
+    "an",
+    "amazon",
+    "and",
+    "bra",
+    "bras",
+    "female",
+    "for",
+    "in",
+    "ladies",
+    "lady",
+    "male",
+    "man",
+    "men",
+    "mens",
+    "of",
+    "on",
+    "or",
+    "product",
+    "products",
+    "s",
+    "the",
+    "us",
+    "with",
+    "woman",
+    "women",
+    "womens",
+}
+
+PRODUCT_MATCH_GENERIC_TOKENS = {
+    "a",
+    "amazon",
+    "and",
+    "bra",
+    "bras",
+    "for",
+    "the",
+    "woman",
+    "women",
+    "womens",
+}
 
 
 class SellerSpriteMcpError(RuntimeError):
@@ -28,6 +73,48 @@ def compact_text(value: Any, limit: int = 520) -> str:
     if len(normalized) <= limit:
         return normalized
     return normalized[: limit - 1].rstrip() + "..."
+
+
+def _payload_value(payload: dict[str, Any], key: str) -> Any:
+    value = payload.get(key)
+    if value is not None and value != "":
+        return value
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    return params.get(key)
+
+
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return min(max(number, minimum), maximum)
+
+
+def _review_time_bounds(value: Any, now: dt.datetime | None = None) -> tuple[int, int] | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    day_aliases = {"day": 1, "week": 7, "month": 30, "year": 365}
+    days = day_aliases.get(normalized)
+    if days is None:
+        match = re.fullmatch(r"(\d{1,4})d", normalized)
+        if not match:
+            return None
+        days = max(1, int(match.group(1)))
+    end = now or dt.datetime.now(dt.UTC)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=dt.UTC)
+    start = end - dt.timedelta(days=days)
+    return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
+
+def _sellersprite_mcp_arguments(input_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in input_payload.items()
+        if key != INSIGHT_CONTEXT_KEY
+    }
 
 
 def is_sellersprite_agent_tool(tool_name: str) -> bool:
@@ -239,12 +326,307 @@ def _market_from_payload(payload: dict[str, Any]) -> str:
     return "US"
 
 
+def _latest_saturday(value: dt.date | None = None) -> str:
+    current = value or dt.date.today()
+    days_since_saturday = (current.weekday() - 5) % 7
+    saturday = current - dt.timedelta(days=days_since_saturday)
+    return saturday.strftime("%Y%m%d")
+
+
+def _request_month(value: dt.date | None = None) -> str:
+    current = value or dt.date.today()
+    first_day_this_month = current.replace(day=1)
+    previous_month = first_day_this_month - dt.timedelta(days=1)
+    return previous_month.strftime("%Y%m")
+
+
+def _normalize_month_value(value: Any) -> str:
+    compact = "".join(str(value or "").strip().split())
+    match = re.fullmatch(r"((?:19|20)\d{2})(?:[-/.年]?)(0?[1-9]|1[0-2])月?", compact)
+    if not match:
+        return ""
+    return f"{match.group(1)}{int(match.group(2)):02d}"
+
+
+def _months_mentioned_in_prompt(prompt: Any) -> list[str]:
+    compact = "".join(str(prompt or "").split())
+    if not compact:
+        return []
+    seen: set[str] = set()
+    months: list[str] = []
+    for pattern in (
+        r"(?<!\d)((?:19|20)\d{2})(0[1-9]|1[0-2])(?!\d)",
+        r"(?<!\d)((?:19|20)\d{2})[-/.年](0?[1-9]|1[0-2])月?",
+    ):
+        for match in re.finditer(pattern, compact):
+            month = f"{match.group(1)}{int(match.group(2)):02d}"
+            if month not in seen:
+                seen.add(month)
+                months.append(month)
+    return months
+
+
+def _resolved_request_month(payload: dict[str, Any], requested_value: Any = None) -> str:
+    prompt_months = _months_mentioned_in_prompt(payload.get("prompt"))
+    requested_month = _normalize_month_value(requested_value)
+    if prompt_months:
+        if requested_month in prompt_months:
+            return requested_month
+        return prompt_months[-1]
+    return _request_month()
+
+
+def _new_product_months(payload: dict[str, Any]) -> int:
+    raw = str(payload.get("new_product_window") or payload.get("newProduct") or "").strip().lower()
+    if raw.endswith("d"):
+        try:
+            return max(1, round(int(raw[:-1]) / 30))
+        except ValueError:
+            return 6
+    if raw.endswith("m"):
+        try:
+            return max(1, int(raw[:-1]))
+        except ValueError:
+            return 6
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 6
+
+
+def _node_id_path_from_payload(payload: dict[str, Any]) -> str:
+    for key in ("nodeIdPath", "category_node_id", "categoryNodeId", "node_id_path", "departmentNodeIdPath"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _schema_keyword_value(property_schema: dict[str, Any], category_value: str) -> str | list[str]:
+    return [category_value] if property_schema.get("type") == "array" else category_value
+
+
+_NODE_MATCH_GENERIC_TOKENS = {
+    "amazon",
+    "category",
+    "clothing",
+    "jewelry",
+    "men",
+    "product",
+    "shoe",
+    "women",
+}
+
+
+def _node_match_tokens(value: Any) -> list[str]:
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").lower().replace("'s", ""))
+    normalized: list[str] = []
+    for token in tokens:
+        if len(token) > 3 and token.endswith("s"):
+            token = token[:-1]
+        normalized.append(token)
+    return normalized
+
+
+def _node_match_score(query: str, node_id_path: str, node_label_path: str) -> float:
+    query_text = str(query or "").strip()
+    if not query_text:
+        return 0.0
+    if query_text.isdigit() and node_id_path.split(":")[-1] == query_text:
+        return 1.0
+
+    leaf_label = re.split(r"[:>/|]", node_label_path)[-1].strip()
+    query_tokens = set(_node_match_tokens(query_text))
+    leaf_tokens = set(_node_match_tokens(leaf_label))
+    if not query_tokens or not leaf_tokens:
+        return 0.0
+    if query_tokens == leaf_tokens:
+        return 1.0
+
+    query_specific = query_tokens - _NODE_MATCH_GENERIC_TOKENS
+    leaf_specific = leaf_tokens - _NODE_MATCH_GENERIC_TOKENS
+    if leaf_specific and leaf_specific.issubset(query_specific):
+        return 0.94
+    if query_specific and query_specific.issubset(leaf_specific):
+        return 0.92
+    union = query_specific | leaf_specific
+    overlap = query_specific & leaf_specific
+    if union and len(overlap) / len(union) >= 0.75:
+        return 0.88
+    return 0.0
+
+
+def _collect_product_node_candidates(value: Any, candidates: dict[str, dict[str, Any]], *, depth: int = 0) -> None:
+    if depth > 10:
+        return
+    if isinstance(value, dict):
+        node_id_path = str(value.get("nodeIdPath") or "").strip()
+        node_label_path = str(value.get("nodeLabelPath") or "").strip()
+        if node_id_path and node_label_path:
+            candidate = candidates.setdefault(
+                node_id_path,
+                {
+                    "nodeIdPath": node_id_path,
+                    "nodeLabelPath": node_label_path,
+                },
+            )
+            for key in ("nodeId", "products", "productCount", "count"):
+                if value.get(key) not in (None, ""):
+                    candidate[key] = value.get(key)
+        for child in value.values():
+            _collect_product_node_candidates(child, candidates, depth=depth + 1)
+        return
+    if isinstance(value, list):
+        for child in value:
+            _collect_product_node_candidates(child, candidates, depth=depth + 1)
+        return
+    if isinstance(value, str) and value.strip().startswith(("{", "[")):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return
+        _collect_product_node_candidates(parsed, candidates, depth=depth + 1)
+
+
+def resolve_sellersprite_product_node(data: dict[str, Any], query: str) -> dict[str, Any]:
+    candidates_by_path: dict[str, dict[str, Any]] = {}
+    _collect_product_node_candidates(data, candidates_by_path)
+    candidates: list[dict[str, Any]] = []
+    for candidate in candidates_by_path.values():
+        scored = dict(candidate)
+        scored["match_score"] = _node_match_score(
+            query,
+            str(candidate.get("nodeIdPath") or ""),
+            str(candidate.get("nodeLabelPath") or ""),
+        )
+        candidates.append(scored)
+    candidates.sort(key=lambda item: (-float(item.get("match_score") or 0), str(item.get("nodeLabelPath") or "")))
+
+    high_confidence = [item for item in candidates if float(item.get("match_score") or 0) >= 0.88]
+    if len(high_confidence) == 1:
+        selected = high_confidence[0]
+        return {
+            "status": "resolved",
+            "query": query,
+            "selected": selected,
+            "candidates": candidates[:12],
+        }
+    if len(high_confidence) > 1:
+        return {
+            "status": "ambiguous",
+            "query": query,
+            "selected": None,
+            "candidates": candidates[:12],
+        }
+    return {
+        "status": "no_match" if candidates else "empty",
+        "query": query,
+        "selected": None,
+        "candidates": candidates[:12],
+    }
+
+
+def _build_sellersprite_request(
+    request_schema: dict[str, Any],
+    category: str,
+    payload: dict[str, Any],
+    *,
+    agent_tool_name: str = "",
+) -> dict[str, Any]:
+    properties = request_schema.get("properties") if isinstance(request_schema.get("properties"), dict) else {}
+    allowed_keys = set(properties.keys())
+    request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    request: dict[str, Any] = {}
+    for key in allowed_keys:
+        value = request_payload.get(key) if isinstance(request_payload, dict) else None
+        if value is None or value == "":
+            value = payload.get(key)
+        if value is not None and value != "":
+            request[key] = value
+
+    category_value = str(payload.get("keyword") or payload.get("category") or category or "").strip()
+    market_value = _market_from_payload(payload)
+    asin_value = str(payload.get("asin") or payload.get("product_asin") or payload.get("ASIN") or "").strip()
+    node_id_path = _node_id_path_from_payload(payload)
+    top_n = _payload_value(payload, "head_listing_count") or payload.get("topN") or payload.get("topNum") or 10
+
+    if "marketplace" in allowed_keys and not request.get("marketplace"):
+        request["marketplace"] = market_value
+    elif "marketplace" in request:
+        request["marketplace"] = _market_from_payload({"marketplace": request.get("marketplace")})
+    if "country" in allowed_keys and not request.get("country"):
+        request["country"] = market_value
+    elif "country" in request:
+        request["country"] = _market_from_payload({"country": request.get("country")})
+    if "departmentKeyword" in allowed_keys and not request.get("departmentKeyword") and category_value:
+        request["departmentKeyword"] = category_value
+    if "includeKeywords" in allowed_keys and not request.get("includeKeywords") and category_value:
+        request["includeKeywords"] = category_value
+    if "keyword" in allowed_keys and not request.get("keyword") and category_value:
+        request["keyword"] = category_value
+    if "keywords" in allowed_keys and not request.get("keywords") and category_value:
+        request["keywords"] = _schema_keyword_value(properties.get("keywords") or {}, category_value)
+    if "asin" in allowed_keys and not request.get("asin") and asin_value:
+        request["asin"] = asin_value
+    if "asins" in allowed_keys and not request.get("asins") and asin_value:
+        request["asins"] = [asin_value]
+    if "nodeIdPath" in allowed_keys and not request.get("nodeIdPath") and node_id_path:
+        request["nodeIdPath"] = node_id_path
+    if "month" in allowed_keys:
+        request["month"] = _resolved_request_month(payload, request.get("month"))
+    if "date" in allowed_keys and not request.get("date"):
+        request["date"] = _latest_saturday()
+    if "newProduct" in allowed_keys and not request.get("newProduct"):
+        request["newProduct"] = _new_product_months(payload)
+    if "topN" in allowed_keys and not request.get("topN"):
+        request["topN"] = top_n
+    if "topNum" in allowed_keys and not request.get("topNum"):
+        request["topNum"] = top_n
+    if "page" in allowed_keys and not request.get("page"):
+        request["page"] = 1
+    if "size" in allowed_keys and not request.get("size"):
+        request["size"] = payload.get("listing_sample_size") or payload.get("amazonLimit") or 100
+    if (
+        agent_tool_name == "sellersprite_market_product_concentration"
+        and str(payload.get("skillId") or "") == HOT_PRODUCT_SKILL_ID
+        and "topN" in allowed_keys
+    ):
+        head_count = _bounded_int(_payload_value(payload, "head_listing_count"), 10, 1, 50)
+        listing_sample_size = _bounded_int(_payload_value(payload, "listing_sample_size"), 20, 1, 50)
+        buffered_count = min(50, max(listing_sample_size, head_count + 5, (head_count * 3 + 1) // 2))
+        request["topN"] = buffered_count
+    return request
+
+
 def build_sellersprite_input_payload(agent_tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
     meta = get_sellersprite_tool_catalog().get(agent_tool_name) or {}
     schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     allowed_keys = set(properties.keys())
     output: dict[str, Any] = {}
+    if "request" in allowed_keys and isinstance(properties.get("request"), dict):
+        request = _build_sellersprite_request(
+            properties["request"],
+            category,
+            payload,
+            agent_tool_name=agent_tool_name,
+        )
+        if agent_tool_name == "sellersprite_market_product_demand_trend":
+            # This endpoint returns its own rolling series. Optional market filters
+            # produce an empty payload for otherwise valid category nodes.
+            for key in ("month", "newProduct", "topN"):
+                request.pop(key, None)
+        output["request"] = request
+        if (
+            agent_tool_name == "sellersprite_market_product_concentration"
+            and str(payload.get("skillId") or "") == HOT_PRODUCT_SKILL_ID
+        ):
+            output[INSIGHT_CONTEXT_KEY] = {
+                "category": str(_payload_value(payload, "category") or category or "").strip(),
+                "head_listing_count": _bounded_int(_payload_value(payload, "head_listing_count"), 10, 1, 50),
+            }
+        return output
+
     for key in allowed_keys:
         value = payload.get(key)
         if value is None or value == "":
@@ -259,16 +641,58 @@ def build_sellersprite_input_payload(agent_tool_name: str, category: str, payloa
         if key in allowed_keys and not output.get(key) and category_value:
             output[key] = category_value
     if "keywords" in allowed_keys and not output.get("keywords") and category_value:
-        output["keywords"] = [category_value]
+        output["keywords"] = _schema_keyword_value(properties.get("keywords") or {}, category_value)
     for key in ("marketplace", "market", "country", "site", "locale"):
         if key in allowed_keys and not output.get(key):
             output[key] = market_value
+        elif key in {"marketplace", "market", "country"} and key in allowed_keys and output.get(key):
+            output[key] = _market_from_payload({key: output.get(key)})
     for key in ("asin", "product_asin", "ASIN"):
         if key in allowed_keys and not output.get(key) and asin_value:
             output[key] = asin_value
     if "asins" in allowed_keys and not output.get("asins") and asin_value:
         output["asins"] = [asin_value]
+    if "month" in allowed_keys:
+        output["month"] = _resolved_request_month(payload, output.get("month"))
+    if agent_tool_name == "sellersprite_review":
+        hot_product_review = str(payload.get("skillId") or "") == HOT_PRODUCT_SKILL_ID
+        if hot_product_review:
+            output.pop("starList", None)
+            output.pop("typeList", None)
+        review_size = _bounded_int(_payload_value(payload, "review_sample_size"), 30, 10, 100)
+        if "size" in allowed_keys:
+            output["size"] = review_size
+        if "page" in allowed_keys and not output.get("page"):
+            output["page"] = 1
+        bounds = _review_time_bounds(_payload_value(payload, "time_range") or payload.get("timeRange"))
+        if bounds:
+            start_timestamp, end_timestamp = bounds
+            if "startTimestamp" in allowed_keys:
+                output["startTimestamp"] = start_timestamp
+            if "endTimestamp" in allowed_keys:
+                output["endTimestamp"] = end_timestamp
+        if hot_product_review:
+            output[INSIGHT_CONTEXT_KEY] = {"balanced_review": True}
     return output
+
+
+def _missing_required_sellersprite_fields(meta: dict[str, Any], input_payload: dict[str, Any]) -> list[str]:
+    schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    missing: list[str] = []
+    for key in schema.get("required") or []:
+        value = input_payload.get(str(key))
+        if value is None or value == "":
+            missing.append(str(key))
+
+    request_schema = properties.get("request") if isinstance(properties.get("request"), dict) else {}
+    if request_schema:
+        request_payload = input_payload.get("request") if isinstance(input_payload.get("request"), dict) else {}
+        for key in request_schema.get("required") or []:
+            value = request_payload.get(str(key))
+            if value is None or value == "":
+                missing.append(f"request.{key}")
+    return list(dict.fromkeys(missing))
 
 
 def call_sellersprite_mcp_tool(mcp_tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -286,7 +710,7 @@ def call_sellersprite_mcp_tool(mcp_tool_name: str, arguments: dict[str, Any]) ->
 
 
 def normalize_sellersprite_result(result: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    data: dict[str, Any] = {"raw": result}
+    data: dict[str, Any] = {}
     status = "ok"
     if result.get("isError"):
         status = "error"
@@ -306,14 +730,17 @@ def normalize_sellersprite_result(result: dict[str, Any]) -> tuple[str, dict[str
                     parsed_items.append(json.loads(text))
                 except json.JSONDecodeError:
                     pass
-        if text_items:
-            data["text"] = text_items
         if parsed_items:
-            data["parsed_content"] = parsed_items[0] if len(parsed_items) == 1 else parsed_items
             if isinstance(parsed_items[0], dict):
                 data.update(parsed_items[0])
+            else:
+                data["parsed_content"] = parsed_items[0] if len(parsed_items) == 1 else parsed_items
+        elif text_items:
+            data["text"] = text_items
     elif result:
-        data.update(result)
+        data.update({key: value for key, value in result.items() if key not in {"content", "isError"}})
+    if not data:
+        data["raw"] = result
     return status, data
 
 
@@ -328,26 +755,538 @@ def summarize_sellersprite_data(agent_tool_name: str, data: dict[str, Any]) -> s
     return f"SellerSprite MCP tool {agent_tool_name} completed."
 
 
+def _sellersprite_items_container(data: dict[str, Any]) -> dict[str, Any]:
+    candidates: list[Any] = [data.get("data")]
+    parsed = data.get("parsed_content")
+    if isinstance(parsed, dict):
+        candidates.append(parsed.get("data"))
+    for candidate in candidates:
+        if isinstance(candidate, dict) and isinstance(candidate.get("items"), list):
+            return candidate
+    return {}
+
+
+def _market_research_result_is_empty(data: dict[str, Any]) -> bool:
+    container = _sellersprite_items_container(data)
+    items = container.get("items") if isinstance(container.get("items"), list) else None
+    if items is None or items:
+        return False
+    try:
+        total = int(container.get("total") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    return total <= 0
+
+
+def _market_research_keyword_candidates(keyword: str) -> list[str]:
+    original = " ".join(str(keyword or "").split())
+    if not original:
+        return []
+    candidates = [original]
+    tokens = re.findall(r"[a-z0-9]+", original.casefold())
+    core_tokens = [token for token in tokens if token not in MARKET_RESEARCH_GENERIC_QUERY_TOKENS]
+    core_keyword = " ".join(core_tokens)
+    if (
+        core_keyword
+        and core_keyword.casefold() != original.casefold()
+        and any(len(token) >= 4 for token in core_tokens)
+    ):
+        candidates.append(core_keyword)
+    return list(dict.fromkeys(candidates))
+
+
+def _product_node_query_candidates(query: str) -> list[str]:
+    original = " ".join(str(query or "").split())
+    if not original:
+        return []
+    candidates = [original]
+    tokens = re.findall(r"[a-z0-9]+", original.casefold())
+    core_tokens = [token for token in tokens if token not in MARKET_RESEARCH_GENERIC_QUERY_TOKENS]
+    core = " ".join(core_tokens)
+    if core and core.casefold() != original.casefold():
+        candidates.append(core)
+    if len(core_tokens) == 1 and len(core_tokens[0]) >= 4 and not core_tokens[0].endswith("s"):
+        candidates.append(f"{core_tokens[0]}s".title())
+    return list(dict.fromkeys(candidates))
+
+
+def _market_research_attempt(keyword: str, status: str, data: dict[str, Any]) -> dict[str, Any]:
+    container = _sellersprite_items_container(data)
+    items = container.get("items") if isinstance(container.get("items"), list) else []
+    return {
+        "keyword": keyword,
+        "outcome": "empty" if status == "ok" and _market_research_result_is_empty(data) else status,
+        "item_count": len(items),
+    }
+
+
+def _product_match_tokens(value: Any) -> set[str]:
+    tokens: set[str] = set()
+    for token in re.findall(r"[a-z0-9]+", str(value or "").casefold()):
+        if len(token) > 4 and token.endswith("s"):
+            token = token[:-1]
+        if len(token) >= 2:
+            tokens.add(token)
+    return tokens
+
+
+def _hot_product_candidate_selection(data: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    payload = data.get("data")
+    candidates = [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+    category = str(context.get("category") or "").strip()
+    head_count = _bounded_int(context.get("head_listing_count"), 10, 1, 50)
+    category_tokens = _product_match_tokens(category)
+    specific_tokens = category_tokens - PRODUCT_MATCH_GENERIC_TOKENS
+    selected: list[dict[str, Any]] = []
+    eligible: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for index, item in enumerate(candidates, start=1):
+        asin = str(item.get("asin") or "").strip().upper()
+        title = str(item.get("title") or "").strip()
+        title_tokens = _product_match_tokens(title)
+        matched_tokens = sorted(specific_tokens & title_tokens)
+        required_matches = len(specific_tokens) if len(specific_tokens) <= 2 else max(2, (len(specific_tokens) + 1) // 2)
+        relevant = bool(asin and title) and (not specific_tokens or len(matched_tokens) >= required_matches)
+        compact_item = {
+            key: item.get(key)
+            for key in (
+                "ranking",
+                "asin",
+                "asinUrl",
+                "imageUrl",
+                "brand",
+                "title",
+                "price",
+                "rating",
+                "ratings",
+                "reviews",
+                "totalUnits",
+                "totalRevenue",
+            )
+            if item.get(key) not in (None, "")
+        }
+        compact_item["candidate_order"] = index
+        compact_item["matched_category_tokens"] = matched_tokens
+        if relevant:
+            eligible.append(compact_item)
+            if len(selected) < head_count:
+                selected.append(compact_item)
+        else:
+            excluded.append(
+                {
+                    **compact_item,
+                    "exclusion_reason": (
+                        "ASIN/title missing"
+                        if not asin or not title
+                        else f"Title does not match category token(s): {', '.join(sorted(specific_tokens))}"
+                    ),
+                }
+            )
+    return {
+        "category": category,
+        "requested_product_count": head_count,
+        "candidate_count": len(candidates),
+        "eligible_count": len(eligible),
+        "selected_count": len(selected),
+        "missing_count": max(0, head_count - len(selected)),
+        "selected": selected,
+        "eligible_candidates": eligible,
+        "excluded": excluded,
+    }
+
+
+def _review_total(data: dict[str, Any]) -> int:
+    container = _sellersprite_items_container(data)
+    try:
+        return int(container.get("total") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _interleave_review_items(low_items: list[dict[str, Any]], high_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index in range(max(len(low_items), len(high_items))):
+        for source in (low_items, high_items):
+            if index >= len(source):
+                continue
+            item = source[index]
+            identity = json.dumps(
+                [item.get("author"), item.get("title"), item.get("date"), item.get("content")],
+                ensure_ascii=False,
+                default=str,
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(item)
+    return merged
+
+
+def _review_items_in_window(items: list[dict[str, Any]], start_timestamp: Any, end_timestamp: Any) -> list[dict[str, Any]]:
+    try:
+        start_value = int(start_timestamp) if start_timestamp not in (None, "") else None
+        end_value = int(end_timestamp) if end_timestamp not in (None, "") else None
+    except (TypeError, ValueError):
+        return items
+    if start_value is None and end_value is None:
+        return items
+    filtered: list[dict[str, Any]] = []
+    for item in items:
+        try:
+            timestamp = int(item.get("date"))
+        except (TypeError, ValueError):
+            continue
+        if timestamp < 100_000_000_000:
+            timestamp *= 1000
+        if start_value is not None and timestamp < start_value:
+            continue
+        if end_value is not None and timestamp > end_value:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _balanced_review_sample(
+    mcp_tool_name: str,
+    base_input: dict[str, Any],
+    asin: str,
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    target_size = _bounded_int(base_input.get("size"), 30, 10, 100)
+    low_size = max(1, (target_size * 3 + 4) // 5)
+    high_size = max(1, target_size - low_size)
+    bucket_specs = [
+        ("low_star", [1, 2, 3], low_size),
+        ("high_star", [4, 5], high_size),
+    ]
+    bucket_results: dict[str, dict[str, Any]] = {}
+    bucket_statuses: list[str] = []
+    for bucket_name, stars, size in bucket_specs:
+        request = {
+            **base_input,
+            "asin": asin,
+            "starList": stars,
+            "size": size,
+            "page": 1,
+        }
+        raw = call_sellersprite_mcp_tool(mcp_tool_name, request)
+        bucket_status, bucket_data = normalize_sellersprite_result(raw)
+        bucket_statuses.append(bucket_status)
+        container = _sellersprite_items_container(bucket_data)
+        raw_items = [item for item in container.get("items") or [] if isinstance(item, dict)]
+        window_items = _review_items_in_window(
+            raw_items,
+            base_input.get("startTimestamp"),
+            base_input.get("endTimestamp"),
+        )
+        bucket_results[bucket_name] = {
+            "status": bucket_status,
+            "source_total": _review_total(bucket_data),
+            "source_sample_count": len(raw_items),
+            "items": window_items,
+        }
+    low = bucket_results["low_star"]
+    high = bucket_results["high_star"]
+    items = _interleave_review_items(low["items"], high["items"])
+    if items:
+        status = "partial_ok" if "error" in bucket_statuses or not low["items"] or not high["items"] else "ok"
+    else:
+        status = "error" if "error" in bucket_statuses else "ok"
+    merged_data = {
+        "code": "OK" if status != "error" else "ERROR",
+        "message": "Balanced recent review sample",
+        "data": {
+            "page": 1,
+            "size": target_size,
+            "total": len(items),
+            "items": items,
+        },
+    }
+    attempt = {
+        "asin": asin,
+        "outcome": "empty" if status == "ok" and not items else status,
+        "low_star_source_total": low["source_total"],
+        "low_star_source_sample_count": low["source_sample_count"],
+        "low_star_sample_count": len(low["items"]),
+        "high_star_source_total": high["source_total"],
+        "high_star_source_sample_count": high["source_sample_count"],
+        "high_star_sample_count": len(high["items"]),
+        "sample_count": len(items),
+    }
+    return status, merged_data, attempt
+
+
+def _review_family_candidates(marketplace: str, asin: str) -> tuple[list[str], dict[str, Any]]:
+    raw = call_sellersprite_mcp_tool("asin_detail", {"marketplace": marketplace, "asin": asin})
+    status, data = normalize_sellersprite_result(raw)
+    detail = data.get("data") if isinstance(data.get("data"), dict) else {}
+    candidates: list[str] = []
+    parent = str(detail.get("parent") or "").strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{10}", parent) and parent != asin:
+        candidates.append(parent)
+    for variation in detail.get("variationList") or []:
+        if not isinstance(variation, dict):
+            continue
+        variation_asin = str(variation.get("asin") or "").strip().upper()
+        if re.fullmatch(r"[A-Z0-9]{10}", variation_asin) and variation_asin != asin and variation_asin not in candidates:
+            candidates.append(variation_asin)
+        if len(candidates) >= 4:
+            break
+    return candidates, {
+        "status": status,
+        "parent_asin": parent or None,
+        "candidate_count": len(candidates),
+    }
+
+
+def _execute_balanced_review(
+    mcp_tool_name: str,
+    input_payload: dict[str, Any],
+) -> tuple[str, dict[str, Any], str]:
+    requested_asin = str(input_payload.get("asin") or "").strip().upper()
+    marketplace = str(input_payload.get("marketplace") or "US").strip().upper()
+    attempts: list[dict[str, Any]] = []
+    status, data, attempt = _balanced_review_sample(mcp_tool_name, input_payload, requested_asin)
+    attempts.append(attempt)
+    selected_asin = requested_asin if _sellersprite_items_container(data).get("items") else ""
+    family_lookup: dict[str, Any] = {"status": "not_needed"}
+    if not selected_asin and status != "error":
+        family_candidates, family_lookup = _review_family_candidates(marketplace, requested_asin)
+        for candidate in family_candidates:
+            status, data, attempt = _balanced_review_sample(mcp_tool_name, input_payload, candidate)
+            attempts.append(attempt)
+            if _sellersprite_items_container(data).get("items"):
+                selected_asin = candidate
+                break
+            if status == "error":
+                break
+    final_items = [
+        item
+        for item in _sellersprite_items_container(data).get("items") or []
+        if isinstance(item, dict)
+    ]
+    media_evidence = [
+        {
+            "star": item.get("star"),
+            "title": item.get("title"),
+            "content": item.get("content"),
+            "date": item.get("date"),
+            "images": item.get("images"),
+            "videos": item.get("videos"),
+        }
+        for item in final_items
+        if item.get("images") or item.get("videos")
+    ][:6]
+    data["review_sampling"] = {
+        "requested_asin": requested_asin,
+        "selected_review_asin": selected_asin or None,
+        "scope": (
+            "exact_asin"
+            if selected_asin == requested_asin
+            else "variation_family"
+            if selected_asin
+            else "unavailable"
+        ),
+        "start_timestamp": input_payload.get("startTimestamp"),
+        "end_timestamp": input_payload.get("endTimestamp"),
+        "family_lookup": family_lookup,
+        "attempt_count": len(attempts),
+        "attempts": attempts,
+        "media_evidence_count": len(media_evidence),
+        "media_evidence": media_evidence,
+    }
+    sample_count = len(final_items)
+    if selected_asin:
+        scope_note = "" if selected_asin == requested_asin else f" via family variant `{selected_asin}`"
+        summary = f"SellerSprite collected {sample_count} balanced recent review sample(s) for `{requested_asin}`{scope_note}."
+    elif status == "error":
+        summary = f"SellerSprite review sampling failed for `{requested_asin}`."
+    else:
+        summary = f"SellerSprite returned 0 recent reviews for `{requested_asin}` and checked family variants."
+    return status, data, summary
+
+
 def execute_sellersprite_agent_tool(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
     catalog = get_sellersprite_tool_catalog()
     meta = catalog.get(agent_tool_name) or {}
     label = str(meta.get("label") or agent_tool_name)
+    public_input_payload = _sellersprite_mcp_arguments(input_payload)
     try:
         if not sellersprite_secret_key():
             raise SellerSpriteMcpAuthError(
                 "SellerSprite MCP requires authentication. Set SELLERSPRITE_MCP_SECRET_KEY in the environment."
             )
+        missing_required = _missing_required_sellersprite_fields(meta, public_input_payload)
+        if missing_required:
+            return {
+                "name": agent_tool_name,
+                "label": label,
+                "status": "needs_user_action",
+                "summary": (
+                    "Missing required SellerSprite parameter(s): "
+                    + ", ".join(missing_required)
+                    + ". Provide the required value or skip this SellerSprite node-level tool."
+                ),
+                "duration_ms": int((time.time() - started) * 1000),
+                "input": public_input_payload,
+                "data": {"missing_required": missing_required},
+            }
         mcp_tool_name = str(meta.get("mcp_tool") or sellersprite_mcp_tool_name(agent_tool_name))
-        raw = call_sellersprite_mcp_tool(mcp_tool_name, input_payload)
-        status, data = normalize_sellersprite_result(raw)
+        effective_input_payload = public_input_payload
+        insight_context = input_payload.get(INSIGHT_CONTEXT_KEY)
+        balanced_review = isinstance(insight_context, dict) and bool(insight_context.get("balanced_review"))
+        if agent_tool_name == "sellersprite_review" and balanced_review:
+            status, data, summary = _execute_balanced_review(mcp_tool_name, public_input_payload)
+        else:
+            raw = call_sellersprite_mcp_tool(mcp_tool_name, effective_input_payload)
+            status, data = normalize_sellersprite_result(raw)
+            summary = summarize_sellersprite_data(agent_tool_name, data)
+        query_resolution: dict[str, Any] | None = None
+        if agent_tool_name == "sellersprite_market_research" and status == "ok" and _market_research_result_is_empty(data):
+            request = public_input_payload.get("request") if isinstance(public_input_payload.get("request"), dict) else {}
+            original_keyword = str(request.get("departmentKeyword") or "").strip()
+            keyword_candidates = _market_research_keyword_candidates(original_keyword)
+            attempts = [_market_research_attempt(original_keyword, status, data)]
+            for candidate in keyword_candidates[1:2]:
+                effective_input_payload = {
+                    **public_input_payload,
+                    "request": {**request, "departmentKeyword": candidate},
+                }
+                raw = call_sellersprite_mcp_tool(mcp_tool_name, effective_input_payload)
+                status, data = normalize_sellersprite_result(raw)
+                attempts.append(_market_research_attempt(candidate, status, data))
+                if status != "ok" or not _market_research_result_is_empty(data):
+                    break
+            selected_keyword = ""
+            if status == "ok" and not _market_research_result_is_empty(data):
+                selected_request = (
+                    effective_input_payload.get("request")
+                    if isinstance(effective_input_payload.get("request"), dict)
+                    else {}
+                )
+                selected_keyword = str(selected_request.get("departmentKeyword") or "").strip()
+            query_resolution = {
+                "original_keyword": original_keyword,
+                "selected_keyword": selected_keyword or None,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
+            }
+            data["query_resolution"] = query_resolution
+        if query_resolution:
+            selected_keyword = str(query_resolution.get("selected_keyword") or "").strip()
+            original_keyword = str(query_resolution.get("original_keyword") or "").strip()
+            if selected_keyword:
+                summary = (
+                    f"SellerSprite market_research recovered with departmentKeyword `{selected_keyword}` "
+                    f"after `{original_keyword}` returned 0 items."
+                )
+            elif status == "ok":
+                attempted_keywords = ", ".join(
+                    f"`{attempt.get('keyword')}`"
+                    for attempt in query_resolution.get("attempts") or []
+                    if isinstance(attempt, dict) and attempt.get("keyword")
+                )
+                summary = f"SellerSprite market_research returned 0 items for {attempted_keywords}."
+        if agent_tool_name == "sellersprite_market_product_concentration" and status in {"ok", "partial_ok"}:
+            insight_context = input_payload.get(INSIGHT_CONTEXT_KEY)
+            if isinstance(insight_context, dict):
+                product_selection = _hot_product_candidate_selection(data, insight_context)
+                data["product_selection"] = product_selection
+                selected_asins = [
+                    str(item.get("asin") or "").strip().upper()
+                    for item in product_selection.get("selected") or []
+                    if isinstance(item, dict) and item.get("asin")
+                ]
+                candidate_asins = [
+                    str(item.get("asin") or "").strip().upper()
+                    for item in product_selection.get("eligible_candidates") or []
+                    if isinstance(item, dict) and item.get("asin")
+                ]
+                data["resolved_params"] = {
+                    "selected_product_asins": selected_asins,
+                    "candidate_product_asins": candidate_asins,
+                }
+                missing_count = int(product_selection.get("missing_count") or 0)
+                if missing_count:
+                    status = "partial_ok"
+                    summary = (
+                        f"SellerSprite returned {product_selection.get('candidate_count')} candidate(s), but only "
+                        f"{product_selection.get('selected_count')} matched `{product_selection.get('category')}`; "
+                        f"{missing_count} more relevant product(s) are required."
+                    )
+                else:
+                    summary = (
+                        f"SellerSprite selected {product_selection.get('selected_count')} relevant head product(s) "
+                        f"from {product_selection.get('candidate_count')} candidates and excluded "
+                        f"{len(product_selection.get('excluded') or [])} category mismatch(es)."
+                    )
+        if agent_tool_name == "sellersprite_product_node" and status == "ok":
+            request = public_input_payload.get("request") if isinstance(public_input_payload.get("request"), dict) else {}
+            query = str(request.get("keyword") or request.get("nodeIdPath") or "").strip()
+            resolution = resolve_sellersprite_product_node(data, query)
+            attempts = [
+                {
+                    "query": query,
+                    "resolution_status": resolution.get("status"),
+                    "candidate_count": len(resolution.get("candidates") or []),
+                }
+            ]
+            if resolution.get("status") != "resolved" and request.get("keyword"):
+                for fallback_query in _product_node_query_candidates(query)[1:3]:
+                    effective_input_payload = {
+                        **public_input_payload,
+                        "request": {**request, "keyword": fallback_query},
+                    }
+                    raw = call_sellersprite_mcp_tool(mcp_tool_name, effective_input_payload)
+                    status, data = normalize_sellersprite_result(raw)
+                    if status != "ok":
+                        attempts.append(
+                            {
+                                "query": fallback_query,
+                                "resolution_status": status,
+                                "candidate_count": 0,
+                            }
+                        )
+                        break
+                    resolution = resolve_sellersprite_product_node(data, fallback_query)
+                    attempts.append(
+                        {
+                            "query": fallback_query,
+                            "resolution_status": resolution.get("status"),
+                            "candidate_count": len(resolution.get("candidates") or []),
+                        }
+                    )
+                    if resolution.get("status") == "resolved":
+                        query = fallback_query
+                        break
+            data["node_resolution"] = resolution
+            data["node_query_resolution"] = {
+                "original_query": str(request.get("keyword") or query).strip(),
+                "selected_query": query if resolution.get("status") == "resolved" else None,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
+            }
+            selected = resolution.get("selected") if isinstance(resolution.get("selected"), dict) else {}
+            node_id_path = str(selected.get("nodeIdPath") or "").strip()
+            if resolution.get("status") == "resolved" and node_id_path:
+                data["resolved_params"] = {
+                    "category_node_id": node_id_path,
+                    "category_node_label_path": str(selected.get("nodeLabelPath") or "").strip(),
+                }
+                recovery_note = "" if len(attempts) == 1 else f" after {len(attempts)} controlled query variants"
+                summary = f"SellerSprite resolved category node `{node_id_path}` ({selected.get('nodeLabelPath')}){recovery_note}."
+            elif resolution.get("status") == "ambiguous":
+                summary = "SellerSprite returned multiple plausible category nodes; retry with a more exact category label or ask the user to choose."
+            else:
+                summary = "SellerSprite returned no high-confidence category node; retry with a shorter official leaf category label before asking the user."
         return {
             "name": agent_tool_name,
             "label": label,
             "status": status,
-            "summary": summarize_sellersprite_data(agent_tool_name, data),
+            "summary": summary,
             "duration_ms": int((time.time() - started) * 1000),
-            "input": input_payload,
+            "input": effective_input_payload,
             "data": data,
         }
     except SellerSpriteMcpAuthError as exc:
@@ -357,7 +1296,7 @@ def execute_sellersprite_agent_tool(agent_tool_name: str, input_payload: dict[st
             "status": "needs_user_action",
             "summary": str(exc),
             "duration_ms": int((time.time() - started) * 1000),
-            "input": input_payload,
+            "input": public_input_payload,
             "data": {},
         }
     except Exception as exc:  # noqa: BLE001
@@ -367,6 +1306,6 @@ def execute_sellersprite_agent_tool(agent_tool_name: str, input_payload: dict[st
             "status": "error",
             "summary": str(exc),
             "duration_ms": int((time.time() - started) * 1000),
-            "input": input_payload,
+            "input": public_input_payload,
             "data": {},
         }

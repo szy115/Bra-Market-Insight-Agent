@@ -948,6 +948,22 @@ export interface UpdateLLMSettingsRequest {
   timeout_seconds: number;
 }
 
+export interface MCPDataSourceCredential {
+  id: string;
+  label: string;
+  env_name: string;
+  configured: boolean;
+}
+
+export interface MCPSettings {
+  env_path: string;
+  sources: MCPDataSourceCredential[];
+}
+
+export interface UpdateMCPSettingsRequest {
+  credentials: Record<string, { value?: string; clear?: boolean }>;
+}
+
 export interface RedditSettings {
   client_id: string;
   client_id_configured: boolean;
@@ -1087,6 +1103,7 @@ export interface UpdateAgentReachSettingsRequest {
 export interface AgentRunRequest {
   prompt: string;
   agentMode: "market" | "competitor";
+  runId?: string;
   category?: string;
   locale?: "zh" | "en";
   useLlm?: boolean;
@@ -1123,6 +1140,7 @@ export interface AgentToolResult {
 
 export interface AgentRunEvent {
   id: string;
+  run_id?: string;
   seq: number;
   type: "input" | "planner" | "skill" | "tool" | "artifact" | "message";
   status: "ok" | "error" | "skipped" | "running" | "needs_input";
@@ -1215,6 +1233,22 @@ export interface AgentRunResponse {
 export interface AgentRunStreamHandlers {
   onEvent?: (event: AgentRunEvent) => void;
   onResult?: (result: AgentRunResponse) => void;
+}
+
+export interface AgentRunStateResponse {
+  run_id: string;
+  status: "running" | "ok" | "needs_input" | "error";
+  updated_at?: string;
+  events: AgentRunEvent[];
+  error?: string;
+  result?: AgentRunResponse;
+  progress?: {
+    prompt?: string;
+    mode?: "market" | "competitor";
+    category?: string;
+    tools?: AgentToolResult[];
+    output_files?: AgentOutputFileMeta[];
+  };
 }
 
 export interface AgentOutputFileMeta {
@@ -1330,11 +1364,19 @@ export const api = {
       body: JSON.stringify(body),
     }),
   runAgentStream,
+  getAgentRunState: (runId: string) =>
+    request<AgentRunStateResponse>(`/api/agent/runs/${encodeURIComponent(runId)}`),
   readAgentOutputFile: (path: string) =>
     request<AgentOutputFileResponse>(`/api/agent/output-file?path=${encodeURIComponent(path)}`),
   getLLMSettings: () => request<LLMSettings>("/api/settings/llm"),
   updateLLMSettings: (body: UpdateLLMSettingsRequest) =>
     request<LLMSettings>("/api/settings/llm", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getMCPSettings: () => request<MCPSettings>("/api/settings/mcp"),
+  updateMCPSettings: (body: UpdateMCPSettingsRequest) =>
+    request<MCPSettings>("/api/settings/mcp", {
       method: "POST",
       body: JSON.stringify(body),
     }),

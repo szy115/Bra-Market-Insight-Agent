@@ -1,12 +1,14 @@
 import {
   BarChart3,
   Bot,
+  CheckCircle2,
   Database,
   Download,
   ExternalLink,
   FileText,
   History,
   Languages,
+  KeyRound,
   Link2,
   Loader2,
   MessageSquare,
@@ -20,7 +22,7 @@ import {
   Trash2,
   Video,
 } from "lucide-react";
-import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type AgentOutputFileMeta,
@@ -29,12 +31,13 @@ import {
   type AgentRunRequest,
   type AgentRunResponse,
   type LLMSettings,
+  type MCPSettings,
 } from "./lib/api";
 import { formatMessage, loadLocale, makeTranslator, saveLocale, type Locale, type Translator } from "./lib/i18n";
 
 type Page = "agent" | "settings";
 type AgentArtifactTab = "market" | "draft" | "output";
-type AgentPromptTemplateId = "market_insight_weekly" | "breakout_competitor_tiktok";
+type AgentPromptTemplateId = "market_insight_weekly" | "hot_product_pain_analysis" | "competitor_product_deep_dive";
 type AgentPromptTemplate = {
   id: AgentPromptTemplateId;
   mode: "market" | "competitor";
@@ -42,6 +45,7 @@ type AgentPromptTemplate = {
   description: string;
   prompt: string;
   sources: string[];
+  skillId?: string;
 };
 type LocalizedProps = {
   locale: Locale;
@@ -56,6 +60,7 @@ type AgentSessionSnapshot = {
   result: AgentRunResponse | null;
   streamEvents: AgentRunEvent[];
   selectedOutputPath: string;
+  activeRunId?: string;
   savedAt: string;
 };
 type AgentRunHistoryItem = AgentSessionSnapshot & {
@@ -73,6 +78,7 @@ type AgentChatMessage = {
   role: "user" | "assistant";
   content: string;
   runId?: string;
+  result?: AgentRunResponse | null;
   createdAt: string;
 };
 type AgentConversationSession = AgentSessionSnapshot & {
@@ -89,6 +95,8 @@ const AGENT_RUN_HISTORY_STORAGE_KEY = "insight-agent.agent-run-history";
 const AGENT_RUN_HISTORY_LIMIT = 20;
 const AGENT_CONVERSATION_STORAGE_KEY = "insight-agent.agent-sessions";
 const AGENT_CONVERSATION_LIMIT = 20;
+const AGENT_PERSISTENCE_ERROR_EVENT = "insight-agent:persistence-error";
+const AGENT_PERSISTENCE_RECOVERED_EVENT = "insight-agent:persistence-recovered";
 
 export function App() {
   const [page, setPage] = useState<Page>("agent");
@@ -138,7 +146,7 @@ export function App() {
       </aside>
 
       <main className="workspace">
-        {page === "agent" ? <SimpleAgentPage locale={locale} t={t} /> : null}
+        <SimpleAgentPage active={page === "agent"} locale={locale} t={t} />
         {page === "settings" ? <SettingsPage locale={locale} t={t} /> : null}
       </main>
     </div>
@@ -146,7 +154,9 @@ export function App() {
 }
 
 function isAgentPromptTemplateId(value: unknown): value is AgentPromptTemplateId {
-  return value === "market_insight_weekly" || value === "breakout_competitor_tiktok";
+  return value === "market_insight_weekly"
+    || value === "hot_product_pain_analysis"
+    || value === "competitor_product_deep_dive";
 }
 
 function isAgentMode(value: unknown): value is "market" | "competitor" {
@@ -180,6 +190,7 @@ function loadAgentSession(): AgentSessionSnapshot | null {
       result: parsed.result && typeof parsed.result === "object" ? parsed.result as AgentRunResponse : null,
       streamEvents: Array.isArray(parsed.streamEvents) ? parsed.streamEvents as AgentRunEvent[] : [],
       selectedOutputPath: typeof parsed.selectedOutputPath === "string" ? parsed.selectedOutputPath : "",
+      activeRunId: typeof parsed.activeRunId === "string" ? parsed.activeRunId : "",
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
     };
   } catch {
@@ -194,9 +205,9 @@ function loadAgentSession(): AgentSessionSnapshot | null {
 
 function saveAgentSession(snapshot: AgentSessionSnapshot): void {
   try {
-    localStorage.setItem(AGENT_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(AGENT_SESSION_STORAGE_KEY, JSON.stringify(agentSessionSnapshotForStorage(snapshot)));
   } catch {
-    // Local storage can fail in private mode or when the quota is full.
+    reportAgentPersistenceFailure();
   }
 }
 
@@ -221,6 +232,7 @@ function normalizeAgentRunHistoryItem(value: unknown): AgentRunHistoryItem | nul
     result: value.result && typeof value.result === "object" ? value.result as AgentRunResponse : null,
     streamEvents: Array.isArray(value.streamEvents) ? value.streamEvents as AgentRunEvent[] : [],
     selectedOutputPath: typeof value.selectedOutputPath === "string" ? value.selectedOutputPath : "",
+    activeRunId: typeof value.activeRunId === "string" ? value.activeRunId : "",
     savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date().toISOString(),
     title: typeof value.title === "string" && value.title.trim() ? value.title : "Untitled run",
     status: typeof value.status === "string" ? value.status : "ok",
@@ -253,21 +265,18 @@ function loadAgentRunHistory(): AgentRunHistoryItem[] {
 }
 
 function saveAgentRunHistory(history: AgentRunHistoryItem[]): AgentRunHistoryItem[] {
-  let next = history.slice(0, AGENT_RUN_HISTORY_LIMIT);
-  while (next.length) {
+  const fullHistory = history.slice(0, AGENT_RUN_HISTORY_LIMIT);
+  let storedHistory = fullHistory.map(agentRunHistoryItemForStorage);
+  while (storedHistory.length) {
     try {
-      localStorage.setItem(AGENT_RUN_HISTORY_STORAGE_KEY, JSON.stringify(next));
-      return next;
+      localStorage.setItem(AGENT_RUN_HISTORY_STORAGE_KEY, JSON.stringify(storedHistory));
+      return fullHistory.slice(0, storedHistory.length);
     } catch {
-      next = next.slice(0, -1);
+      storedHistory = storedHistory.slice(0, -1);
     }
   }
-  try {
-    localStorage.removeItem(AGENT_RUN_HISTORY_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures.
-  }
-  return [];
+  reportAgentPersistenceFailure();
+  return fullHistory;
 }
 
 function buildAgentSessionSnapshot(args: {
@@ -278,6 +287,7 @@ function buildAgentSessionSnapshot(args: {
   result: AgentRunResponse | null;
   streamEvents: AgentRunEvent[];
   selectedOutputPath: string;
+  activeRunId?: string;
 }): AgentSessionSnapshot {
   return {
     version: 1,
@@ -288,6 +298,7 @@ function buildAgentSessionSnapshot(args: {
     result: args.result,
     streamEvents: args.streamEvents,
     selectedOutputPath: args.selectedOutputPath,
+    activeRunId: args.activeRunId || "",
     savedAt: new Date().toISOString(),
   };
 }
@@ -332,6 +343,15 @@ function newClientId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function newAgentRunId(): string {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  }
+  return `${Date.now().toString(16)}${Math.floor(Math.random() * 0xffffffff).toString(16)}`
+    .padStart(12, "0")
+    .slice(-12);
+}
+
 function assistantContentFromResult(result: AgentRunResponse): string {
   if (result.response_type === "message") return result.message?.content || "";
   if (result.status === "needs_input") {
@@ -365,6 +385,91 @@ function messagesFromRunSnapshot(snapshot: AgentSessionSnapshot): AgentChatMessa
   ];
 }
 
+function agentChatMessageForStorage(message: AgentChatMessage): AgentChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    runId: message.runId,
+    createdAt: message.createdAt,
+  };
+}
+
+function compactStorageValue(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined || typeof value === "boolean" || typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value.length <= 1200 ? value : `${value.slice(0, 1199)}...`;
+  }
+  if (depth >= 2) {
+    if (Array.isArray(value)) return { item_count: value.length };
+    if (isRecord(value)) return { field_count: Object.keys(value).length };
+    return String(value).slice(0, 240);
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => compactStorageValue(item, depth + 1));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 30)
+        .map(([key, item]) => [key, compactStorageValue(item, depth + 1)]),
+    );
+  }
+  return String(value).slice(0, 240);
+}
+
+function compactAgentRunEventForStorage(event: AgentRunEvent): AgentRunEvent {
+  return {
+    ...event,
+    data: isRecord(event.data) ? compactStorageValue(event.data) as Record<string, unknown> : undefined,
+    input: isRecord(event.input) ? compactStorageValue(event.input) as Record<string, unknown> : undefined,
+    output: isRecord(event.output) ? compactStorageValue(event.output) as Record<string, unknown> : undefined,
+  };
+}
+
+function compactAgentRunResponseForStorage(result: AgentRunResponse | null): AgentRunResponse | null {
+  if (!result) return null;
+  return {
+    ...result,
+    events: result.events.slice(-100).map(compactAgentRunEventForStorage),
+    tools: result.tools.slice(-50).map((tool) => ({
+      ...tool,
+      input: isRecord(tool.input) ? compactStorageValue(tool.input) as Record<string, unknown> : undefined,
+      data: {},
+      recovery: isRecord(tool.recovery) ? compactStorageValue(tool.recovery) as Record<string, unknown> : undefined,
+    })),
+    message: result.message
+      ? { ...result.message, content: result.message.content.slice(0, 20_000) }
+      : undefined,
+  };
+}
+
+function agentSessionSnapshotForStorage(snapshot: AgentSessionSnapshot): AgentSessionSnapshot {
+  return {
+    ...snapshot,
+    result: compactAgentRunResponseForStorage(snapshot.result),
+    streamEvents: snapshot.streamEvents.slice(-100).map(compactAgentRunEventForStorage),
+  };
+}
+
+function agentRunHistoryItemForStorage(item: AgentRunHistoryItem): AgentRunHistoryItem {
+  return {
+    ...item,
+    ...agentSessionSnapshotForStorage(item),
+  };
+}
+
+function reportAgentPersistenceFailure(): void {
+  console.warn("Insight Agent could not persist the current conversation.");
+  window.dispatchEvent(new Event(AGENT_PERSISTENCE_ERROR_EVENT));
+}
+
+function reportAgentPersistenceRecovered(): void {
+  window.dispatchEvent(new Event(AGENT_PERSISTENCE_RECOVERED_EVENT));
+}
+
 function snapshotFromConversation(session: AgentConversationSession): AgentSessionSnapshot {
   return {
     version: 1,
@@ -375,6 +480,7 @@ function snapshotFromConversation(session: AgentConversationSession): AgentSessi
     result: session.result,
     streamEvents: session.streamEvents,
     selectedOutputPath: session.selectedOutputPath,
+    activeRunId: session.activeRunId || "",
     savedAt: session.savedAt,
   };
 }
@@ -382,6 +488,52 @@ function snapshotFromConversation(session: AgentConversationSession): AgentSessi
 function buildConversationTitle(value: string): string {
   const title = shortHistoryTitle(value);
   return title || "New conversation";
+}
+
+function snapshotsForConversationMessages(session: AgentConversationSession): AgentSessionSnapshot[] {
+  const snapshots: AgentSessionSnapshot[] = [...session.runs].reverse();
+  if (session.result && !snapshots.some((snapshot) => snapshot.result?.run_id === session.result?.run_id)) {
+    snapshots.push(snapshotFromConversation(session));
+  }
+  return snapshots.filter((snapshot) => Boolean(snapshot.result?.run_id));
+}
+
+function repairAgentConversationSession(session: AgentConversationSession): AgentConversationSession {
+  const snapshots = snapshotsForConversationMessages(session);
+  let messages = session.messages
+    .filter((message) => message.content.trim() || message.runId)
+    .map((message) => {
+      const snapshot = message.runId
+        ? snapshots.find((item) => item.result?.run_id === message.runId)
+        : undefined;
+      if (message.role === "assistant" && !message.content.trim() && snapshot?.result) {
+        return agentChatMessageForStorage({
+          ...message,
+          content: assistantContentFromResult(snapshot.result),
+          createdAt: snapshot.result.generated_at || message.createdAt,
+        });
+      }
+      return agentChatMessageForStorage(message);
+    });
+
+  if (!messages.length && snapshots.length) {
+    messages = snapshots.flatMap(messagesFromRunSnapshot).map(agentChatMessageForStorage);
+  } else {
+    for (const snapshot of snapshots) {
+      const runId = snapshot.result?.run_id;
+      if (!runId) continue;
+      const runMessages = messagesFromRunSnapshot(snapshot).map(agentChatMessageForStorage);
+      const hasUser = messages.some((message) => message.role === "user" && message.runId === runId);
+      const hasAssistant = messages.some((message) => message.role === "assistant" && message.runId === runId);
+      if (!hasUser && runMessages[0]) messages.push(runMessages[0]);
+      if (!hasAssistant && runMessages[1]) messages.push(runMessages[1]);
+    }
+  }
+
+  return {
+    ...session,
+    messages,
+  };
 }
 
 function normalizeAgentConversationSession(value: unknown): AgentConversationSession | null {
@@ -395,7 +547,7 @@ function normalizeAgentConversationSession(value: unknown): AgentConversationSes
   ) {
     return null;
   }
-  return {
+  const session: AgentConversationSession = {
     version: 1,
     id: value.id,
     selectedTemplateId: value.selectedTemplateId,
@@ -405,6 +557,7 @@ function normalizeAgentConversationSession(value: unknown): AgentConversationSes
     result: value.result && typeof value.result === "object" ? value.result as AgentRunResponse : null,
     streamEvents: Array.isArray(value.streamEvents) ? value.streamEvents as AgentRunEvent[] : [],
     selectedOutputPath: typeof value.selectedOutputPath === "string" ? value.selectedOutputPath : "",
+    activeRunId: typeof value.activeRunId === "string" ? value.activeRunId : "",
     savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date().toISOString(),
     title: typeof value.title === "string" && value.title.trim() ? value.title : "New conversation",
     messages: Array.isArray(value.messages)
@@ -413,6 +566,7 @@ function normalizeAgentConversationSession(value: unknown): AgentConversationSes
           role: message.role === "assistant" ? "assistant" : "user",
           content: typeof message.content === "string" ? message.content : "",
           runId: typeof message.runId === "string" ? message.runId : undefined,
+          result: message.result && typeof message.result === "object" ? message.result as AgentRunResponse : undefined,
           createdAt: typeof message.createdAt === "string" ? message.createdAt : new Date().toISOString(),
         }))
       : [],
@@ -422,28 +576,36 @@ function normalizeAgentConversationSession(value: unknown): AgentConversationSes
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
   };
+  return repairAgentConversationSession(session);
 }
 
 function saveAgentConversationSessions(sessions: AgentConversationSession[]): AgentConversationSession[] {
-  let next = sessions.slice(0, AGENT_CONVERSATION_LIMIT).map((session) => ({
-    ...session,
-    messages: session.messages.slice(-200),
-    runs: session.runs.slice(0, AGENT_RUN_HISTORY_LIMIT),
-  }));
-  while (next.length) {
+  const fullSessions = sessions.slice(0, AGENT_CONVERSATION_LIMIT);
+  try {
+    localStorage.removeItem(AGENT_RUN_HISTORY_STORAGE_KEY);
+  } catch {
+    // The unified conversation store supersedes the legacy run-history key.
+  }
+  let storedSessions = fullSessions.map((session) => {
+    const repaired = repairAgentConversationSession(session);
+    return {
+      ...repaired,
+      ...agentSessionSnapshotForStorage(repaired),
+      messages: repaired.messages.slice(-200).map(agentChatMessageForStorage),
+      runs: repaired.runs.slice(0, AGENT_RUN_HISTORY_LIMIT).map(agentRunHistoryItemForStorage),
+    };
+  });
+  while (storedSessions.length) {
     try {
-      localStorage.setItem(AGENT_CONVERSATION_STORAGE_KEY, JSON.stringify(next));
-      return next;
+      localStorage.setItem(AGENT_CONVERSATION_STORAGE_KEY, JSON.stringify(storedSessions));
+      reportAgentPersistenceRecovered();
+      return fullSessions.slice(0, storedSessions.length);
     } catch {
-      next = next.slice(0, -1);
+      storedSessions = storedSessions.slice(0, -1);
     }
   }
-  try {
-    localStorage.removeItem(AGENT_CONVERSATION_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures.
-  }
-  return [];
+  reportAgentPersistenceFailure();
+  return fullSessions;
 }
 
 function loadAgentConversationSessions(): AgentConversationSession[] {
@@ -486,6 +648,7 @@ function loadAgentConversationSessions(): AgentConversationSession[] {
     result: baseSnapshot.result,
     streamEvents: baseSnapshot.streamEvents,
     selectedOutputPath: baseSnapshot.selectedOutputPath,
+    activeRunId: baseSnapshot.activeRunId || "",
     savedAt: baseSnapshot.savedAt,
     id: sessionId,
     title,
@@ -501,7 +664,50 @@ function upsertAgentConversationSession(
   sessions: AgentConversationSession[],
   session: AgentConversationSession,
 ): AgentConversationSession[] {
-  return [session, ...sessions.filter((item) => item.id !== session.id)].slice(0, AGENT_CONVERSATION_LIMIT);
+  const existing = sessions.find((item) => item.id === session.id);
+  const nextSession = existing ? mergeAgentConversationSession(existing, session) : session;
+  return [nextSession, ...sessions.filter((item) => item.id !== session.id)].slice(0, AGENT_CONVERSATION_LIMIT);
+}
+
+function mergeAgentRunHistoryItems(
+  existing: AgentRunHistoryItem[],
+  incoming: AgentRunHistoryItem[],
+): AgentRunHistoryItem[] {
+  const seen = new Set<string>();
+  const merged: AgentRunHistoryItem[] = [];
+  for (const item of [...incoming, ...existing]) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push(item);
+  }
+  return merged.slice(0, AGENT_RUN_HISTORY_LIMIT);
+}
+
+function mergeAgentConversationSession(
+  existing: AgentConversationSession,
+  incoming: AgentConversationSession,
+): AgentConversationSession {
+  const isGrowingConversation = incoming.messages.length > existing.messages.length;
+  const messages = incoming.messages.length >= existing.messages.length
+    ? incoming.messages
+    : existing.messages;
+  const result = incoming.result || (!isGrowingConversation ? existing.result : null);
+  const streamEvents = incoming.streamEvents.length
+    ? incoming.streamEvents
+    : isGrowingConversation
+      ? []
+      : existing.streamEvents;
+
+  return repairAgentConversationSession({
+    ...incoming,
+    result,
+    streamEvents,
+    activeRunId: incoming.activeRunId !== undefined ? incoming.activeRunId : existing.activeRunId || "",
+    messages,
+    runs: mergeAgentRunHistoryItems(existing.runs, incoming.runs),
+    createdAt: existing.createdAt || incoming.createdAt,
+    title: incoming.title || existing.title,
+  });
 }
 
 function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
@@ -512,20 +718,43 @@ function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
       title: t("agent.template.market.title"),
       description: t("agent.template.market.description"),
       prompt: `${t("agent.template.market.task")}\n\n${t("agent.template.market.workflow")}`,
-      sources: ["Reddit", "Amazon"],
+      sources: ["Sif", "SellerSprite"],
+      skillId: "weekly_market_insight",
     },
     {
-      id: "breakout_competitor_tiktok",
+      id: "hot_product_pain_analysis",
       mode: "competitor",
-      title: t("agent.template.competitor.title"),
-      description: t("agent.template.competitor.description"),
-      prompt: `${t("agent.template.competitor.task")}\n\n${t("agent.template.competitor.workflow")}`,
-      sources: ["Amazon", "TikTok"],
+      title: t("agent.template.pain.title"),
+      description: t("agent.template.pain.description"),
+      prompt: `${t("agent.template.pain.task")}\n\n${t("agent.template.pain.workflow")}`,
+      sources: ["Amazon", "Reviews"],
+      skillId: "hot_product_pain_analysis",
+    },
+    {
+      id: "competitor_product_deep_dive",
+      mode: "competitor",
+      title: t("agent.template.deep.title"),
+      description: t("agent.template.deep.description"),
+      prompt: `${t("agent.template.deep.task")}\n\n${t("agent.template.deep.workflow")}`,
+      sources: ["SellerSprite", "Sif", "Reddit"],
+      skillId: "competitor_product_deep_dive",
     },
   ];
 }
 
-function SimpleAgentPage({ locale, t }: LocalizedProps) {
+function migrateOverlappedSkillPrompt(template: AgentPromptTemplate, savedPrompt: string | undefined): string {
+  if (savedPrompt === undefined) return template.prompt;
+  const isMistakenDeepDivePrompt = template.id === "hot_product_pain_analysis"
+    && savedPrompt.includes("hot_product_pain_analysis")
+    && (
+      savedPrompt.includes("爆款竞品产品拆解")
+      || savedPrompt.includes("hot-product competitor teardown")
+      || savedPrompt.includes("product R&D HTML template")
+    );
+  return isMistakenDeepDivePrompt ? template.prompt : savedPrompt;
+}
+
+function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boolean }) {
   const promptTemplates = useMemo(() => buildAgentPromptTemplates(t), [t]);
   const [initialConversations] = useState<AgentConversationSession[]>(() => loadAgentConversationSessions());
   const [initialConversation] = useState<AgentConversationSession | null>(() => initialConversations[0] || null);
@@ -535,7 +764,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
   );
   const selectedTemplate = promptTemplates.find((template) => template.id === selectedTemplateId) || promptTemplates[0]!;
   const [agentMode, setAgentMode] = useState<"market" | "competitor">(initialSession?.agentMode || selectedTemplate.mode);
-  const [prompt, setPrompt] = useState(initialSession?.prompt ?? selectedTemplate.prompt);
+  const [prompt, setPrompt] = useState(() => migrateOverlappedSkillPrompt(selectedTemplate, initialSession?.prompt));
   const [artifactTab, setArtifactTab] = useState<AgentArtifactTab>(initialSession?.artifactTab || "market");
   const [result, setResult] = useState<AgentRunResponse | null>(initialSession?.result || null);
   const [streamEvents, setStreamEvents] = useState<AgentRunEvent[]>(initialSession?.streamEvents || []);
@@ -544,9 +773,12 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
   const [sessionRuns, setSessionRuns] = useState<AgentRunHistoryItem[]>(initialConversation?.runs || []);
   const [conversationSessions, setConversationSessions] = useState<AgentConversationSession[]>(initialConversations);
   const [activeConversationId, setActiveConversationId] = useState(initialConversation?.id || newClientId("session"));
+  const [activeRunId, setActiveRunId] = useState(initialSession?.activeRunId || "");
   const [showHistory, setShowHistory] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(initialSession?.activeRunId));
   const [error, setError] = useState<string | null>(null);
+  const [persistenceWarning, setPersistenceWarning] = useState("");
+  const streamRequestActiveRef = useRef(false);
   const artifactJson = result ? JSON.stringify(result, null, 2) : "";
   const hasFinalArtifact = Boolean(
     result?.artifact && result.status === "ok" && result.response_type !== "message",
@@ -561,10 +793,52 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     ? result.events
     : streamEvents.length
       ? streamEvents
-      : loading
-        ? buildLoadingAgentEvents(t)
-        : [];
+      : [];
+  const displayExecutionEvents = displayEventsForResult(result, executionEvents);
   const awaitingInput = result?.status === "needs_input";
+  const repairedCurrentSession = repairAgentConversationSession({
+    version: 1,
+    selectedTemplateId,
+    agentMode,
+    prompt,
+    artifactTab,
+    result,
+    streamEvents,
+    selectedOutputPath,
+    activeRunId,
+    savedAt: new Date().toISOString(),
+    id: activeConversationId,
+    title: buildConversationTitle(
+      result?.artifact?.title || messages.find((message) => message.role === "user")?.content || t("agent.newConversation"),
+    ),
+    messages,
+    runs: sessionRuns,
+    createdAt: conversationSessions.find((session) => session.id === activeConversationId)?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  const visibleMessages = messages.length ? messages : repairedCurrentSession.messages;
+
+  useEffect(() => {
+    if (messages.length || !repairedCurrentSession.messages.length) return;
+    setMessages(repairedCurrentSession.messages);
+  }, [messages.length, repairedCurrentSession.messages]);
+
+  useEffect(() => {
+    const handlePersistenceFailure = () => {
+      setPersistenceWarning(
+        locale === "zh"
+          ? "会话保存失败。当前内容仍在页面中，请不要刷新；系统会在下一次状态更新时重试。"
+          : "Conversation persistence failed. Keep this page open while the app retries on the next update.",
+      );
+    };
+    window.addEventListener(AGENT_PERSISTENCE_ERROR_EVENT, handlePersistenceFailure);
+    const handlePersistenceRecovered = () => setPersistenceWarning("");
+    window.addEventListener(AGENT_PERSISTENCE_RECOVERED_EVENT, handlePersistenceRecovered);
+    return () => {
+      window.removeEventListener(AGENT_PERSISTENCE_ERROR_EVENT, handlePersistenceFailure);
+      window.removeEventListener(AGENT_PERSISTENCE_RECOVERED_EVENT, handlePersistenceRecovered);
+    };
+  }, [locale]);
 
   useEffect(() => {
     const snapshot = buildAgentSessionSnapshot({
@@ -575,6 +849,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
       result,
       streamEvents,
       selectedOutputPath,
+      activeRunId,
     });
     saveAgentSession(snapshot);
     const now = new Date().toISOString();
@@ -592,6 +867,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setConversationSessions((current) => saveAgentConversationSessions(upsertAgentConversationSession(current, currentSession)));
   }, [
     activeConversationId,
+    activeRunId,
     agentMode,
     artifactTab,
     messages,
@@ -603,6 +879,50 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     streamEvents,
     t,
   ]);
+
+  useEffect(() => {
+    if (!activeRunId) return;
+    let stopped = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      if (!stopped) timer = window.setTimeout(poll, 1500);
+    };
+    const poll = async () => {
+      if (stopped) return;
+      if (streamRequestActiveRef.current) {
+        schedule();
+        return;
+      }
+      try {
+        const runState = await api.getAgentRunState(activeRunId);
+        if (stopped) return;
+        if (runState.events?.length) {
+          setStreamEvents(runState.events);
+        }
+        if (runState.result) {
+          applyAgentRunResponse(runState.result);
+          setLoading(false);
+          return;
+        }
+        if (runState.status === "error") {
+          setError(runState.error || t("agent.runError"));
+          setActiveRunId("");
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // A run can briefly return 404 before its first checkpoint is written.
+      }
+      schedule();
+    };
+
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeRunId]);
 
   function applyPromptTemplate(template: AgentPromptTemplate) {
     setSelectedTemplateId(template.id);
@@ -625,6 +945,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setSelectedOutputPath(nextSelectedOutputPath);
     setArtifactTab(nextArtifactTab);
     setPrompt(nextPrompt);
+    setActiveRunId("");
     setAgentMode(nextResult.mode || agentMode);
     const snapshot = buildAgentSessionSnapshot({
       selectedTemplateId,
@@ -634,6 +955,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
       result: nextResult,
       streamEvents: nextEvents,
       selectedOutputPath: nextSelectedOutputPath,
+      activeRunId: "",
     });
     saveAgentSession(snapshot);
     const runItem = buildAgentRunHistoryItem(snapshot, sessionRuns.find((item) => item.id === nextResult.run_id));
@@ -641,14 +963,39 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
       setSessionRuns((current) => [runItem, ...current.filter((item) => item.id !== runItem.id)].slice(0, AGENT_RUN_HISTORY_LIMIT));
     }
     setMessages((current) => {
-      if (current.some((message) => message.role === "assistant" && message.runId === nextResult.run_id)) return current;
+      let latestUnlinkedUserIndex = -1;
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        if (current[index]?.role === "user" && !current[index]?.runId) {
+          latestUnlinkedUserIndex = index;
+          break;
+        }
+      }
+      const linkedCurrent = latestUnlinkedUserIndex >= 0
+        ? current.map((message, index) => (
+            index === latestUnlinkedUserIndex ? { ...message, runId: nextResult.run_id } : message
+          ))
+        : current;
+      const existingIndex = linkedCurrent.findIndex((message) => message.role === "assistant" && message.runId === nextResult.run_id);
+      if (existingIndex >= 0) {
+        return linkedCurrent.map((message, index) => (
+          index === existingIndex
+            ? {
+                ...message,
+                content: assistantContentFromResult(nextResult),
+                result: nextResult,
+                createdAt: nextResult.generated_at || message.createdAt,
+              }
+            : message
+        ));
+      }
       return [
-        ...current,
+        ...linkedCurrent,
         {
           id: `${nextResult.run_id}-assistant`,
           role: "assistant",
           content: assistantContentFromResult(nextResult),
           runId: nextResult.run_id,
+          result: nextResult,
           createdAt: nextResult.generated_at || new Date().toISOString(),
         },
       ];
@@ -663,6 +1010,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setArtifactTab(item.artifactTab);
     setResult(item.result);
     setStreamEvents(item.streamEvents);
+    setActiveRunId("");
     setSelectedOutputPath(item.selectedOutputPath || (item.result ? preferredAgentOutputPath(item.result) : ""));
     setError(null);
     setLoading(false);
@@ -676,6 +1024,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setArtifactTab("output");
     setResult(item.result);
     setStreamEvents(item.streamEvents);
+    setActiveRunId("");
     setSelectedOutputPath(path);
     setError(null);
     setLoading(false);
@@ -694,11 +1043,12 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setResult(session.result);
     setStreamEvents(session.streamEvents);
     setSelectedOutputPath(session.selectedOutputPath || (session.result ? preferredAgentOutputPath(session.result) : ""));
+    setActiveRunId(session.activeRunId || "");
     setMessages(session.messages);
     setSessionRuns(session.runs);
     setActiveConversationId(session.id);
     setError(null);
-    setLoading(false);
+    setLoading(Boolean(session.activeRunId));
     setShowHistory(false);
     saveAgentSession(snapshotFromConversation(session));
   }
@@ -713,6 +1063,7 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setResult(null);
     setStreamEvents([]);
     setSelectedOutputPath("");
+    setActiveRunId("");
     setMessages([]);
     setSessionRuns([]);
     setError(null);
@@ -740,6 +1091,9 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
     const pendingResult = result?.status === "needs_input" ? result : null;
+    const nextRunId = newAgentRunId();
+    streamRequestActiveRef.current = true;
+    setActiveRunId(nextRunId);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -753,10 +1107,12 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
       createdAt: new Date().toISOString(),
     };
     setMessages((current) => [...current, userMessage]);
+    let completed = false;
     try {
       const request: AgentRunRequest = {
         prompt: cleanPrompt,
         agentMode: pendingResult?.mode || agentMode,
+        runId: nextRunId,
         locale,
         useLlm: true,
         agentToolTimeoutSeconds: 600,
@@ -765,18 +1121,27 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
         request.continueRunId = pendingResult.pending.continue_run_id || pendingResult.run_id;
         request.skillId = pendingResult.pending.skill_id || pendingResult.skill?.skill_id || undefined;
         request.params = pendingResult.pending.resolved_params || pendingResult.skill?.params;
+      } else if (selectedTemplate.skillId) {
+        request.skillId = selectedTemplate.skillId;
       }
       const response = await api.runAgentStream(request, {
-        onEvent: (nextEvent) => setStreamEvents((current) => upsertAgentRunEvent(current, nextEvent)),
+        onEvent: (nextEvent) => {
+          if (nextEvent.run_id && nextEvent.run_id !== nextRunId) setActiveRunId(nextEvent.run_id);
+          setStreamEvents((current) => upsertAgentRunEvent(current, nextEvent));
+        },
         onResult: (nextResult) => {
+          completed = true;
           applyAgentRunResponse(nextResult);
         },
       });
       applyAgentRunResponse(response);
+      completed = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : t("agent.runError"));
+      setLoading(true);
     } finally {
-      setLoading(false);
+      streamRequestActiveRef.current = false;
+      if (completed) setLoading(false);
     }
   }
 
@@ -785,39 +1150,41 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
     setArtifactTab("output");
   }
 
-  const activeRunAssistantIndex = result?.run_id
-    ? messages.findIndex((message) => message.role === "assistant" && message.runId === result.run_id)
-    : -1;
   const latestUserMessageIndex = (() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index]?.role === "user") return index;
+    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+      if (visibleMessages[index]?.role === "user") return index;
     }
     return -1;
   })();
-  const shouldShowEventsBeforeMessages = executionEvents.length > 0 && messages.length === 0;
-  const shouldInsertEventsBeforeMessage = (index: number) => (
-    executionEvents.length > 0 && activeRunAssistantIndex === index
+  const shouldShowEventsBeforeMessages = displayExecutionEvents.length > 0 && visibleMessages.length === 0;
+  const shouldInsertLiveEventsAfterMessage = (index: number) => (
+    displayExecutionEvents.length > 0
+    && loading
+    && latestUserMessageIndex === index
+    && !messages.some((message) => message.role === "assistant" && message.runId === result?.run_id)
   );
-  const shouldInsertEventsAfterMessage = (index: number) => (
-    executionEvents.length > 0 && activeRunAssistantIndex < 0 && latestUserMessageIndex === index
-  );
-  const renderExecutionTimeline = (key: string) => (
-    <Fragment key={key}>
-      <div className="agent-tool-toggle">
-        <Link2 size={15} />
-        <span>{formatMessage(t("agent.eventCount"), { count: executionEvents.length })}</span>
-      </div>
-      <AgentExecutionTimeline
-        events={executionEvents}
-        onOpenOutputFile={openAgentOutputFile}
+  const renderExecutionTimeline = (
+    key: string,
+    events: AgentRunEvent[] = displayExecutionEvents,
+    onOpenOutputFile: (path: string) => void = openAgentOutputFile,
+    defaultOpen = true,
+  ) => {
+    if (!events.length) return null;
+    return (
+      <CollapsibleExecutionTimeline
+        autoCollapseKey={messages.length}
+        defaultOpen={defaultOpen}
+        events={events}
+        key={key}
+        onOpenOutputFile={onOpenOutputFile}
         selectedOutputPath={selectedOutputPath}
         t={t}
       />
-    </Fragment>
-  );
+    );
+  };
 
   return (
-    <div className="agent-minimal-page">
+    <div className="agent-minimal-page" hidden={!active}>
       <header className="agent-minimal-head">
         <h2>{artifactTitle}</h2>
         <div className="agent-minimal-actions">
@@ -877,23 +1244,39 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
               </div>
             </div>
             {shouldShowEventsBeforeMessages ? renderExecutionTimeline("execution-empty") : null}
-            {messages.map((message, index) => {
+            {visibleMessages.map((message, index) => {
               const linkedRun = message.runId ? sessionRuns.find((item) => item.id === message.runId) : undefined;
+              const messageResult = message.result || linkedRun?.result || (message.runId && result?.run_id === message.runId ? result : null);
+              const messageEvents = message.role === "assistant"
+                ? displayEventsForResult(messageResult)
+                : [];
+              const openMessageOutputFile = (path: string) => {
+                if (linkedRun) {
+                  openSessionRunFile(linkedRun, path);
+                  return;
+                }
+                if (messageResult) {
+                  setResult(messageResult);
+                  setStreamEvents(messageResult.events || []);
+                }
+                openAgentOutputFile(path);
+              };
+              const isCurrentRunMessage = Boolean(message.runId && result?.run_id === message.runId && index === visibleMessages.length - 1);
               return (
                 <Fragment key={message.id}>
-                  {shouldInsertEventsBeforeMessage(index) ? renderExecutionTimeline(`execution-before-${message.id}`) : null}
+                  {messageEvents.length ? renderExecutionTimeline(`execution-before-${message.id}`, messageEvents, openMessageOutputFile, isCurrentRunMessage) : null}
                   <div className={`agent-message ${message.role}`}>
                     <p>{message.content}</p>
-                    {message.role === "assistant" && linkedRun && isCompletedArtifactRun(linkedRun.result) ? (
+                    {message.role === "assistant" && messageResult && isCompletedArtifactRun(messageResult) ? (
                       <AgentRunOutputFileChips
                         activePath={selectedOutputPath}
-                        files={buildAgentOutputFiles(linkedRun.result)}
-                        onOpen={(path) => openSessionRunFile(linkedRun, path)}
+                        files={buildAgentOutputFiles(messageResult)}
+                        onOpen={openMessageOutputFile}
                         t={t}
                       />
                     ) : null}
                   </div>
-                  {shouldInsertEventsAfterMessage(index) ? renderExecutionTimeline(`execution-after-${message.id}`) : null}
+                  {shouldInsertLiveEventsAfterMessage(index) ? renderExecutionTimeline(`execution-after-${message.id}`, displayExecutionEvents, openAgentOutputFile, true) : null}
                 </Fragment>
               );
             })}
@@ -904,7 +1287,8 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
               </div>
             ) : null}
             {error ? <div className="alert danger">{error}</div> : null}
-            {!messages.length && !loading ? (
+            {persistenceWarning ? <div className="alert warning">{persistenceWarning}</div> : null}
+            {!visibleMessages.length && !displayExecutionEvents.length && !loading ? (
               <div className="agent-message assistant subtle">{t("agent.emptyConversation")}</div>
             ) : null}
           </div>
@@ -914,7 +1298,9 @@ function SimpleAgentPage({ locale, t }: LocalizedProps) {
               <span>{t("agent.template.label")}</span>
               {promptTemplates.map((template) => (
                 <button
+                  aria-pressed={selectedTemplateId === template.id}
                   className={selectedTemplateId === template.id ? "active" : ""}
+                  data-skill-id={template.skillId}
                   key={template.id}
                   type="button"
                   onClick={() => applyPromptTemplate(template)}
@@ -1072,48 +1458,6 @@ function upsertAgentRunEvent(events: AgentRunEvent[], nextEvent: AgentRunEvent):
   return updated.sort((left, right) => left.seq - right.seq);
 }
 
-function buildLoadingAgentEvents(t: Translator): AgentRunEvent[] {
-  const timestamp = new Date().toISOString();
-  return [
-    {
-      id: "loading-input",
-      seq: 1,
-      type: "input",
-      status: "ok",
-      title: t("agent.event.input"),
-      message: t("agent.event.inputBody"),
-      timestamp,
-    },
-    {
-      id: "loading-planner",
-      seq: 2,
-      type: "planner",
-      status: "running",
-      title: t("agent.event.planner"),
-      message: t("agent.event.plannerBody"),
-      timestamp,
-    },
-    {
-      id: "loading-tools",
-      seq: 3,
-      type: "tool",
-      status: "running",
-      title: t("agent.event.tools"),
-      message: t("agent.event.toolsBody"),
-      timestamp,
-    },
-    {
-      id: "loading-artifact",
-      seq: 4,
-      type: "artifact",
-      status: "running",
-      title: t("agent.event.artifact"),
-      message: t("agent.event.artifactBody"),
-      timestamp,
-    },
-  ];
-}
-
 function agentEventStatusLabel(status: AgentRunEvent["status"], t: Translator): string {
   if (status === "ok") return t("agent.event.status.ok");
   if (status === "error") return t("agent.event.status.error");
@@ -1144,6 +1488,52 @@ function displayAgentEvent(event: AgentRunEvent, t: Translator): { title: string
   };
 }
 
+function CollapsibleExecutionTimeline({
+  autoCollapseKey,
+  defaultOpen,
+  events,
+  onOpenOutputFile,
+  selectedOutputPath,
+  t,
+}: {
+  autoCollapseKey: string | number;
+  defaultOpen: boolean;
+  events: AgentRunEvent[];
+  onOpenOutputFile: (path: string) => void;
+  selectedOutputPath: string;
+  t: Translator;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [autoCollapseKey, defaultOpen]);
+
+  if (!events.length) return null;
+  return (
+    <div className={`agent-execution-collapsible ${open ? "open" : "collapsed"}`}>
+      <button
+        aria-expanded={open}
+        className="agent-tool-toggle"
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Link2 size={15} />
+        <span>{formatMessage(t("agent.eventCount"), { count: events.length })}</span>
+        <b>{open ? t("agent.event.collapseTimeline") : t("agent.event.expandTimeline")}</b>
+      </button>
+      {open ? (
+        <AgentExecutionTimeline
+          events={events}
+          onOpenOutputFile={onOpenOutputFile}
+          selectedOutputPath={selectedOutputPath}
+          t={t}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function AgentExecutionTimeline({
   events,
   onOpenOutputFile,
@@ -1160,7 +1550,7 @@ function AgentExecutionTimeline({
       {events.map((event) => {
         const displayEvent = displayAgentEvent(event, t);
         const hasDetails = Boolean(event.input || event.output || event.file_path || event.data || typeof event.duration_ms === "number");
-        const canOpenOutputFile = (event.type === "tool" || event.type === "skill") && event.file_path && event.status !== "running";
+        const canOpenOutputFile = ["tool", "skill", "artifact"].includes(event.type) && event.file_path && event.status !== "running";
         return (
           <article className={`agent-execution-event ${event.status}`} key={event.id}>
             <div className="agent-execution-dot" aria-hidden="true" />
@@ -1281,24 +1671,14 @@ function isCompletedArtifactRun(result: AgentRunResponse | null): result is Agen
   return Boolean(result && result.status !== "needs_input" && result.response_type !== "message" && result.artifact);
 }
 
-const HIDDEN_AGENT_OUTPUT_FILE_TYPES = new Set(["artifact", "events", "run"]);
-
 function buildAgentOutputFiles(result: AgentRunResponse): AgentOutputFileMeta[] {
   const files = result.output_files?.length
-    ? result.output_files.filter((file) => !HIDDEN_AGENT_OUTPUT_FILE_TYPES.has(String(file.type || "").toLowerCase()))
+    ? result.output_files.filter((file) => {
+        const type = String(file.type || "").toLowerCase();
+        const name = String(file.name || file.path || "").toLowerCase();
+        return type === "report" || name.endsWith(".html") || name.endsWith(".htm");
+      })
     : [];
-  if (!files.length) {
-    result.tools.forEach((tool) => {
-      if (!tool.file_path) return;
-      files.push({
-        type: "tool",
-        label: tool.label,
-        name: lastPathPart(tool.file_path),
-        path: tool.file_path,
-        summary: tool.summary,
-      });
-    });
-  }
   const seen = new Set<string>();
   return files.filter((file) => {
     if (!file.path || seen.has(file.path)) return false;
@@ -1330,6 +1710,20 @@ function preferredAgentOutputPath(result: AgentRunResponse): string {
     || files.find((file) => file.type === "tool")?.path
     || files[0]?.path
     || "";
+}
+
+function displayEventsForResult(result: AgentRunResponse | null, fallbackEvents: AgentRunEvent[] = []): AgentRunEvent[] {
+  const events = result?.events?.length ? result.events : fallbackEvents;
+  if (!result || !events.length) return events;
+  const reportPath = buildAgentOutputFiles(result)
+    .find((file) => file.type === "report" || file.name.toLowerCase().endsWith(".html"))
+    ?.path;
+  if (!reportPath) return events;
+  return events.map((event) => (
+    event.type === "artifact" && !event.file_path
+      ? { ...event, file_path: reportPath }
+      : event
+  ));
 }
 
 function AgentRunOutputFileChips({
@@ -1804,6 +2198,20 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function mediaUrlArray(value: unknown): string[] {
+  const rawItems = Array.isArray(value) ? value : value ? [value] : [];
+  return rawItems
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (isRecord(item)) {
+        return textValue(item.url ?? item.image_url ?? item.src ?? item.link ?? item.thumbnail, "");
+      }
+      return "";
+    })
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function textValue(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -1820,9 +2228,36 @@ function numberValue(value: unknown): number | null {
 }
 
 function formatMetric(value: unknown, fallback = "—"): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    if (/[%$]/.test(trimmed)) return trimmed;
+    if (!/^-?[\d,]+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  }
   const numeric = numberValue(value);
   if (numeric === null) return textValue(value, fallback);
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: numeric % 1 ? 1 : 0 }).format(numeric);
+}
+
+function formatCurrencyMetric(value: unknown, currency = "$"): string {
+  const numeric = numberValue(value);
+  if (numeric === null) return textValue(value);
+  return `${currency}${new Intl.NumberFormat("en-US", { maximumFractionDigits: numeric % 1 ? 2 : 0 }).format(numeric)}`;
+}
+
+function metricOrUndefined(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return formatMetric(value);
+}
+
+function currencyOrUndefined(value: unknown, currency = "$"): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return formatCurrencyMetric(value, currency);
+}
+
+function percentOrUndefined(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return formatPercentMetric(value);
 }
 
 function formatPercentMetric(value: unknown): string {
@@ -1846,10 +2281,181 @@ function firstField(row: Record<string, unknown>, keys: string[]): unknown {
   return undefined;
 }
 
+function rowMediaUrls(row: Record<string, unknown>): string[] {
+  const urls = [
+    ...mediaUrlArray(row.media_urls),
+    ...mediaUrlArray(row.image_urls),
+    ...mediaUrlArray(row.images),
+    ...mediaUrlArray(row.photos),
+    ...mediaUrlArray(row.review_images),
+    ...mediaUrlArray(row.review_media_urls),
+  ];
+  return Array.from(new Set(urls));
+}
+
 function nestedEvidenceForRecord(row: Record<string, unknown>): Array<{ key: string; rows: Array<Record<string, unknown>> }> {
   return nestedEvidenceArrayKeys
     .map((key) => ({ key, rows: recordArray(row[key]) }))
     .filter((item) => item.rows.length);
+}
+
+function mcpStructuredPayload(content: unknown): Record<string, unknown> {
+  const payload = toolPayload(content);
+  const nested = isRecord(payload.data) ? payload.data : {};
+  return { ...payload, ...nested };
+}
+
+const artifactFieldLabels: Record<string, string> = {
+  action_hint: "行动建议",
+  annual_rate: "年变化",
+  asin: "ASIN",
+  avgPrice: "均价",
+  avgRating: "评分",
+  avgRatings: "评论数",
+  brands: "品牌数",
+  category: "类目",
+  click_leader: "点击 Leader",
+  competition_mode: "竞争模式",
+  concentration_level: "集中度",
+  conversion_gap: "转化缺口",
+  country: "国家",
+  date: "日期",
+  diagnosis: "诊断",
+  est_monthly_volume: "月搜索量",
+  fbaProportion: "FBA 占比",
+  keyword: "关键词",
+  marketplace: "市场",
+  monthly_orders: "月订单",
+  nodeLabelName: "市场节点",
+  organic_share: "自然份额",
+  page: "页码",
+  price: "价格",
+  rank: "排名",
+  rating: "评分",
+  review_count: "评论数",
+  returnRatio: "退货率",
+  searchToPurchaseRatio: "搜索购买比",
+  sellers: "卖家数",
+  size: "页大小",
+  sp_share: "广告份额",
+  title: "标题",
+  top3_click_share: "Top3 点击份额",
+  top3_conversion_share: "Top3 转化份额",
+  total: "总数",
+  totalProducts: "商品总数",
+  totalRevenue: "月销售额",
+  totalUnits: "月销量",
+  total_asin_trend: "ASIN 趋势",
+  total_competitors: "竞品数",
+  total_share: "总份额",
+  trend: "趋势",
+  value: "值",
+  visible_asin_count: "可见 ASIN",
+  volume: "搜索量",
+  weeks_to_peak: "距旺季",
+};
+
+function fieldLabel(key: string): string {
+  return artifactFieldLabels[key] || key;
+}
+
+function simpleRenderableColumns(rows: Array<Record<string, unknown>>, preferred: string[] = [], limit = 12): string[] {
+  const allColumns = renderableColumns(rows);
+  const ordered = [
+    ...preferred.filter((key) => allColumns.includes(key)),
+    ...allColumns.filter((key) => !preferred.includes(key)),
+  ];
+  const simple = ordered.filter((key) =>
+    rows.some((row) => {
+      const value = row[key];
+      return value !== undefined && value !== null && !Array.isArray(value) && !isRecord(value);
+    }),
+  );
+  return (simple.length ? simple : ordered).slice(0, limit);
+}
+
+const mcpTableSkipKeys = new Set(["raw", "text", "parsed_content", "data", "top10Images"]);
+
+function collectNestedRecordTables(value: unknown, path = "data", depth = 0): RenderableTable[] {
+  if (depth > 3) return [];
+  if (Array.isArray(value)) {
+    const rows = recordArray(value);
+    return rows.length ? [{ name: path, rows }] : [];
+  }
+  if (!isRecord(value)) return [];
+  const tables: RenderableTable[] = [];
+  Object.entries(value).forEach(([key, child]) => {
+    if (mcpTableSkipKeys.has(key)) return;
+    const childPath = path === "data" ? key : `${path}.${key}`;
+    if (Array.isArray(child)) {
+      const rows = recordArray(child);
+      if (rows.length) tables.push({ name: childPath, rows });
+      return;
+    }
+    if (isRecord(child)) {
+      tables.push(...collectNestedRecordTables(child, childPath, depth + 1));
+    }
+  });
+  return tables;
+}
+
+function seriesRows(dates: unknown, values: unknown, valueKey = "volume", take = 12): Array<Record<string, unknown>> {
+  const dateItems = Array.isArray(dates) ? dates : [];
+  const valueItems = Array.isArray(values) ? values : [];
+  const rows = dateItems.map((date, index) => ({ date, [valueKey]: valueItems[index] })).filter((row) => row[valueKey] !== undefined);
+  return rows.slice(Math.max(0, rows.length - take));
+}
+
+function ArtifactDataTable({
+  caption,
+  columns,
+  maxRows = 80,
+  rows,
+}: {
+  caption: string;
+  columns?: string[];
+  maxRows?: number;
+  rows: Array<Record<string, unknown>>;
+}) {
+  if (!rows.length) return <p className="artifact-muted">暂无可展示数据。</p>;
+  const visibleRows = rows.slice(0, maxRows);
+  const visibleColumns = columns?.length ? columns : simpleRenderableColumns(rows);
+  return (
+    <div className="agent-json-table-wrap artifact-data-table-wrap">
+      <div className="agent-json-table-caption">
+        {caption}
+        {rows.length > visibleRows.length ? <span>显示前 {visibleRows.length} / {rows.length} 条</span> : null}
+      </div>
+      <table className="agent-json-table artifact-data-table">
+        <thead>
+          <tr>{visibleColumns.map((column) => <th key={column}>{fieldLabel(column)}</th>)}</tr>
+        </thead>
+        <tbody>
+          {visibleRows.map((row, index) => (
+            <tr key={index}>
+              {visibleColumns.map((column) => <td key={column}>{renderTableValue(row[column])}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ArtifactSignalGrid({ items }: { items: Array<{ label: string; value: unknown; hint?: string }> }) {
+  const visible = items.filter((item) => item.value !== undefined && item.value !== null && item.value !== "");
+  if (!visible.length) return null;
+  return (
+    <div className="artifact-signal-grid">
+      {visible.map((item) => (
+        <div key={item.label}>
+          <span>{item.label}</span>
+          <b>{textValue(item.value)}</b>
+          {item.hint ? <small>{item.hint}</small> : null}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function ArtifactStatGrid({ items }: { items: Array<{ label: string; value: unknown; hint?: string }> }) {
@@ -1962,14 +2568,26 @@ function ArtifactEvidenceDisclosure({ label, rows }: { label: string; rows: Arra
       </button>
       {open ? (
         <div className="artifact-evidence-list">
-          {rows.map((row, index) => (
-            <blockquote key={index}>
-              <p>{compactDisplayText(firstField(row, ["body", "text", "content", "snippet", "excerpt", "title"]), 320)}</p>
-              <footer>
-                {textValue(firstField(row, ["author", "user", "rating", "date_text", "subreddit"]), "")}
-              </footer>
-            </blockquote>
-          ))}
+          {rows.map((row, index) => {
+            const mediaUrls = rowMediaUrls(row);
+            return (
+              <blockquote key={index}>
+                <p>{compactDisplayText(firstField(row, ["body", "text", "content", "snippet", "excerpt", "title"]), 320)}</p>
+                {mediaUrls.length ? (
+                  <div className="artifact-thumb-strip review-media">
+                    {mediaUrls.map((url, mediaIndex) => (
+                      <a href={url} key={`${url}-${mediaIndex}`} rel="noreferrer" target="_blank">
+                        <img alt={`review media ${mediaIndex + 1}`} src={url} />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+                <footer>
+                  {textValue(firstField(row, ["author", "user", "rating", "date_text", "subreddit"]), "")}
+                </footer>
+              </blockquote>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -2028,12 +2646,20 @@ function AmazonShelfArtifact({ content }: ArtifactRendererProps) {
         <div className="artifact-product-list">
           {products.length ? products.map((product, index) => {
             const reviews = recordArray(product.review_samples);
+            const imageUrl = typeof product.image_url === "string" ? product.image_url : "";
             return (
               <article className="artifact-product-card" key={`${textValue(product.asin, String(index))}-${index}`}>
-                <div>
-                  <span>{textValue(product.brand, "Unknown brand")}</span>
-                  <h5>{textValue(product.title, "Untitled product")}</h5>
-                  <p>{textValue(product.asin, "")}</p>
+                <div className="artifact-product-main">
+                  {imageUrl ? (
+                    <img alt={textValue(product.asin, `product-${index + 1}`)} className="artifact-product-image" src={imageUrl} />
+                  ) : (
+                    <div className="artifact-product-image-placeholder">No image</div>
+                  )}
+                  <div className="artifact-product-info">
+                    <span>{textValue(product.brand, "Unknown brand")}</span>
+                    <h5>{textValue(product.title, "Untitled product")}</h5>
+                    <p>{textValue(product.asin, "")}</p>
+                  </div>
                 </div>
                 <div className="artifact-product-metrics">
                   <span>{textValue(product.price)}</span>
@@ -2193,6 +2819,128 @@ function MediaRankingsArtifact({ content }: ArtifactRendererProps) {
   );
 }
 
+function sellerSpriteToolTitle(toolName: string): string {
+  const key = toolName.replace(/^sellersprite_/, "");
+  const labels: Record<string, string> = {
+    aba_research_weekly: "ABA 周度关键词",
+    keyword_history: "关键词历史",
+    market_brand_concentration: "品牌集中度",
+    market_listing_date_distribution: "上架时间分布",
+    market_price_distribution: "价格分布",
+    market_product_concentration: "商品集中度",
+    market_product_demand_trend: "节点需求趋势",
+    market_ratings_count_distribution: "评分数分布",
+    market_research: "市场研究",
+  };
+  return labels[key] || key.replace(/_/g, " ");
+}
+
+function SellerSpriteMarketCard({ item, index }: { item: Record<string, unknown>; index: number }) {
+  const images = recordArray(item.top10Images).slice(0, 8);
+  return (
+    <article className="artifact-market-card">
+      <header>
+        <div>
+          <span>#{textValue(item.ranking, String(index + 1))} · {textValue(item.nodeLabelLocale, "Category node")}</span>
+          <h5>{textValue(item.nodeLabelName, "Untitled market node")}</h5>
+          <p>{textValue(item.nodeLabelPath, "")}</p>
+        </div>
+      </header>
+      <ArtifactSignalGrid
+        items={[
+          { label: "月销量", value: metricOrUndefined(item.totalUnits) },
+          { label: "月销售额", value: currencyOrUndefined(item.totalRevenue) },
+          { label: "均价", value: currencyOrUndefined(item.avgPrice) },
+          { label: "商品总数", value: metricOrUndefined(item.totalProducts) },
+          { label: "品牌数", value: metricOrUndefined(item.brands) },
+          { label: "卖家数", value: metricOrUndefined(item.sellers) },
+          { label: "平均评分", value: item.avgRating },
+          { label: "平均评论", value: metricOrUndefined(item.avgRatings) },
+          { label: "FBA 占比", value: percentOrUndefined(item.fbaProportion) },
+          { label: "退货率", value: percentOrUndefined(item.returnRatio) },
+          { label: "Top3 品牌集中", value: percentOrUndefined(item.top3BrandCrn) },
+          { label: "近 6 月新品", value: item.l6NewCount, hint: percentOrUndefined(item.l6NewRatio) },
+        ]}
+      />
+      {images.length ? (
+        <div className="artifact-thumb-strip">
+          {images.map((image, imageIndex) => {
+            const src = typeof image.image === "string" ? image.image : "";
+            if (!src) return null;
+            return <img alt={textValue(image.asin, `product-${imageIndex + 1}`)} key={`${src}-${imageIndex}`} src={src} />;
+          })}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function SellerSpriteMcpArtifact({ content, file, t }: ArtifactRendererProps) {
+  const wrapper = isRecord(content) ? content : {};
+  const input = isRecord(wrapper.input) ? wrapper.input : {};
+  const data = mcpStructuredPayload(content);
+  const toolName = outputToolName(file, content);
+  const toolTitle = sellerSpriteToolTitle(toolName);
+  const items = recordArray(data.items);
+  const firstItem = items[0] || {};
+  const isMarketResearch = toolName === "sellersprite_market_research";
+  const tables = collectNestedRecordTables(data)
+    .filter((table) => !(isMarketResearch && table.name.endsWith("items")))
+    .slice(0, 5);
+  return (
+    <ArtifactRendererShell
+      icon={<Database size={22} />}
+      subtitle="SellerSprite MCP"
+      title={`SellerSprite：${toolTitle}`}
+      summary={textValue(wrapper.summary, "SellerSprite 结构化市场、关键词或竞争数据。")}
+      stats={[
+        { label: "市场", value: firstItem.marketplace ?? input.marketplace ?? data.marketplace },
+        { label: "类目/关键词", value: input.category ?? input.keyword ?? data.keyword ?? firstItem.nodeLabelName },
+        { label: "结果总数", value: data.total ?? items.length },
+        { label: "本页记录", value: items.length || data.size },
+        { label: "页码", value: data.pages ? `${textValue(data.page, "1")} / ${textValue(data.pages)}` : data.page },
+        { label: "工具耗时", value: wrapper.duration_ms ? `${formatMetric(wrapper.duration_ms)} ms` : undefined },
+      ]}
+    >
+      {isMarketResearch && items.length ? (
+        <ArtifactSection title={`市场节点 (${items.length})`}>
+          <div className="artifact-market-list">
+            {items.map((item, index) => <SellerSpriteMarketCard item={item} index={index} key={`${textValue(item.nodeId, String(index))}-${index}`} />)}
+          </div>
+        </ArtifactSection>
+      ) : null}
+      {!isMarketResearch && items.length ? (
+        <ArtifactSection title={`明细记录 (${items.length})`}>
+          <ArtifactDataTable
+            caption="SellerSprite 返回记录"
+            rows={items}
+            columns={simpleRenderableColumns(items, [
+              "keyword",
+              "asin",
+              "brand",
+              "title",
+              "rank",
+              "price",
+              "rating",
+              "review_count",
+              "monthly_orders",
+              "total_share",
+              "organic_share",
+              "sp_share",
+            ])}
+          />
+        </ArtifactSection>
+      ) : null}
+      {tables.map((table) => (
+        <ArtifactSection title={`${table.name} (${table.rows.length})`} key={table.name}>
+          <ArtifactDataTable caption={table.name} rows={table.rows} />
+        </ArtifactSection>
+      ))}
+      {!items.length && !tables.length ? <AgentJsonPreview content={content} t={t} /> : null}
+    </ArtifactRendererShell>
+  );
+}
+
 function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
   const data = toolPayload(content);
   const tool = outputToolName(file, content).replace(/^sif_/, "");
@@ -2200,12 +2948,25 @@ function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
   const timing = recordArray(data.timing_summary);
   const trends = recordArray(data.trend);
   const asins = recordArray(data.asins);
-  const keywords = stringArray(data.keywords);
+  const keywordStrings = stringArray(data.keywords);
+  const keywordHistories = recordArray(data.keywords);
+  const topCompetitors = recordArray(data.top_competitors);
+  const marketStructure = isRecord(data.market_structure) ? data.market_structure : {};
+  const demandSnapshot = isRecord(data.demand_snapshot) ? data.demand_snapshot : {};
+  const concentrationProfile = isRecord(data.concentration_profile) ? data.concentration_profile : {};
+  const concentrationTrend = isRecord(concentrationProfile.trend) ? concentrationProfile.trend : {};
+  const leadership = isRecord(concentrationProfile.leadership) ? concentrationProfile.leadership : {};
+  const supplyProfile = isRecord(data.supply_profile) ? data.supply_profile : {};
+  const strategyPath = isRecord(data.strategy_path) ? data.strategy_path : {};
   const profile = profiles[0];
   const trend = profile && isRecord(profile.trend) ? profile.trend : {};
   const current = profile && isRecord(profile.current) ? profile.current : {};
   const seasonality = profile && isRecord(profile.seasonality) ? profile.seasonality : {};
   const recentWeeks = recordArray(trend.recent_weeks);
+  const rootTrendRows = seriesRows(data.dates, data.keyword_search_volumes, "volume", 16);
+  const genericTables = collectNestedRecordTables(data)
+    .filter((table) => !["profiles", "timing_summary", "trend", "asins", "keywords", "top_competitors"].includes(table.name))
+    .slice(0, 3);
   return (
     <ArtifactRendererShell
       icon={<BarChart3 size={22} />}
@@ -2214,9 +2975,13 @@ function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
       summary={textValue((isRecord(content) ? content.summary : "") || profile?.interpretation || data.render_footer, "关键词、竞争、ASIN 或销量趋势数据。")}
       stats={[
         { label: "国家", value: data.country },
-        { label: "关键词", value: profile?.keyword ?? keywords.length },
+        { label: "关键词", value: profile?.keyword ?? data.keyword ?? (keywordStrings.length || keywordHistories.length || undefined) },
         { label: "当前搜索量", value: current.search_volume },
+        { label: "月搜索量", value: demandSnapshot.est_monthly_volume },
+        { label: "竞品数", value: data.total_competitors ?? marketStructure.visible_asin_count },
         { label: "同比变化", value: trend.yoy_change ? formatPercentMetric(trend.yoy_change) : undefined },
+        { label: "Top3 点击", value: marketStructure.top3_click_share ? formatPercentMetric(marketStructure.top3_click_share) : undefined },
+        { label: "Top3 转化", value: marketStructure.top3_conversion_share ? formatPercentMetric(marketStructure.top3_conversion_share) : undefined },
         { label: "趋势", value: trend.direction },
         { label: "季节性", value: seasonality.strength },
       ]}
@@ -2256,6 +3021,72 @@ function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
           <ArtifactMiniBars items={recentWeeks} labelKey="week" valueKey="volume" />
         </ArtifactSection>
       ) : null}
+      {rootTrendRows.length ? (
+        <ArtifactSection title="关键词近期趋势">
+          <ArtifactMiniBars items={rootTrendRows} labelKey="date" valueKey="volume" />
+        </ArtifactSection>
+      ) : null}
+      {keywordHistories.length ? (
+        <ArtifactSection title={`关键词历史 (${keywordHistories.length})`}>
+          <div className="artifact-source-grid">
+            {keywordHistories.map((item, index) => {
+              const latest = isRecord(item.latest) ? item.latest : {};
+              const miniRows = seriesRows(item.dates, item.volumes, "volume", 8);
+              return (
+                <article key={`${textValue(item.keyword, String(index))}-${index}`}>
+                  <span>{textValue(item.keyword, "keyword")}</span>
+                  <h5>{formatMetric(latest.volume ?? item.data_points)} search volume</h5>
+                  <p>
+                    最新日期 {textValue(latest.date)} · 排名 {textValue(latest.rank)} · 数据点 {formatMetric(item.data_points)}
+                  </p>
+                  {miniRows.length ? <ArtifactMiniBars items={miniRows} labelKey="date" valueKey="volume" /> : null}
+                </article>
+              );
+            })}
+          </div>
+        </ArtifactSection>
+      ) : null}
+      {Object.keys(marketStructure).length || Object.keys(demandSnapshot).length ? (
+        <ArtifactSection title="竞争结构判断">
+          <div className="artifact-source-grid">
+            <article>
+              <span>Market structure</span>
+              <h5>{textValue(marketStructure.competition_mode ?? marketStructure.concentration_level, "竞争结构")}</h5>
+              <p>{textValue(marketStructure.conversion_gap_insight ?? concentrationTrend.divergence_insight ?? demandSnapshot.interpretation)}</p>
+            </article>
+            <article>
+              <span>Strategy path</span>
+              <h5>{textValue(strategyPath.verdict, "策略判断")}</h5>
+              <p>{textValue(strategyPath.primary_angle ?? demandSnapshot.action_hint)}</p>
+            </article>
+            <article>
+              <span>Supply</span>
+              <h5>{textValue(supplyProfile.total_asin_trend, "供给变化")}</h5>
+              <p>{textValue(supplyProfile.data_quality_note ?? leadership.leader_diverge_insight)}</p>
+            </article>
+          </div>
+        </ArtifactSection>
+      ) : null}
+      {topCompetitors.length ? (
+        <ArtifactSection title={`Top 竞品 ASIN (${topCompetitors.length})`}>
+          <ArtifactDataTable
+            caption="Sif 竞品结构"
+            rows={topCompetitors}
+            columns={simpleRenderableColumns(topCompetitors, [
+              "rank",
+              "asin",
+              "price",
+              "rating",
+              "review_count",
+              "monthly_orders",
+              "total_share",
+              "organic_share",
+              "sp_share",
+              "competition_mode",
+            ])}
+          />
+        </ArtifactSection>
+      ) : null}
       {timing.length ? (
         <ArtifactSection title="行动时机">
           <div className="artifact-source-grid">
@@ -2271,10 +3102,15 @@ function SifMcpArtifact({ content, file, t }: ArtifactRendererProps) {
       ) : null}
       {trends.length || asins.length ? (
         <ArtifactSection title="结构化明细">
-          <AgentJsonPreview content={trends.length ? trends : asins} t={t} />
+          <ArtifactDataTable caption="Sif 明细" rows={trends.length ? trends : asins} />
         </ArtifactSection>
       ) : null}
-      {!profiles.length && !timing.length && !trends.length && !asins.length ? (
+      {genericTables.map((table) => (
+        <ArtifactSection title={`${table.name} (${table.rows.length})`} key={table.name}>
+          <ArtifactDataTable caption={table.name} rows={table.rows} />
+        </ArtifactSection>
+      ))}
+      {!profiles.length && !timing.length && !trends.length && !asins.length && !keywordHistories.length && !topCompetitors.length && !rootTrendRows.length && !genericTables.length ? (
         <AgentJsonPreview content={content} t={t} />
       ) : null}
     </ArtifactRendererShell>
@@ -2348,6 +3184,11 @@ const artifactRenderers: ArtifactRenderer[] = [
     id: "sif_mcp",
     match: (_file, _content, toolName) => toolName.startsWith("sif_"),
     render: (props) => <SifMcpArtifact {...props} />,
+  },
+  {
+    id: "sellersprite_mcp",
+    match: (_file, _content, toolName) => toolName.startsWith("sellersprite_"),
+    render: (props) => <SellerSpriteMcpArtifact {...props} />,
   },
   {
     id: "final_artifact",
@@ -2531,19 +3372,34 @@ function PanelTitle({ title, subtitle }: { title: string; subtitle: string }) {
 
 function SettingsPage({ t }: LocalizedProps) {
   const [settings, setSettings] = useState<LLMSettings | null>(null);
+  const [mcpSettings, setMcpSettings] = useState<MCPSettings | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [clearApiKey, setClearApiKey] = useState(false);
+  const [mcpSecrets, setMcpSecrets] = useState<Record<string, string>>({});
+  const [clearMcpSecrets, setClearMcpSecrets] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingMcp, setSavingMcp] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [mcpMessage, setMcpMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getLLMSettings()
-      .then((llmData) => {
+    let cancelled = false;
+    Promise.all([api.getLLMSettings(), api.getMCPSettings()])
+      .then(([llmData, mcpData]) => {
+        if (cancelled) return;
         setSettings(llmData);
+        setMcpSettings(mcpData);
       })
-      .catch((err) => setMessage(err instanceof Error ? err.message : t("settings.loadError")))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (!cancelled) setMessage(err instanceof Error ? err.message : t("settings.loadError"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [t]);
 
   function update<K extends keyof LLMSettings>(key: K, value: LLMSettings[K]) {
@@ -2594,7 +3450,35 @@ function SettingsPage({ t }: LocalizedProps) {
     }
   }
 
-  if (loading || !settings) {
+  async function saveMcp(event: FormEvent) {
+    event.preventDefault();
+    if (!mcpSettings) return;
+    setSavingMcp(true);
+    setMcpMessage(null);
+    try {
+      const updated = await api.updateMCPSettings({
+        credentials: Object.fromEntries(
+          mcpSettings.sources.map((source) => [
+            source.id,
+            {
+              value: mcpSecrets[source.id]?.trim() || undefined,
+              clear: Boolean(clearMcpSecrets[source.id]),
+            },
+          ]),
+        ),
+      });
+      setMcpSettings(updated);
+      setMcpSecrets({});
+      setClearMcpSecrets({});
+      setMcpMessage(t("settings.mcpSaved"));
+    } catch (err) {
+      setMcpMessage(err instanceof Error ? err.message : t("settings.mcpSaveError"));
+    } finally {
+      setSavingMcp(false);
+    }
+  }
+
+  if (loading || !settings || !mcpSettings) {
     return <LoadingPanel text={t("settings.loading")} />;
   }
 
@@ -2682,6 +3566,65 @@ function SettingsPage({ t }: LocalizedProps) {
             </button>
             {message ? <div className="alert subtle">{message}</div> : null}
           </div>
+        </section>
+      </form>
+
+      <form className="settings-form mcp-settings-form" onSubmit={saveMcp}>
+        <section className="panel wide mcp-credentials-panel">
+          <PanelTitle title={t("settings.mcpTitle")} subtitle={t("settings.mcpSubtitle")} />
+          <div className="mcp-credential-grid">
+            {mcpSettings.sources.map((source) => (
+              <div className="mcp-credential-source" key={source.id}>
+                <div className="mcp-credential-head">
+                  <div>
+                    <KeyRound size={17} />
+                    <h4>{source.label}</h4>
+                  </div>
+                  <span className={`mcp-credential-status ${source.configured ? "configured" : "missing"}`}>
+                    {source.configured ? <CheckCircle2 size={14} /> : <KeyRound size={14} />}
+                    {source.configured ? t("settings.mcpConfigured") : t("settings.mcpMissing")}
+                  </span>
+                </div>
+                <code>{source.env_name}</code>
+                <label>
+                  {t("settings.mcpCredential")}
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={mcpSecrets[source.id] || ""}
+                    disabled={Boolean(clearMcpSecrets[source.id])}
+                    placeholder={source.configured ? t("settings.mcpSecretKeep") : t("settings.mcpSecretPaste")}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setMcpSecrets((current) => ({ ...current, [source.id]: value }));
+                    }}
+                  />
+                </label>
+                <label className="switch left">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(clearMcpSecrets[source.id])}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setClearMcpSecrets((current) => ({ ...current, [source.id]: checked }));
+                    }}
+                  />
+                  <span>{t("settings.mcpClear")}</span>
+                </label>
+              </div>
+            ))}
+          </div>
+          <div className="mcp-credential-actions">
+            <div className="settings-path">
+              <Database size={16} />
+              <span>{mcpSettings.env_path}</span>
+            </div>
+            <button type="submit" disabled={savingMcp}>
+              {savingMcp ? <Loader2 className="spin" size={17} /> : <Save size={17} />}
+              {t("settings.saveMcp")}
+            </button>
+          </div>
+          {mcpMessage ? <div className="alert subtle">{mcpMessage}</div> : null}
         </section>
       </form>
     </div>

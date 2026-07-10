@@ -76,3 +76,44 @@ def test_evidence_contract_blocks_required_gap_and_warns_conditional_gap() -> No
 
     assert warned["status"] == "warn"
     assert [gap["evidence_id"] for gap in warned["warn_gaps"]] == ["reddit"]
+
+
+def test_evidence_contract_supports_param_count_and_distinct_tool_inputs() -> None:
+    contract = parse_evidence_contract(
+        """
+## Evidence Contract
+
+| evidence_id | tool | required_when | min_success | severity | if_missing | artifact_requirement |
+| --- | --- | --- | --- | --- | --- | --- |
+| reviews | sellersprite_review | always | param:head_listing_count | block | call_missing_tool | Need one review result per ASIN |
+"""
+    )
+    skill = {"evidence_contract": contract}
+    duplicate_only = validate_evidence_contract(
+        skill,
+        prompt="analyze",
+        params={"head_listing_count": 2},
+        tools=[
+            {"name": "sellersprite_review", "status": "ok", "input": {"asin": "B000000001"}},
+            {"name": "sellersprite_review", "status": "partial_ok", "input": {"asin": "B000000001"}},
+        ],
+        success_statuses={"ok", "partial_ok"},
+    )
+
+    assert contract[0]["min_success"] == "param:head_listing_count"
+    assert duplicate_only["status"] == "blocked"
+    assert duplicate_only["block_gaps"][0]["min_success"] == 2
+    assert duplicate_only["block_gaps"][0]["observed_success"] == 1
+
+    complete = validate_evidence_contract(
+        skill,
+        prompt="analyze",
+        params={"head_listing_count": 2},
+        tools=[
+            {"name": "sellersprite_review", "status": "ok", "input": {"asin": "B000000001"}},
+            {"name": "sellersprite_review", "status": "ok", "input": {"asin": "B000000002"}},
+        ],
+        success_statuses={"ok", "partial_ok"},
+    )
+
+    assert complete["status"] == "pass"

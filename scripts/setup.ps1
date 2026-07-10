@@ -21,8 +21,11 @@ if (-not $Python) {
 
 Set-Location $Root
 & $Python @PythonArgs -m venv $Venv
+if ($LASTEXITCODE -ne 0) { throw "Creating the Python virtual environment failed with exit code $LASTEXITCODE." }
 & (Join-Path $Venv "Scripts\python.exe") -m pip install --upgrade pip
+if ($LASTEXITCODE -ne 0) { throw "Upgrading pip failed with exit code $LASTEXITCODE." }
 & (Join-Path $Venv "Scripts\python.exe") -m pip install -e ".[dev]"
+if ($LASTEXITCODE -ne 0) { throw "Installing Python dependencies failed with exit code $LASTEXITCODE." }
 
 if (-not (Test-Path (Join-Path $Root ".env"))) {
   Copy-Item (Join-Path $Root ".env.example") (Join-Path $Root ".env")

@@ -32,6 +32,49 @@ SIF_SAMPLE_SCHEMA = [
 ]
 
 
+SIF_KEYWORD_COMPETITION_SCHEMA = [
+    {
+        "name": "market_get_keyword_competition",
+        "description": "关键词竞争",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string"},
+                "country": {"type": "string"},
+                "time_type": {"type": "string"},
+                "time_value": {"type": "string"},
+            },
+            "required": ["keyword"],
+            "additionalProperties": False,
+        },
+    }
+]
+
+
+SIF_ASIN_SALES_LIST_SCHEMA = [
+    {
+        "name": "ops_get_asin_sales_list",
+        "description": "ASIN sales list",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "asins": {"type": "array", "items": {"type": "string"}},
+                "country": {"type": "string"},
+                "dimension": {"type": "string"},
+                "sortBy": {"type": "string"},
+                "desc": {"type": "boolean"},
+                "pageNum": {"type": "integer"},
+                "pageSize": {"type": "integer"},
+                "timePieceType": {"type": "string"},
+                "timePieceValue": {"type": "string"},
+            },
+            "required": ["asins"],
+            "additionalProperties": False,
+        },
+    }
+]
+
+
 def test_build_sif_tool_catalog_prefixes_curated_tools(monkeypatch) -> None:
     monkeypatch.delenv("SIF_MCP_TOOLS", raising=False)
 
@@ -66,6 +109,36 @@ def test_build_sif_input_payload_filters_to_schema_and_adds_defaults(monkeypatch
     }
 
 
+def test_build_sif_input_payload_adds_month_time_value(monkeypatch) -> None:
+    catalog = mcp_sif.build_sif_tool_catalog(SIF_KEYWORD_COMPETITION_SCHEMA)
+    monkeypatch.setattr(mcp_sif, "get_sif_tool_catalog", lambda: catalog)
+
+    class FixedDate(mcp_sif.dt.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 9)
+
+    monkeypatch.setattr(mcp_sif.dt, "date", FixedDate)
+
+    payload = mcp_sif.build_sif_input_payload(
+        "sif_market_get_keyword_competition",
+        "minimizer bra",
+        {
+            "category": "minimizer bra",
+            "marketplace": "Amazon US",
+            "keyword": "bra",
+            "time_type": "month",
+        },
+    )
+
+    assert payload == {
+        "country": "US",
+        "keyword": "bra",
+        "time_type": "month",
+        "time_value": "2026-06-01",
+    }
+
+
 def test_normalize_sif_result_parses_text_content_json() -> None:
     status, data = mcp_sif.normalize_sif_result(
         {
@@ -81,6 +154,37 @@ def test_normalize_sif_result_parses_text_content_json() -> None:
     assert status == "ok"
     assert data["keywords"][0]["keyword"] == "minimizer bra"
     assert data["render_footer"] == "verify"
+    assert "raw" not in data
+    assert "text" not in data
+    assert "parsed_content" not in data
+
+
+def test_hot_product_sales_list_uses_reviewed_asins_and_recent_defaults(monkeypatch) -> None:
+    catalog = mcp_sif.build_sif_tool_catalog(SIF_ASIN_SALES_LIST_SCHEMA)
+    monkeypatch.setattr(mcp_sif, "get_sif_tool_catalog", lambda: catalog)
+
+    payload = mcp_sif.build_sif_input_payload(
+        "sif_ops_get_asin_sales_list",
+        "minimizer bra",
+        {
+            "skillId": "hot_product_pain_analysis",
+            "marketplace": "Amazon US",
+            "asins": ["B000IGNORED"],
+            "timePieceType": "month",
+            "timePieceValue": "2025-02-01",
+            "params": {
+                "reviewed_product_asins": ["B000000001", "B000000002", "B000000001"],
+            },
+        },
+    )
+
+    assert payload["asins"] == ["B000000001", "B000000002"]
+    assert payload["country"] == "US"
+    assert payload["dimension"] == "asin"
+    assert payload["timePieceType"] == "latelyDay"
+    assert payload["timePieceValue"] == "30"
+    assert payload["pageNum"] == 1
+    assert payload["pageSize"] == 20
 
 
 def test_execute_sif_agent_tool_returns_needs_user_action_without_token(monkeypatch) -> None:

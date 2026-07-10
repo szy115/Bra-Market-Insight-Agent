@@ -315,6 +315,31 @@ def normalize_amazon_discussion(item: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+def normalize_media_urls(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates: list[Any] = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        candidates = [value]
+
+    urls: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if isinstance(item, dict):
+            raw = first_value(item, ("url", "image_url", "src", "link", "thumbnail", "large"), "")
+        else:
+            raw = item
+        url = str(raw or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls
+
+
 def normalize_review_samples(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -328,6 +353,19 @@ def normalize_review_samples(value: Any) -> list[dict[str, Any]]:
             continue
         review_id = str(first_value(item, ("review_id", "id", "external_id"), "")).strip()
         review_url = str(first_value(item, ("review_url", "url", "link", "permalink"), "")).strip()
+        media_urls: list[str] = []
+        for media_key in (
+            "media_urls",
+            "image_urls",
+            "images",
+            "photos",
+            "review_images",
+            "review_media_urls",
+            "media",
+            "attachments",
+        ):
+            media_urls.extend(normalize_media_urls(item.get(media_key)))
+        media_urls = unique_terms(media_urls)
         reviews.append(
             {
                 "id": review_id,
@@ -339,6 +377,7 @@ def normalize_review_samples(value: Any) -> list[dict[str, Any]]:
                 "author": str(first_value(item, ("author", "user"), "")),
                 "date_text": str(first_value(item, ("date_text", "date"), "")),
                 "verified_purchase": bool(item.get("verified_purchase", False)),
+                "media_urls": media_urls,
             }
         )
     return reviews

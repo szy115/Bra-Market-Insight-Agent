@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import time
@@ -120,6 +121,19 @@ def sif_country_from_payload(payload: dict[str, Any]) -> str:
     return "US"
 
 
+def _previous_complete_month_start(value: dt.date | None = None) -> str:
+    current = value or dt.date.today()
+    first_day_this_month = current.replace(day=1)
+    previous_month = first_day_this_month - dt.timedelta(days=1)
+    return previous_month.replace(day=1).strftime("%Y-%m-%d")
+
+
+def _latest_sunday(value: dt.date | None = None) -> str:
+    current = value or dt.date.today()
+    days_since_sunday = (current.weekday() + 1) % 7
+    return (current - dt.timedelta(days=days_since_sunday)).strftime("%Y-%m-%d")
+
+
 def build_sif_input_payload(agent_tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
     meta = get_sif_tool_catalog().get(agent_tool_name) or {}
     schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
@@ -147,6 +161,34 @@ def build_sif_input_payload(agent_tool_name: str, category: str, payload: dict[s
             output["keywords"] = [str(payload.get("keyword") or payload.get("category") or category)]
     if "asins" in allowed_keys and isinstance(output.get("asins"), str):
         output["asins"] = [output["asins"]]
+    if agent_tool_name == "sif_ops_get_asin_sales_list" and str(payload.get("skillId") or "") == "hot_product_pain_analysis":
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        reviewed_asins = params.get("reviewed_product_asins") if isinstance(params.get("reviewed_product_asins"), list) else []
+        reviewed_asins = [
+            str(asin).strip().upper()
+            for asin in reviewed_asins
+            if str(asin).strip()
+        ]
+        if reviewed_asins and "asins" in allowed_keys:
+            output["asins"] = list(dict.fromkeys(reviewed_asins))
+        defaults = {
+            "dimension": "asin",
+            "sortBy": "boughtInPastMonth",
+            "desc": True,
+            "pageNum": 1,
+            "pageSize": min(100, max(20, len(reviewed_asins))),
+            "timePieceType": "latelyDay",
+            "timePieceValue": "30",
+        }
+        for key, value in defaults.items():
+            if key in allowed_keys:
+                output[key] = value
+    if "time_type" in allowed_keys and "time_value" in allowed_keys and output.get("time_type") and not output.get("time_value"):
+        time_type = str(output.get("time_type") or "").strip().lower()
+        if time_type == "month":
+            output["time_value"] = _previous_complete_month_start()
+        elif time_type == "week":
+            output["time_value"] = _latest_sunday()
     return output
 
 
@@ -245,7 +287,7 @@ def call_sif_mcp_tool(mcp_tool_name: str, arguments: dict[str, Any]) -> dict[str
 
 
 def normalize_sif_result(result: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    data: dict[str, Any] = {"raw": result}
+    data: dict[str, Any] = {}
     status = "ok"
     if result.get("isError"):
         status = "error"
@@ -265,14 +307,17 @@ def normalize_sif_result(result: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                     parsed_items.append(json.loads(text))
                 except json.JSONDecodeError:
                     pass
-        if text_items:
-            data["text"] = text_items
         if parsed_items:
-            data["parsed_content"] = parsed_items[0] if len(parsed_items) == 1 else parsed_items
             if isinstance(parsed_items[0], dict):
                 data.update(parsed_items[0])
+            else:
+                data["parsed_content"] = parsed_items[0] if len(parsed_items) == 1 else parsed_items
+        elif text_items:
+            data["text"] = text_items
     elif result:
-        data.update(result)
+        data.update({key: value for key, value in result.items() if key not in {"content", "isError"}})
+    if not data:
+        data["raw"] = result
     return status, data
 
 

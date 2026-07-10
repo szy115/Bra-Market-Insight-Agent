@@ -4,6 +4,39 @@ from dataclasses import dataclass
 from typing import Any
 
 SUCCESS_TOOL_STATUSES = {"ok", "partial_ok"}
+SEMANTIC_ERROR_KEYS = {"error", "errors", "exception", "traceback"}
+SEMANTIC_CODE_KEYS = {"code", "errorcode", "error_code", "errcode", "err_code", "status"}
+SEMANTIC_MESSAGE_KEYS = {"message", "msg", "detail", "details", "reason", "data", "error_description"}
+SUCCESS_CODE_VALUES = {"0", "00", "ok", "success", "successful", "succeeded", "done", "completed", "true", "200"}
+NEGATIVE_STATUS_VALUES = {
+    "error",
+    "failed",
+    "failure",
+    "fail",
+    "invalid",
+    "rejected",
+    "denied",
+    "unauthorized",
+    "forbidden",
+    "false",
+}
+ERROR_CODE_TOKENS = (
+    "error",
+    "err_",
+    "err-",
+    "failed",
+    "failure",
+    "invalid",
+    "exception",
+    "denied",
+    "unauthorized",
+    "forbidden",
+    "temporary",
+    "unavailable",
+    "timeout",
+    "busy",
+    "rate_limit",
+)
 
 
 @dataclass(frozen=True)
@@ -15,6 +48,13 @@ class ToolAssessment:
     suggested_next_actions: list[str]
 
 
+@dataclass(frozen=True)
+class SemanticFailure:
+    path: str
+    code: str
+    message: str
+
+
 def _int_value(value: Any) -> int:
     try:
         return int(value or 0)
@@ -22,9 +62,111 @@ def _int_value(value: Any) -> int:
         return 0
 
 
+def _compact_value(value: Any, limit: int = 320) -> str:
+    if isinstance(value, (dict, list)):
+        text = str(value)
+    else:
+        text = str(value or "")
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "..."
+
+
+def _is_non_empty_error_value(value: Any) -> bool:
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip()) and value.strip().lower() not in {"none", "null", "false", "0", "ok", "success"}
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
+def _is_error_code_value(key: str, value: Any) -> bool:
+    key_normalized = key.lower()
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return key_normalized == "status" and value is False
+    if isinstance(value, (int, float)):
+        return key_normalized in SEMANTIC_CODE_KEYS and int(value) >= 400
+    text = str(value).strip()
+    if not text:
+        return False
+    normalized = text.lower()
+    if normalized in SUCCESS_CODE_VALUES:
+        return False
+    if key_normalized == "status" and normalized in NEGATIVE_STATUS_VALUES:
+        return True
+    if key_normalized in SEMANTIC_CODE_KEYS and any(token in normalized for token in ERROR_CODE_TOKENS):
+        return True
+    if key_normalized in SEMANTIC_CODE_KEYS and normalized.startswith(("4", "5")) and normalized.isdigit():
+        return True
+    return False
+
+
+def _message_from_mapping(value: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key, item in value.items():
+        key_normalized = str(key).lower()
+        if key_normalized in SEMANTIC_MESSAGE_KEYS or key_normalized in SEMANTIC_ERROR_KEYS:
+            if isinstance(item, dict):
+                nested = _message_from_mapping(item)
+                if nested:
+                    parts.append(nested)
+            elif isinstance(item, list):
+                list_text = "; ".join(_compact_value(entry, 120) for entry in item[:3])
+                if list_text:
+                    parts.append(list_text)
+            else:
+                text = _compact_value(item)
+                if text:
+                    parts.append(text)
+    return "; ".join(dict.fromkeys(parts))
+
+
+def _find_semantic_failure(value: Any, path: str = "data", depth: int = 0) -> SemanticFailure | None:
+    if depth > 7:
+        return None
+    if isinstance(value, dict):
+        code = ""
+        message = _message_from_mapping(value)
+        for raw_key, item in value.items():
+            key = str(raw_key)
+            key_normalized = key.lower()
+            item_path = f"{path}.{key}" if path else key
+            if key_normalized == "iserror" and item is True:
+                return SemanticFailure(path=item_path, code="isError=true", message=message or "Tool payload marked isError=true.")
+            if key_normalized == "success" and item is False:
+                return SemanticFailure(path=item_path, code="success=false", message=message or "Tool payload marked success=false.")
+            if key_normalized in SEMANTIC_ERROR_KEYS and _is_non_empty_error_value(item):
+                error_message = message
+                if isinstance(item, dict):
+                    error_message = _message_from_mapping(item) or error_message
+                elif not error_message:
+                    error_message = _compact_value(item)
+                return SemanticFailure(path=item_path, code=key, message=error_message or "Tool payload contains an error field.")
+            if key_normalized in SEMANTIC_CODE_KEYS and _is_error_code_value(key_normalized, item):
+                if key_normalized == "status" and depth > 1 and not message:
+                    continue
+                code = _compact_value(item, 120)
+                return SemanticFailure(path=item_path, code=code, message=message or f"Tool payload returned error code {code}.")
+        for raw_key, item in value.items():
+            found = _find_semantic_failure(item, f"{path}.{raw_key}" if path else str(raw_key), depth + 1)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for index, item in enumerate(value[:30]):
+            found = _find_semantic_failure(item, f"{path}[{index}]", depth + 1)
+            if found:
+                return found
+    return None
+
+
 def _error_assessment(summary: str) -> ToolAssessment:
     text = summary.lower()
-    if any(token in text for token in ("timed out", "timeout")):
+    if any(token in text for token in ("timed out", "timeout", "超时")):
         return ToolAssessment(
             status="timeout",
             outcome="timeout",
@@ -32,7 +174,7 @@ def _error_assessment(summary: str) -> ToolAssessment:
             reason=summary or "Tool timed out.",
             suggested_next_actions=["Retry once with the same inputs.", "If it times out again, reduce sample size or continue with other evidence."],
         )
-    if any(token in text for token in ("login", "captcha", "verification", "verify", "not authenticated", "authentication", "authorization", "unauthorized", "forbidden", "unsafe")):
+    if any(token in text for token in ("login", "captcha", "verification", "verify", "not authenticated", "authentication", "authorization", "unauthorized", "forbidden", "unsafe", "登录", "验证码", "验证", "鉴权", "授权", "未授权", "无权限", "权限")):
         return ToolAssessment(
             status="needs_user_action",
             outcome="needs_user_action",
@@ -40,7 +182,7 @@ def _error_assessment(summary: str) -> ToolAssessment:
             reason=summary or "Tool needs user action before it can run.",
             suggested_next_actions=["Ask the user to refresh login state or resolve verification.", "Do not blindly retry this tool."],
         )
-    if any(token in text for token in ("required", "invalid", "unknown agent tool", "not found", "missing")):
+    if any(token in text for token in ("required", "invalid", "unknown agent tool", "not found", "missing", "parameter", "argument", "schema", "bad request", "unsupported", "参数", "缺少", "必填", "无效", "格式错误", "不支持", "不存在")):
         return ToolAssessment(
             status="fatal_error",
             outcome="fatal_error",
@@ -48,7 +190,7 @@ def _error_assessment(summary: str) -> ToolAssessment:
             reason=summary or "Tool input is invalid.",
             suggested_next_actions=["Fix tool arguments before retrying.", "Ask the user only if required information is genuinely missing."],
         )
-    if any(token in text for token in ("network", "connection", "temporar", "reset", "refused", "overloaded", "429", "529", "rate limit")):
+    if any(token in text for token in ("network", "connection", "temporar", "reset", "refused", "overloaded", "429", "529", "rate limit", "busy", "unavailable", "网络", "连接", "临时", "重置", "繁忙", "不可用", "限流", "频率")):
         return ToolAssessment(
             status="retryable_error",
             outcome="retryable_error",
@@ -65,13 +207,136 @@ def _error_assessment(summary: str) -> ToolAssessment:
     )
 
 
+def _semantic_failure_assessment(failure: SemanticFailure) -> ToolAssessment:
+    code = f" ({failure.code})" if failure.code else ""
+    reason = f"Tool payload reported an error{code}: {failure.message or 'No message provided.'}"
+    base = _error_assessment(reason)
+    if base.status == "fatal_error":
+        return ToolAssessment(
+            status="fatal_error",
+            outcome="semantic_error",
+            retryable=False,
+            reason=reason,
+            suggested_next_actions=[
+                "Fix or regenerate tool arguments before retrying.",
+                "If the required parameter is not inferable from context, ask the user for it.",
+            ],
+        )
+    if base.status == "needs_user_action":
+        return ToolAssessment(
+            status=base.status,
+            outcome=base.outcome,
+            retryable=False,
+            reason=reason,
+            suggested_next_actions=base.suggested_next_actions,
+        )
+    return ToolAssessment(
+        status=base.status,
+        outcome="semantic_error",
+        retryable=base.retryable,
+        reason=reason,
+        suggested_next_actions=base.suggested_next_actions,
+    )
+
+
+def _seller_sprite_payload_container(data: dict[str, Any]) -> dict[str, Any]:
+    candidates: list[Any] = []
+    candidates.append(data.get("data"))
+    parsed = data.get("parsed_content")
+    if isinstance(parsed, dict):
+        candidates.append(parsed.get("data"))
+    for candidate in candidates:
+        if isinstance(candidate, dict) and "items" in candidate:
+            return candidate
+    return {}
+
+
+def _empty_sellersprite_assessment(tool_name: str, data: dict[str, Any]) -> ToolAssessment | None:
+    if not tool_name.startswith("sellersprite_"):
+        return None
+    container = _seller_sprite_payload_container(data)
+    items = container.get("items") if isinstance(container.get("items"), list) else None
+    if items is None:
+        return None
+    total = _int_value(container.get("total"))
+    if total <= 0 and len(items) <= 0:
+        return ToolAssessment(
+            status="empty",
+            outcome="empty_result",
+            retryable=False,
+            reason=f"{tool_name} returned 0 items.",
+            suggested_next_actions=[
+                "Broaden or correct the SellerSprite query arguments before synthesizing.",
+                "If this is a node-level tool, provide the required category node id/path.",
+            ],
+        )
+    return None
+
+
+def _sellersprite_product_node_assessment(tool_name: str, data: dict[str, Any]) -> ToolAssessment | None:
+    if tool_name != "sellersprite_product_node":
+        return None
+    resolution = data.get("node_resolution") if isinstance(data.get("node_resolution"), dict) else {}
+    resolution_status = str(resolution.get("status") or "")
+    selected = resolution.get("selected") if isinstance(resolution.get("selected"), dict) else {}
+    if resolution_status == "resolved" and selected.get("nodeIdPath"):
+        return None
+    return ToolAssessment(
+        status="empty",
+        outcome="category_node_unresolved",
+        retryable=False,
+        reason=f"SellerSprite product_node did not resolve a unique category node ({resolution_status or 'unknown'}).",
+        suggested_next_actions=[
+            "Retry with the official Amazon leaf category label.",
+            "Do not run node-level product tools until category_node_id is resolved.",
+        ],
+    )
+
+
+def _sif_payload(data: dict[str, Any]) -> dict[str, Any]:
+    parsed = data.get("parsed_content")
+    if isinstance(parsed, dict):
+        return parsed
+    return data
+
+
+def _empty_sif_assessment(tool_name: str, data: dict[str, Any]) -> ToolAssessment | None:
+    if tool_name != "sif_market_get_keyword_competition":
+        return None
+    payload = _sif_payload(data)
+    competitors = payload.get("top_competitors")
+    if isinstance(competitors, list) and not competitors:
+        return ToolAssessment(
+            status="empty",
+            outcome="empty_result",
+            retryable=False,
+            reason="sif_market_get_keyword_competition returned 0 top competitors.",
+            suggested_next_actions=[
+                "Broaden the keyword or verify marketplace/country arguments.",
+                "Do not infer top products from unrelated market trend fields.",
+            ],
+        )
+    return None
+
+
 def assess_agent_tool_result(tool_name: str, result: dict[str, Any]) -> ToolAssessment:
     status = str(result.get("status") or "")
     summary = str(result.get("summary") or "")
-    if status != "ok":
+    semantic_failure = _find_semantic_failure(result.get("data"))
+    if semantic_failure:
+        return _semantic_failure_assessment(semantic_failure)
+    if status not in SUCCESS_TOOL_STATUSES:
         return _error_assessment(summary)
 
     data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    empty_assessment = (
+        _sellersprite_product_node_assessment(tool_name, data)
+        or _empty_sellersprite_assessment(tool_name, data)
+        or _empty_sif_assessment(tool_name, data)
+    )
+    if empty_assessment:
+        return empty_assessment
+
     if tool_name == "reddit_voc":
         coverage = data.get("coverage") if isinstance(data.get("coverage"), dict) else {}
         posts = _int_value(coverage.get("posts")) or len(data.get("posts") or [])
@@ -144,8 +409,8 @@ def assess_agent_tool_result(tool_name: str, result: dict[str, Any]) -> ToolAsse
             )
 
     return ToolAssessment(
-        status="ok",
-        outcome="ok_with_data",
+        status="partial_ok" if status == "partial_ok" else "ok",
+        outcome="partial_ok" if status == "partial_ok" else "ok_with_data",
         retryable=False,
         reason=summary or "Tool returned usable evidence.",
         suggested_next_actions=[],

@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.26",
     "echarts": "^6.0.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

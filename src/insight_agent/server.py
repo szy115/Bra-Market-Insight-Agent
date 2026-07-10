@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
+from html.parser import HTMLParser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -57,18 +58,12 @@ from .ingestion.tiktok_browser import fetch_tiktok_playwright
 from .ingestion.youtube_ytdlp import fetch_youtube_ytdlp
 from .llm import (
     LLMUnavailable,
-    call_openai_compatible,
+    call_openai_compatible,  # noqa: F401 - compatibility hook used by tests and integrations
     call_openai_compatible_chat,
     enhance_amazon_report_with_llm,
     enhance_combined_insight_with_llm,
     enhance_competitor_deep_dive_with_llm,
     enhance_report_with_llm,
-)
-from .mcp_sif import (
-    build_sif_input_payload,
-    execute_sif_agent_tool,
-    get_sif_tool_catalog,
-    is_sif_agent_tool,
 )
 from .mcp_sellersprite import (
     build_sellersprite_input_payload,
@@ -76,6 +71,13 @@ from .mcp_sellersprite import (
     get_sellersprite_tool_catalog,
     is_sellersprite_agent_tool,
 )
+from .mcp_sif import (
+    build_sif_input_payload,
+    execute_sif_agent_tool,
+    get_sif_tool_catalog,
+    is_sif_agent_tool,
+)
+from .report_charts import build_market_report_charts
 from .settings import (
     DEFAULT_AMAZON_LLM_PRODUCT_LIMIT,
     DEFAULT_AMAZON_LLM_REVIEW_SAMPLES_PER_PRODUCT,
@@ -85,6 +87,7 @@ from .settings import (
     MAX_RESEARCH_POST_LIMIT,
     build_agent_reach_settings_response,
     build_llm_settings_response,
+    build_mcp_settings_response,
     build_reddit_settings_response,
     build_research_settings_response,
     build_web_search_settings_response,
@@ -95,6 +98,7 @@ from .settings import (
     sync_runtime_env,
     update_agent_reach_settings,
     update_llm_settings,
+    update_mcp_settings,
     update_reddit_settings,
     update_research_settings,
     update_web_search_settings,
@@ -115,6 +119,15 @@ REDDIT_NATIVE_TIME_RANGES = {"day", "week", "month", "year", "all"}
 
 class OperationCancelled(RuntimeError):
     """Raised when a long-running analysis is cancelled by the user."""
+
+
+class HtmlReportGenerationError(RuntimeError):
+    """Raised when the LLM cannot produce a valid self-contained HTML report."""
+
+    def __init__(self, message: str, analysis: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.analysis = analysis
+
 
 FOCUS_SUBREDDITS = [
     "ABraThatFits",
@@ -4881,6 +4894,14 @@ AGENT_TOOL_CATALOG: dict[str, dict[str, str]] = {
         "label": "TikTok social validation",
         "description": "Collect TikTok videos and detail-page comment samples for social visibility and creator/user language.",
     },
+    "build_market_report_data": {
+        "label": "MarketReportData builder",
+        "description": "Compile collected tool results into a stable MarketReportData JSON structure before rendering a market insight report.",
+    },
+    "render_html_report": {
+        "label": "HTML report renderer",
+        "description": "Use the LLM to author the final evidence-based HTML report for the loaded Skill.",
+    },
 }
 
 
@@ -4948,6 +4969,8 @@ def extract_agent_skill_spec(markdown_text: str, path: Path) -> dict[str, Any]:
     for row in optional_rows:
         if len(row) >= 2 and row[0]:
             defaults[row[0]] = parse_skill_value(row[1])
+    html_template_path = path.parent / "assets" / "report-template.html"
+    html_template = html_template_path.read_text(encoding="utf-8") if html_template_path.exists() else ""
     return {
         "skill_id": path.parent.name,
         "name": name,
@@ -4959,6 +4982,8 @@ def extract_agent_skill_spec(markdown_text: str, path: Path) -> dict[str, Any]:
         "evidence_contract": parse_evidence_contract(markdown_text),
         "markdown": markdown_text,
         "source_path": str(path),
+        "html_template": html_template,
+        "html_template_path": str(html_template_path) if html_template else "",
     }
 
 
@@ -5055,12 +5080,8 @@ def agent_category_from_payload(payload: dict[str, Any]) -> str:
     category = str(payload.get("category") or "").strip()
     if category:
         return category
-    prompt = str(payload.get("prompt") or "").strip().lower()
-    if "minimizer" in prompt:
-        return "minimizer bra"
-    if "large bust" in prompt:
-        return "large bust bra"
-    return "minimizer bra"
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    return str(params.get("category") or params.get("keyword") or "").strip()
 
 
 def agent_brief_for_category(category: str) -> dict[str, str]:
@@ -5082,6 +5103,10 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
     if is_sif_agent_tool(tool_name):
         return result
     if is_sellersprite_agent_tool(tool_name):
+        return result
+    if tool_name == "build_market_report_data":
+        return result
+    if tool_name == "render_html_report":
         return result
     if tool_name == "reddit_voc":
         return {
@@ -5119,6 +5144,7 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
                     "title": product.get("title"),
                     "brand": product.get("brand"),
                     "url": product.get("product_url"),
+                    "image_url": product.get("image_url"),
                     "price": product.get("price_text"),
                     "rating": product.get("rating_value"),
                     "reviews": product.get("review_count"),
@@ -5171,6 +5197,14 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
         return "Sif MCP returned structured evidence."
     if is_sellersprite_agent_tool(tool_name):
         return result.get("summary") or "SellerSprite MCP returned structured evidence."
+    if tool_name == "build_market_report_data":
+        summary = result.get("source_summary") if isinstance(result.get("source_summary"), dict) else {}
+        return (
+            f"MarketReportData compiled from {summary.get('successful_tool_count', 0)} successful tool(s), "
+            f"{len(result.get('market_kpis') or [])} KPI(s), {len(result.get('evidence_map') or [])} evidence item(s)."
+        )
+    if tool_name == "render_html_report":
+        return f"Rendered HTML report: {result.get('title') or 'HTML report'}."
     if tool_name == "reddit_voc":
         coverage = result.get("coverage") or {}
         data_volume = result.get("data_volume") or {}
@@ -5222,6 +5256,10 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             raw["discovery"] = discovery
         elif tool_name == "tiktok_social":
             raw = analyze_tiktok_category(tool_input)
+        elif tool_name == "build_market_report_data":
+            raw = build_market_report_data(tool_input)
+        elif tool_name == "render_html_report":
+            raw = render_html_report_tool(tool_input)
         else:
             raise ValueError(f"Unknown agent tool: {tool_name}")
         return {
@@ -5232,6 +5270,16 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             "duration_ms": int((time.time() - started) * 1000),
             "input": tool_input,
             "data": compact_agent_result(tool_name, raw),
+        }
+    except HtmlReportGenerationError as exc:
+        return {
+            "name": tool_name,
+            "label": catalog.get(tool_name, {}).get("label", tool_name),
+            "status": "error",
+            "summary": str(exc),
+            "duration_ms": int((time.time() - started) * 1000),
+            "input": tool_input,
+            "data": {"html_analysis": exc.analysis},
         }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -5277,6 +5325,8 @@ def execute_agent_tool_once_with_timeout(
 def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
     timeout_seconds = min(max(int(payload.get("agentToolTimeoutSeconds") or 600), 30), 1200)
     configured_retries = min(max(int(payload.get("agentToolRetryAttempts") or 2), 0), 3)
+    if tool_name == "render_html_report":
+        configured_retries = 0
     retry_delay_ms = min(max(int(payload.get("agentToolRetryDelayMs") or 300), 0), 5000)
     started = time.time()
     attempts: list[dict[str, Any]] = []
@@ -5322,20 +5372,39 @@ def execute_agent_tool_with_timeout(tool_name: str, category: str, payload: dict
 def fallback_agent_artifact(prompt: str, mode: str, category: str, tool_results: list[dict[str, Any]]) -> dict[str, Any]:
     ok_tools = [tool for tool in tool_results if tool.get("status") in SUCCESS_TOOL_STATUSES]
     findings = [f"{tool.get('label')}: {tool.get('summary')}" for tool in ok_tools]
+    failed_tools = [tool for tool in tool_results if tool.get("status") not in SUCCESS_TOOL_STATUSES]
     return {
         "title": f"{category} {'爆款竞品分析' if mode == 'competitor' else '市场洞察'}",
         "executive_summary": "已完成工具调用；当前 LLM 不可用，因此先返回基于工具结果的保守摘要。",
+        "kpis": kpi_from_tool_results(tool_results),
+        "market_basics": findings[:4] or ["暂无成功的市场级工具结果。"],
+        "price_and_margin": ["需要结合 SellerSprite/Sif 价格、销量代理、利润字段或 Amazon 货架样本继续判断。"],
+        "competition": ["需要结合 Top ASIN、品牌集中度、评论门槛和货架占位继续判断竞争结构。"],
+        "user_voice": ["需要 Reddit、Amazon 评论或 TikTok 评论样本补充用户痛点与场景语言。"],
         "key_findings": findings[:6] or ["暂无成功工具结果。"],
         "opportunities": [
             "优先查看成功工具的证据明细，再决定是否扩大抓取量。",
             "对 Amazon 高 review/high rating 商品做人工复核，避免把低证据商品误判为爆款。",
             "如需要社媒交叉验证，请确保 TikTok 登录状态可用后重新运行。",
         ],
+        "opportunity_pool": [
+            {
+                "name": "证据补全型研发机会",
+                "evidence": "当前报告主要来自已成功工具的摘要，需要补齐市场级与用户级证据后再进入企划会。",
+                "priority": "B",
+                "next_action": "优先补跑缺失的 Sif/SellerSprite/Amazon/Reddit 证据。",
+            }
+        ],
         "risks": [
             "公开数据只能作为方向性证据，不能等同真实销量。",
             "TikTok、文章和 Amazon 抓取可能受登录、反爬和页面结构影响。",
             "需要 SellerSprite/Helium10/JungleScout 类数据补齐搜索量、销量代理和季节性。",
         ],
+        "data_gaps": [
+            f"{tool.get('label') or tool.get('name')} 未成功：{tool.get('summary') or tool.get('error') or '未知原因'}"
+            for tool in failed_tools[:8]
+        ]
+        or ["未发现明确失败工具；仍需人工检查样本覆盖与数据时间窗口。"],
         "next_steps": [
             "进入研究页查看各数据源原始证据。",
             "进入爆款竞品页确认候选并生成拆解。",
@@ -5343,72 +5412,6 @@ def fallback_agent_artifact(prompt: str, mode: str, category: str, tool_results:
         ],
         "prompt": prompt,
     }
-
-
-def synthesize_agent_artifact(
-    prompt: str,
-    mode: str,
-    category: str,
-    tool_results: list[dict[str, Any]],
-    locale: str,
-    use_llm: bool,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    if not use_llm:
-        return fallback_agent_artifact(prompt, mode, category, tool_results), {
-            "enabled": False,
-            "status": "not_requested",
-            "message": "Generated a rule-based Artifact.",
-        }
-    try:
-        enhanced = call_openai_compatible(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Hsia's R&D insight agent for the US minimizer bra market. "
-                        "Use only the supplied tool results. Do not invent sales volume, search volume, or platform-wide market size. "
-                        "Return strict JSON only."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "language": "Chinese" if locale == "zh" else "English",
-                            "mode": mode,
-                            "category": category,
-                            "user_prompt": prompt,
-                            "tool_results": tool_results,
-                            "schema": {
-                                "title": "string",
-                                "executive_summary": "string",
-                                "key_findings": ["string"],
-                                "opportunities": ["string"],
-                                "risks": ["string"],
-                                "next_steps": ["string"],
-                            },
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ]
-        )
-        result = enhanced.get("result") if isinstance(enhanced.get("result"), dict) else {}
-        artifact = fallback_agent_artifact(prompt, mode, category, tool_results)
-        artifact.update({key: result.get(key) for key in artifact.keys() if result.get(key)})
-        return artifact, {
-            "enabled": True,
-            "status": "ok",
-            "provider": enhanced.get("provider"),
-            "model": enhanced.get("model"),
-            "usage": enhanced.get("usage") or {},
-        }
-    except LLMUnavailable as exc:
-        return fallback_agent_artifact(prompt, mode, category, tool_results), {
-            "enabled": True,
-            "status": "unavailable",
-            "message": str(exc),
-        }
 
 
 def html_escape(value: Any) -> str:
@@ -5421,96 +5424,1972 @@ def render_html_list(items: Any) -> str:
     return "<ul>" + "".join(f"<li>{html_escape(item)}</li>" for item in items[:12]) + "</ul>"
 
 
-def render_agent_html_report(
-    artifact: dict[str, Any],
-    prompt: str,
-    mode: str,
-    category: str,
-    tool_results: list[dict[str, Any]],
-    generated_at: str,
-) -> str:
-    title = html_escape(artifact.get("title") or f"{category} 市场洞察")
-    subtitle = "爆款竞品分析" if mode == "competitor" else "市场洞察"
-    tool_cards = []
-    for tool in tool_results:
-        status = str(tool.get("status") or "")
-        status_class = "ok" if status in SUCCESS_TOOL_STATUSES else "error"
-        tool_cards.append(
-            f"""
-            <article class="tool-card {status_class}">
-              <div class="tool-head">
-                <strong>{html_escape(tool.get("label") or tool.get("name"))}</strong>
-                <span>{html_escape(status or "unknown")}</span>
-              </div>
-              <p>{html_escape(tool.get("summary"))}</p>
-            </article>
-            """
+def compact_html_text(value: Any, limit: int = 220) -> str:
+    normalized = " ".join(str(value or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "…"
+
+
+def html_number(value: Any) -> str:
+    try:
+        numeric = float(str(value).replace(",", "").replace("$", ""))
+    except (TypeError, ValueError):
+        return html_escape(value)
+    if numeric.is_integer():
+        return f"{int(numeric):,}"
+    return f"{numeric:,.1f}"
+
+
+def first_tool_result(tool_results: list[dict[str, Any]], tool_name: str) -> dict[str, Any]:
+    return next((tool for tool in tool_results if tool.get("name") == tool_name), {})
+
+
+def successful_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [tool for tool in tool_results if tool.get("status") in SUCCESS_TOOL_STATUSES]
+
+
+def kpi_from_artifact(artifact: dict[str, Any]) -> list[dict[str, str]]:
+    raw = artifact.get("kpis")
+    if not isinstance(raw, list):
+        return []
+    kpis: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        value = str(item.get("value") or "").strip()
+        if not label or not value:
+            continue
+        kpis.append(
+            {
+                "label": label,
+                "value": value,
+                "change": str(item.get("change") or "").strip(),
+                "source": str(item.get("source") or "").strip(),
+            }
         )
-    tools_html = "".join(tool_cards) or "<p class=\"empty\">本轮没有成功工具结果。</p>"
-    return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
-<style>
-  *, *::before, *::after {{ box-sizing: border-box; }}
-  html, body {{ margin: 0; padding: 0; background: #fff; color: #172033; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }}
-  body {{ padding: 0 0 42px; }}
-  .layout {{ width: min(1180px, 100%); margin: 0 auto; padding: 24px; }}
-  .hero {{ border-radius: 14px; background: linear-gradient(135deg, #6366f1 0%, #5b7cf8 52%, #4f46e5 100%); color: #fff; padding: 38px 42px; box-shadow: 0 18px 46px rgba(79, 70, 229, 0.18); }}
-  .hero h1 {{ margin: 0; font-size: 34px; line-height: 1.16; }}
-  .hero p {{ margin: 12px 0 0; opacity: 0.9; }}
-  .meta {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }}
-  .meta span {{ border: 1px solid rgba(255,255,255,0.24); border-radius: 999px; background: rgba(255,255,255,0.12); padding: 5px 10px; font-size: 12px; }}
-  .summary {{ margin: 22px 0; border-left: 4px solid #4f46e5; border-radius: 0 10px 10px 0; background: #f8fafc; padding: 18px 22px; color: #334155; line-height: 1.7; }}
-  .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
-  @media (max-width: 820px) {{ .grid {{ grid-template-columns: 1fr; }} .layout {{ padding: 14px; }} .hero {{ padding: 28px 24px; }} }}
-  section.card {{ border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 20px; box-shadow: 0 4px 14px rgba(79,70,229,0.06); }}
-  section.card h2 {{ margin: 0 0 12px; color: #312e81; font-size: 18px; }}
-  ul {{ margin: 0; padding-left: 20px; color: #334155; line-height: 1.72; }}
-  li {{ margin: 4px 0; }}
-  .tool-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }}
-  .tool-card {{ border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; padding: 13px; }}
-  .tool-card.ok {{ border-color: #bbf7d0; background: #f0fdf4; }}
-  .tool-card.error {{ border-color: #fecdd3; background: #fff1f2; }}
-  .tool-head {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
-  .tool-head strong {{ color: #0f172a; }}
-  .tool-head span {{ border-radius: 999px; background: #fff; color: #475569; padding: 2px 7px; font-size: 11px; font-weight: 700; }}
-  .tool-card p, .empty {{ color: #64748b; line-height: 1.55; }}
-  .prompt {{ white-space: pre-wrap; color: #475569; line-height: 1.6; }}
-</style>
-</head>
-<body>
-  <main class="layout">
-    <header class="hero">
-      <h1>{title}</h1>
-      <p>{html_escape(subtitle)} · {html_escape(category)}</p>
-      <div class="meta">
-        <span>生成时间：{html_escape(generated_at)}</span>
-        <span>模式：{html_escape(mode)}</span>
-        <span>工具数：{len(tool_results)}</span>
-      </div>
-    </header>
-    <div class="summary">{html_escape(artifact.get("executive_summary"))}</div>
-    <div class="grid">
-      <section class="card"><h2>关键发现</h2>{render_html_list(artifact.get("key_findings"))}</section>
-      <section class="card"><h2>机会</h2>{render_html_list(artifact.get("opportunities"))}</section>
-      <section class="card"><h2>风险</h2>{render_html_list(artifact.get("risks"))}</section>
-      <section class="card"><h2>下一步</h2>{render_html_list(artifact.get("next_steps"))}</section>
-    </div>
-    <section class="card" style="margin-top:16px;"><h2>工具证据</h2><div class="tool-grid">{tools_html}</div></section>
-    <section class="card" style="margin-top:16px;"><h2>原始任务</h2><div class="prompt">{html_escape(prompt)}</div></section>
-  </main>
-</body>
-</html>"""
+    return kpis[:8]
+
+
+def kpi_from_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str, str]]:
+    successful = successful_tool_results(tool_results)
+    amazon = first_tool_result(tool_results, "amazon_shelf")
+    amazon_metrics = amazon.get("data", {}).get("metrics", {}) if isinstance(amazon.get("data"), dict) else {}
+    reddit = first_tool_result(tool_results, "reddit_voc")
+    reddit_coverage = reddit.get("data", {}).get("coverage", {}) if isinstance(reddit.get("data"), dict) else {}
+    tiktok = first_tool_result(tool_results, "tiktok_social")
+    tiktok_metrics = tiktok.get("data", {}).get("metrics", {}) if isinstance(tiktok.get("data"), dict) else {}
+    seller_tools = [tool for tool in successful if str(tool.get("name") or "").startswith("sellersprite_")]
+    sif_tools = [tool for tool in successful if str(tool.get("name") or "").startswith("sif_")]
+    kpis = [
+        {"label": "成功数据源", "value": str(len(successful)), "change": "", "source": "Execution"},
+        {"label": "Sif 信号", "value": str(len(sif_tools)), "change": "", "source": "Sif MCP"},
+        {"label": "SellerSprite 信号", "value": str(len(seller_tools)), "change": "", "source": "SellerSprite MCP"},
+    ]
+    if amazon_metrics.get("products"):
+        kpis.append({"label": "Amazon 商品样本", "value": html_number(amazon_metrics.get("products")), "change": "", "source": "Amazon"})
+    if amazon_metrics.get("total_review_count"):
+        kpis.append({"label": "Review/Rating 信号", "value": html_number(amazon_metrics.get("total_review_count")), "change": "", "source": "Amazon"})
+    if reddit_coverage.get("posts"):
+        kpis.append({"label": "Reddit 帖子", "value": html_number(reddit_coverage.get("posts")), "change": "", "source": "Reddit"})
+    if tiktok_metrics.get("videos"):
+        kpis.append({"label": "TikTok 视频", "value": html_number(tiktok_metrics.get("videos")), "change": "", "source": "TikTok"})
+    return kpis[:8]
+
+
+MARKET_REPORT_METRIC_LABELS = {
+    "monthly_sales": "月销量",
+    "monthlysales": "月销量",
+    "sales": "销量",
+    "monthly_revenue": "月销售额",
+    "monthlyrevenue": "月销售额",
+    "revenue": "销售额",
+    "avg_price": "均价",
+    "average_price": "均价",
+    "price": "价格",
+    "profit_margin": "利润率",
+    "margin": "利润率",
+    "return_rate": "退货率",
+    "refund_rate": "退货率",
+    "review_count": "评论数",
+    "reviews": "评论数",
+    "rating": "评分",
+    "brand_count": "品牌数",
+    "seller_count": "卖家数",
+    "product_count": "商品数",
+    "search_volume": "搜索量",
+    "searchvolume": "搜索量",
+    "click_share": "点击份额",
+    "top3_click_share": "Top3 点击份额",
+    "fba_rate": "FBA 占比",
+    "a_plus_rate": "A+ 占比",
+}
+
+
+def market_report_slug(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def market_report_scalar(value: Any) -> bool:
+    return isinstance(value, (str, int, float, bool)) and value not in ("", None)
+
+
+def market_report_float(value: Any) -> float | None:
+    try:
+        text = str(value).replace(",", "").replace("$", "").replace("%", "").strip()
+        if not text:
+            return None
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def market_report_value_text(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return html_number(value)
+    return compact_text(str(value or ""), 120)
+
+
+def market_report_tool_source(tool: dict[str, Any]) -> str:
+    name = str(tool.get("name") or "")
+    if name.startswith("sif_"):
+        return "Sif MCP"
+    if name.startswith("sellersprite_"):
+        return "SellerSprite MCP"
+    if name == "reddit_voc":
+        return "Reddit"
+    if name == "tiktok_social":
+        return "TikTok"
+    if name == "media_rankings":
+        return "Media"
+    if name == "amazon_shelf":
+        return "Amazon"
+    return str(tool.get("label") or name or "Tool")
+
+
+def market_report_evidence_items(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for index, tool in enumerate(tool_results, 1):
+        if not isinstance(tool, dict):
+            continue
+        items.append(
+            {
+                "id": f"E{index:02d}",
+                "tool": str(tool.get("name") or ""),
+                "label": str(tool.get("label") or tool.get("name") or ""),
+                "source": market_report_tool_source(tool),
+                "status": str(tool.get("status") or ""),
+                "summary": str(tool.get("summary") or ""),
+                "file_path": str(tool.get("file_path") or ""),
+            }
+        )
+    return items
+
+
+def market_report_rows_from_nested(
+    value: Any,
+    *,
+    include_terms: tuple[str, ...],
+    exclude_terms: tuple[str, ...] = (),
+    limit: int = 20,
+    depth: int = 0,
+) -> list[dict[str, Any]]:
+    if depth > 7 or limit <= 0:
+        return []
+    rows: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        joined_keys = " ".join(str(key).lower() for key in value.keys())
+        if any(term in joined_keys for term in include_terms) and not any(term in joined_keys for term in exclude_terms):
+            scalar_items = {
+                str(key): item
+                for key, item in value.items()
+                if market_report_scalar(item)
+            }
+            if scalar_items:
+                rows.append(scalar_items)
+        for item in value.values():
+            if len(rows) >= limit:
+                break
+            rows.extend(
+                market_report_rows_from_nested(
+                    item,
+                    include_terms=include_terms,
+                    exclude_terms=exclude_terms,
+                    limit=limit - len(rows),
+                    depth=depth + 1,
+                )
+            )
+    elif isinstance(value, list):
+        for item in value:
+            if len(rows) >= limit:
+                break
+            rows.extend(
+                market_report_rows_from_nested(
+                    item,
+                    include_terms=include_terms,
+                    exclude_terms=exclude_terms,
+                    limit=limit - len(rows),
+                    depth=depth + 1,
+                )
+            )
+    return rows[:limit]
+
+
+def market_report_metric_items(value: Any, evidence_id: str, limit: int = 10, depth: int = 0) -> list[dict[str, Any]]:
+    if depth > 6 or limit <= 0:
+        return []
+    items: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        for key, raw_value in value.items():
+            normalized = market_report_slug(key)
+            label = MARKET_REPORT_METRIC_LABELS.get(normalized)
+            if not label:
+                for token, token_label in MARKET_REPORT_METRIC_LABELS.items():
+                    if token in normalized and len(normalized) <= 42:
+                        label = token_label
+                        break
+            if label and market_report_scalar(raw_value):
+                items.append(
+                    {
+                        "label": label,
+                        "value": market_report_value_text(raw_value),
+                        "raw_value": raw_value,
+                        "source": evidence_id,
+                        "field": str(key),
+                    }
+                )
+            if len(items) >= limit:
+                return items[:limit]
+        for raw_value in value.values():
+            if len(items) >= limit:
+                break
+            items.extend(market_report_metric_items(raw_value, evidence_id, limit - len(items), depth + 1))
+    elif isinstance(value, list):
+        for raw_value in value[:20]:
+            if len(items) >= limit:
+                break
+            items.extend(market_report_metric_items(raw_value, evidence_id, limit - len(items), depth + 1))
+    return items[:limit]
+
+
+def market_report_rows_with_evidence(
+    tool_results: list[dict[str, Any]],
+    evidence_items: list[dict[str, Any]],
+    *,
+    include_terms: tuple[str, ...],
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for tool, evidence in zip(tool_results, evidence_items, strict=False):
+        if tool.get("status") not in SUCCESS_TOOL_STATUSES:
+            continue
+        data = tool.get("data") if isinstance(tool.get("data"), dict) else {}
+        for row in market_report_rows_from_nested(data, include_terms=include_terms, limit=limit - len(rows)):
+            if not row:
+                continue
+            rows.append({"evidence_id": evidence["id"], "source": evidence["source"], **row})
+            if len(rows) >= limit:
+                return rows
+    return rows[:limit]
+
+
+def market_report_primary_tool_payload(tool: dict[str, Any]) -> Any:
+    data = tool.get("data") if isinstance(tool.get("data"), dict) else {}
+    nested_data = data.get("data")
+    if isinstance(nested_data, (dict, list)):
+        return nested_data
+    transformed = {
+        str(key): value
+        for key, value in data.items()
+        if key not in {"raw", "text", "parsed_content", "code", "message"}
+    }
+    if transformed:
+        return transformed
+    parsed = data.get("parsed_content") if isinstance(data.get("parsed_content"), dict) else {}
+    parsed_data = parsed.get("data")
+    if isinstance(parsed_data, (dict, list)):
+        return parsed_data
+    return parsed
+
+
+def market_report_scalar_row(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): item
+        for key, item in value.items()
+        if market_report_scalar(item)
+    }
+
+
+def market_report_preferred_value(value: dict[str, Any], key: str) -> Any:
+    target = market_report_slug(key)
+    for raw_key, item in value.items():
+        if market_report_slug(raw_key) == target:
+            return item
+    return None
+
+
+def market_report_selected_rows(
+    tool_results: list[dict[str, Any]],
+    evidence_items: list[dict[str, Any]],
+    *,
+    tool_names: tuple[str, ...],
+    preferred_keys: tuple[str, ...] = (),
+    include_terms: tuple[str, ...] = (),
+    include_container: bool = False,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Extract report rows from explicit source tools in priority order."""
+
+    pairs = list(zip(tool_results, evidence_items, strict=False))
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for tool_name in tool_names:
+        for tool, evidence in pairs:
+            if str(tool.get("name") or "") != tool_name or tool.get("status") not in SUCCESS_TOOL_STATUSES:
+                continue
+            payload = market_report_primary_tool_payload(tool)
+            candidates: list[dict[str, Any]] = []
+            if isinstance(payload, list):
+                candidates.extend(market_report_scalar_row(item) for item in payload)
+            elif isinstance(payload, dict):
+                for key in preferred_keys:
+                    preferred = market_report_preferred_value(payload, key)
+                    if isinstance(preferred, list):
+                        candidates.extend(market_report_scalar_row(item) for item in preferred)
+                    elif isinstance(preferred, dict):
+                        candidates.append(market_report_scalar_row(preferred))
+                        nested_items = market_report_preferred_value(preferred, "items")
+                        if isinstance(nested_items, list):
+                            candidates.extend(market_report_scalar_row(item) for item in nested_items)
+                if include_container and not candidates:
+                    candidates.append(market_report_scalar_row(payload))
+                if include_terms:
+                    candidates.extend(
+                        market_report_rows_from_nested(
+                            payload,
+                            include_terms=include_terms,
+                            limit=max(limit * 2, 24),
+                        )
+                    )
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                row = {"evidence_id": evidence["id"], "source": evidence["source"], **candidate}
+                identity = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                rows.append(row)
+                if len(rows) >= limit:
+                    return rows
+    return rows
+
+
+def market_report_first_available_rows(
+    tool_results: list[dict[str, Any]],
+    evidence_items: list[dict[str, Any]],
+    *,
+    tool_names: tuple[str, ...],
+    preferred_keys: tuple[str, ...] = (),
+    include_terms: tuple[str, ...] = (),
+    include_container: bool = False,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    for tool_name in tool_names:
+        rows = market_report_selected_rows(
+            tool_results,
+            evidence_items,
+            tool_names=(tool_name,),
+            preferred_keys=preferred_keys,
+            include_terms=include_terms,
+            include_container=include_container,
+            limit=limit,
+        )
+        if rows:
+            return rows
+    return []
+
+
+_GENERIC_CATEGORY_KEYWORD_TOKENS = {
+    "amazon",
+    "best",
+    "for",
+    "men",
+    "product",
+    "women",
+    "woman",
+}
+
+
+def market_report_keyword_tokens(value: Any) -> set[str]:
+    tokens: set[str] = set()
+    for token in re.findall(r"[a-z0-9]+", str(value or "").lower()):
+        if len(token) > 4 and token.endswith("s"):
+            token = token[:-1]
+        if len(token) >= 2:
+            tokens.add(token)
+    return tokens
+
+
+def market_report_keyword_is_relevant(keyword: Any, category: str) -> bool:
+    category_tokens = market_report_keyword_tokens(category)
+    keyword_tokens = market_report_keyword_tokens(keyword)
+    if not category_tokens or not keyword_tokens:
+        return False
+    specific_tokens = category_tokens - _GENERIC_CATEGORY_KEYWORD_TOKENS - {"bra"}
+    if specific_tokens:
+        return bool(specific_tokens & keyword_tokens)
+    return bool(category_tokens & keyword_tokens)
+
+
+def market_report_keyword_snapshot(value: dict[str, Any]) -> dict[str, Any]:
+    row = market_report_scalar_row(value)
+    for nested_key in ("latest", "current"):
+        nested = value.get(nested_key) if isinstance(value.get(nested_key), dict) else {}
+        for key, item in market_report_scalar_row(nested).items():
+            normalized_key = "search_volume" if key == "volume" else key
+            row.setdefault(normalized_key, item)
+    trend = value.get("trend") if isinstance(value.get("trend"), dict) else {}
+    for key in ("direction", "yoy_change", "strength", "momentum"):
+        if trend.get(key) not in (None, ""):
+            row.setdefault(key, trend.get(key))
+    volumes = value.get("volumes") if isinstance(value.get("volumes"), list) else []
+    ranks = value.get("ranks") if isinstance(value.get("ranks"), list) else []
+    if volumes:
+        row.setdefault("search_volume", volumes[-1])
+    if ranks:
+        row.setdefault("rank", ranks[-1])
+    return row
+
+
+def market_report_keyword_rows(
+    tool_results: list[dict[str, Any]],
+    evidence_items: list[dict[str, Any]],
+    *,
+    category: str,
+    limit: int = 24,
+) -> list[dict[str, Any]]:
+    pairs = list(zip(tool_results, evidence_items, strict=False))
+    rows_by_keyword: dict[str, dict[str, Any]] = {}
+    for tool_name in (
+        "sif_market_get_keyword_history",
+        "sif_market_get_keyword_demand",
+        "sif_market_get_keyword_root_trend",
+        "sellersprite_aba_research_weekly",
+    ):
+        for tool, evidence in pairs:
+            if str(tool.get("name") or "") != tool_name or tool.get("status") not in SUCCESS_TOOL_STATUSES:
+                continue
+            payload = market_report_primary_tool_payload(tool)
+            candidates: list[dict[str, Any]] = []
+            if isinstance(payload, dict):
+                preferred_keys = (
+                    ("keywords",)
+                    if tool_name == "sif_market_get_keyword_history"
+                    else ("profiles",)
+                    if tool_name == "sif_market_get_keyword_demand"
+                    else ("items",)
+                    if tool_name == "sellersprite_aba_research_weekly"
+                    else ()
+                )
+                for key in preferred_keys:
+                    preferred = market_report_preferred_value(payload, key)
+                    if isinstance(preferred, list):
+                        candidates.extend(item for item in preferred if isinstance(item, dict))
+                if not preferred_keys:
+                    candidates.append(payload)
+            elif isinstance(payload, list):
+                candidates.extend(item for item in payload if isinstance(item, dict))
+            for candidate in candidates:
+                row = market_report_keyword_snapshot(candidate)
+                keyword = row.get("keyword") or row.get("query") or row.get("searchTerm") or row.get("term")
+                if not keyword or not market_report_keyword_is_relevant(keyword, category):
+                    continue
+                identity = " ".join(str(keyword).lower().split())
+                existing = rows_by_keyword.setdefault(
+                    identity,
+                    {"evidence_id": evidence["id"], "source": evidence["source"], "keyword": str(keyword)},
+                )
+                for key, item in row.items():
+                    if item not in (None, "") and existing.get(key) in (None, ""):
+                        existing[key] = item
+                if len(rows_by_keyword) >= limit:
+                    break
+    return list(rows_by_keyword.values())[:limit]
+
+
+def market_report_user_voice(tool_results: list[dict[str, Any]], evidence_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    voices: list[dict[str, Any]] = []
+    for tool, evidence in zip(tool_results, evidence_items, strict=False):
+        name = str(tool.get("name") or "")
+        if tool.get("status") not in SUCCESS_TOOL_STATUSES or name not in {"reddit_voc", "tiktok_social", "media_rankings"}:
+            continue
+        data = tool.get("data") if isinstance(tool.get("data"), dict) else {}
+        if isinstance(data.get("pain_points"), list):
+            for item in data["pain_points"][:8]:
+                text = item.get("label") if isinstance(item, dict) else item
+                if text:
+                    voices.append({"theme": str(text), "source": evidence["source"], "evidence_id": evidence["id"]})
+        if name == "reddit_voc":
+            for post in data.get("posts", [])[:8] if isinstance(data.get("posts"), list) else []:
+                if not isinstance(post, dict):
+                    continue
+                text = post.get("excerpt") or post.get("title")
+                if text:
+                    voices.append(
+                        {
+                            "theme": compact_text(text, 180),
+                            "source": "Reddit",
+                            "evidence_id": evidence["id"],
+                            "url": post.get("url"),
+                        }
+                    )
+        if name == "tiktok_social":
+            for video in data.get("videos", [])[:6] if isinstance(data.get("videos"), list) else []:
+                if not isinstance(video, dict):
+                    continue
+                text = video.get("snippet") or video.get("title")
+                if text:
+                    voices.append(
+                        {
+                            "theme": compact_text(text, 180),
+                            "source": "TikTok",
+                            "evidence_id": evidence["id"],
+                            "url": video.get("url"),
+                        }
+                    )
+        if name == "media_rankings":
+            for article in data.get("articles", [])[:6] if isinstance(data.get("articles"), list) else []:
+                if not isinstance(article, dict):
+                    continue
+                signals = article.get("product_signals") if isinstance(article.get("product_signals"), list) else []
+                text = ", ".join(str(item) for item in signals[:3]) or article.get("title")
+                if text:
+                    voices.append(
+                        {
+                            "theme": compact_text(text, 180),
+                            "source": article.get("domain") or "Media",
+                            "evidence_id": evidence["id"],
+                            "url": article.get("url"),
+                        }
+                    )
+    return voices[:18]
+
+
+def market_report_first_present(row: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    normalized_lookup = {market_report_slug(key): value for key, value in row.items()}
+    for key in keys:
+        if key in row and row.get(key) not in (None, ""):
+            return row.get(key)
+        slug = market_report_slug(key)
+        if slug in normalized_lookup and normalized_lookup[slug] not in (None, ""):
+            return normalized_lookup[slug]
+    for raw_key, value in row.items():
+        slug = market_report_slug(raw_key)
+        if any(market_report_slug(key) in slug for key in keys) and value not in (None, ""):
+            return value
+    return None
+
+
+def market_report_first_present_pair(row: dict[str, Any], keys: tuple[str, ...]) -> tuple[str, Any] | None:
+    normalized_lookup = {market_report_slug(key): (key, value) for key, value in row.items()}
+    for key in keys:
+        if key in row and row.get(key) not in (None, ""):
+            return key, row.get(key)
+        slug = market_report_slug(key)
+        match = normalized_lookup.get(slug)
+        if match and match[1] not in (None, ""):
+            return match
+    for raw_key, value in row.items():
+        slug = market_report_slug(raw_key)
+        if any(market_report_slug(key) in slug for key in keys) and value not in (None, ""):
+            return str(raw_key), value
+    return None
+
+
+def market_report_evidence_ids_from_rows(rows: Any, limit: int = 6) -> list[str]:
+    ids: list[str] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        evidence_id = str(row.get("evidence_id") or "").strip()
+        if evidence_id and evidence_id not in ids:
+            ids.append(evidence_id)
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def market_report_success_evidence_ids(report_data: dict[str, Any], limit: int = 6) -> list[str]:
+    ids = [
+        str(item.get("id"))
+        for item in report_data.get("evidence_map", [])
+        if isinstance(item, dict) and item.get("status") in SUCCESS_TOOL_STATUSES and item.get("id")
+    ]
+    return ids[:limit]
+
+
+def market_report_best_signal(
+    rows: Any,
+    *,
+    label_keys: tuple[str, ...],
+    value_keys: tuple[str, ...],
+    prefer_low: bool = False,
+) -> dict[str, Any] | None:
+    if not isinstance(rows, list):
+        return None
+    best: dict[str, Any] | None = None
+    fallback: dict[str, Any] | None = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label_pair = market_report_first_present_pair(row, label_keys)
+        if not label_pair:
+            continue
+        value_pair = market_report_first_present_pair(row, value_keys)
+        label = compact_text(str(label_pair[1]), 90)
+        signal = {
+            "label": label,
+            "label_field": label_pair[0],
+            "value": value_pair[1] if value_pair else "",
+            "value_field": value_pair[0] if value_pair else "",
+            "value_text": market_report_value_text(value_pair[1]) if value_pair else "",
+            "numeric": market_report_float(value_pair[1]) if value_pair else None,
+            "source": row.get("source"),
+            "evidence_ids": market_report_evidence_ids_from_rows([row], 1),
+        }
+        if fallback is None:
+            fallback = signal
+        if signal["numeric"] is None:
+            continue
+        if best is None:
+            best = signal
+            continue
+        if prefer_low and float(signal["numeric"]) < float(best["numeric"]):
+            best = signal
+        elif not prefer_low and float(signal["numeric"]) > float(best["numeric"]):
+            best = signal
+    return best or fallback
+
+
+def market_report_signal_phrase(signal: dict[str, Any] | None, fallback: str) -> str:
+    if not signal:
+        return fallback
+    value_text = str(signal.get("value_text") or "").strip()
+    field = str(signal.get("value_field") or "").strip()
+    suffix = f"{field}={value_text}" if field and value_text else value_text
+    return f"{signal.get('label')}（{suffix}）" if suffix else str(signal.get("label") or fallback)
+
+
+def market_report_core_signals(report_data: dict[str, Any]) -> dict[str, Any]:
+    keyword_rows = report_data.get("keyword_trends") if isinstance(report_data.get("keyword_trends"), list) else []
+    category_rows = report_data.get("category_benchmark") if isinstance(report_data.get("category_benchmark"), list) else []
+    price_rows = report_data.get("price_distribution") if isinstance(report_data.get("price_distribution"), list) else []
+    brand_rows = report_data.get("brand_competition") if isinstance(report_data.get("brand_competition"), list) else []
+    product_rows = report_data.get("top_products") if isinstance(report_data.get("top_products"), list) else []
+    keyword_signal = market_report_best_signal(
+        keyword_rows,
+        label_keys=("keyword", "query", "searchTerm", "term", "root"),
+        value_keys=("search_volume", "searchVolume", "volume", "searches", "demand", "search_count"),
+    ) or market_report_best_signal(
+        keyword_rows,
+        label_keys=("keyword", "query", "searchTerm", "term", "root"),
+        value_keys=("rank", "abaRank", "ranking", "position"),
+        prefer_low=True,
+    )
+    category_signal = market_report_best_signal(
+        category_rows,
+        label_keys=("category", "node", "department", "path", "market", "subcategory"),
+        value_keys=("totalUnits", "monthly_sales", "monthlySales", "sales", "totalRevenue", "monthly_revenue", "monthlyRevenue", "revenue", "volume"),
+    )
+    price_signal = market_report_best_signal(
+        price_rows,
+        label_keys=("priceRange", "range", "price", "label", "bucket"),
+        value_keys=("unitsRatio", "salesRatio", "share", "units", "sales", "revenue", "count", "value", "volume"),
+    )
+    brand_signal = market_report_best_signal(
+        brand_rows,
+        label_keys=("brand", "brandName", "seller", "merchant", "name"),
+        value_keys=("totalUnitsRatio", "unitsRatio", "share", "totalUnits", "sales", "revenue", "count", "value", "volume"),
+    )
+    product_signal = market_report_best_signal(
+        product_rows,
+        label_keys=("asin", "product", "title", "name"),
+        value_keys=("totalUnits", "monthly_orders", "units", "sales", "totalRevenue", "revenue", "reviews", "review_count", "rating_count", "value"),
+    )
+    evidence_ids = []
+    for signal in (keyword_signal, category_signal, price_signal, brand_signal, product_signal):
+        for evidence_id in signal.get("evidence_ids", []) if isinstance(signal, dict) else []:
+            if evidence_id and evidence_id not in evidence_ids:
+                evidence_ids.append(evidence_id)
+    return {
+        "keyword": keyword_signal,
+        "category": category_signal,
+        "price": price_signal,
+        "brand": brand_signal,
+        "product": product_signal,
+        "evidence_ids": evidence_ids[:6] or market_report_success_evidence_ids(report_data),
+    }
+
+
+def market_report_verdict(report_data: dict[str, Any]) -> dict[str, str]:
+    signals = market_report_core_signals(report_data)
+    has_demand = bool(signals.get("keyword") or signals.get("category"))
+    has_competition = bool(signals.get("brand") or signals.get("product"))
+    has_price = bool(signals.get("price"))
+    gap_count = len(report_data.get("data_gaps") or [])
+    if has_demand and has_competition and has_price and gap_count <= 3:
+        return {
+            "label": "进入企划验证",
+            "tone": "go",
+            "body": "需求、竞争和价格信号都有结构化证据，适合进入 Hsia 周度企划会做机会排序。",
+        }
+    if has_demand and has_competition:
+        return {
+            "label": "先做机会排序",
+            "tone": "watch",
+            "body": "需求和竞争证据可用，但价格带或节点级门槛仍需补数；适合做方向筛选，不宜直接定 SKU。",
+        }
+    if has_demand:
+        return {
+            "label": "需求初筛可用",
+            "tone": "watch",
+            "body": "已经看到需求入口，但竞争结构和价格承接不足，当前更像候选市场扫描。",
+        }
+    return {
+        "label": "暂缓结论",
+        "tone": "hold",
+        "body": "结构化市场信号不足，报告只能记录已调用证据和下一步补数动作。",
+    }
+
+
+def market_report_chart_points_from_rows(
+    rows: Any,
+    *,
+    label_keys: tuple[str, ...],
+    value_keys: tuple[str, ...],
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label = market_report_first_present(row, label_keys)
+        value = market_report_first_present(row, value_keys)
+        numeric = market_report_float(value)
+        if label and numeric is not None:
+            points.append({"label": compact_text(str(label), 42), "value": numeric})
+        if len(points) >= limit:
+            break
+    return points
+
+
+def market_report_priority_score(priority: Any) -> int:
+    normalized = str(priority or "").strip().upper()
+    if normalized == "A":
+        return 88
+    if normalized == "B":
+        return 68
+    if normalized == "C":
+        return 46
+    return 56
+
+
+def market_report_chart_specs(report_data: dict[str, Any]) -> list[dict[str, Any]]:
+    chart_payload = build_market_report_charts(report_data)
+    chart_specs = chart_payload.get("chart_specs") if isinstance(chart_payload, dict) else []
+    return chart_specs if isinstance(chart_specs, list) else []
+    charts: list[dict[str, Any]] = []
+    source_counts: Counter[str] = Counter(
+        item.get("source") for item in report_data.get("evidence_map", []) if isinstance(item, dict)
+    )
+    if source_counts:
+        charts.append(
+            {
+                "id": "evidence_sources",
+                "title": "本轮证据来源覆盖",
+                "type": "donut",
+                "data": [{"label": key, "value": value} for key, value in source_counts.items()],
+            }
+        )
+    source_summary = report_data.get("source_summary") if isinstance(report_data.get("source_summary"), dict) else {}
+    if source_summary:
+        failed = market_report_float(source_summary.get("failed_tool_count")) or 0
+        successful = market_report_float(source_summary.get("successful_tool_count")) or 0
+        gaps = len(report_data.get("data_gaps") or [])
+        charts.append(
+            {
+                "id": "data_readiness",
+                "title": "数据可用性",
+                "type": "donut",
+                "data": [
+                    {"label": "成功工具", "value": successful},
+                    {"label": "失败工具", "value": failed},
+                    {"label": "数据缺口", "value": gaps},
+                ],
+            }
+        )
+    keyword_points = market_report_chart_points_from_rows(
+        report_data.get("keyword_trends"),
+        label_keys=("keyword", "query", "searchTerm", "term", "root"),
+        value_keys=("search_volume", "searchVolume", "volume", "searches", "demand", "rank", "abaRank"),
+        limit=10,
+    )
+    if keyword_points:
+        charts.append({"id": "keyword_volume", "title": "关键词需求/排名信号", "type": "bar", "data": keyword_points})
+    category_points = market_report_chart_points_from_rows(
+        report_data.get("category_benchmark"),
+        label_keys=("category", "node", "department", "path", "market", "subcategory"),
+        value_keys=("monthly_sales", "monthlySales", "sales", "monthly_revenue", "monthlyRevenue", "revenue", "volume"),
+        limit=10,
+    )
+    if category_points:
+        charts.append({"id": "category_benchmark", "title": "类目对标量化信号", "type": "bar", "data": category_points})
+    brands = report_data.get("brand_competition") if isinstance(report_data.get("brand_competition"), list) else []
+    brand_points = []
+    for row in brands[:8]:
+        if not isinstance(row, dict):
+            continue
+        label = row.get("brand") or row.get("brandName") or row.get("name")
+        value = row.get("count") or row.get("sales") or row.get("share") or row.get("value")
+        numeric = market_report_float(value)
+        if label and numeric is not None:
+            brand_points.append({"label": str(label), "value": numeric})
+    if brand_points:
+        charts.append({"id": "brand_competition", "title": "品牌竞争信号", "type": "bar", "data": brand_points})
+    price_rows = report_data.get("price_distribution") if isinstance(report_data.get("price_distribution"), list) else []
+    price_points = []
+    for row in price_rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        label = row.get("priceRange") or row.get("range") or row.get("price") or row.get("label")
+        value = row.get("sales") or row.get("count") or row.get("share") or row.get("value")
+        numeric = market_report_float(value)
+        if label and numeric is not None:
+            price_points.append({"label": str(label), "value": numeric})
+    if price_points:
+        charts.append({"id": "price_distribution", "title": "价格带分布", "type": "bar", "data": price_points})
+    opportunities = report_data.get("opportunity_pool") if isinstance(report_data.get("opportunity_pool"), list) else []
+    if opportunities:
+        charts.append(
+            {
+                "id": "opportunity_priority",
+                "title": "机会优先级矩阵",
+                "type": "matrix",
+                "data": [
+                    {
+                        "label": str(item.get("name") or item.get("opportunity_name") or f"机会 {index + 1}"),
+                        "value": market_report_priority_score(item.get("priority")),
+                        "priority": str(item.get("priority") or "B"),
+                    }
+                    for index, item in enumerate(opportunities[:6])
+                    if isinstance(item, dict)
+                ],
+            }
+        )
+    return charts[:8]
+
+
+def market_report_analysis_sections(report_data: dict[str, Any]) -> list[dict[str, Any]]:
+    keyword_count = len(report_data.get("keyword_trends") or [])
+    category_count = len(report_data.get("category_benchmark") or [])
+    product_count = len(report_data.get("top_products") or [])
+    brand_count = len(report_data.get("brand_competition") or [])
+    gap_count = len(report_data.get("data_gaps") or [])
+    signals = market_report_core_signals(report_data)
+    verdict = market_report_verdict(report_data)
+    evidence_ids = signals.get("evidence_ids") or market_report_success_evidence_ids(report_data)
+    demand_phrase = market_report_signal_phrase(signals.get("keyword"), "暂未抽取到可命名的关键词需求锚点")
+    category_phrase = market_report_signal_phrase(signals.get("category"), "类目规模字段不足")
+    price_phrase = market_report_signal_phrase(signals.get("price"), "价格带承接字段不足")
+    brand_phrase = market_report_signal_phrase(signals.get("brand"), "品牌集中度字段不足")
+    product_phrase = market_report_signal_phrase(signals.get("product"), "Top 商品字段不足")
+    return [
+        {
+            "id": "analysis_tldr",
+            "title": "答案先行",
+            "tone": "decision",
+            "summary": f"{verdict['label']}：{verdict['body']}",
+            "bullets": [
+                f"需求锚点：{demand_phrase}；类目参照：{category_phrase}。",
+                f"竞争锚点：{brand_phrase}；商品锚点：{product_phrase}。",
+                f"价格锚点：{price_phrase}；当前有 {gap_count} 个需要在决策前说明的数据缺口。",
+            ],
+            "evidence_ids": evidence_ids,
+        },
+        {
+            "id": "analysis_demand",
+            "title": "需求：先看词，不先看货",
+            "tone": "decision",
+            "summary": "市场机会先由关键词需求和类目基本盘定义，再回到货架验证产品是否能承接。",
+            "bullets": [
+                f"本轮抽取 {keyword_count} 条关键词/ABA/搜索历史信号，核心入口是 {demand_phrase}。",
+                f"类目侧抽取 {category_count} 条市场/节点/路径信号，当前参照点是 {category_phrase}。",
+                "如果高需求词与长尾词根分散，Hsia 不应只押一个大词，而应拆成显小、支撑、平滑、全罩杯等可测试卖点组。",
+            ],
+            "evidence_ids": market_report_evidence_ids_from_rows(report_data.get("keyword_trends"), 4) or evidence_ids,
+        },
+        {
+            "id": "analysis_so_what",
+            "title": "So What：对 Hsia 的含义",
+            "tone": "opportunity",
+            "summary": "这份报告的作用是把市场信号翻译成研发验证优先级，而不是让团队复制头部商品。",
+            "bullets": [
+                f"优先围绕 {demand_phrase} 做卖点承接，而不是先从头部 ASIN 外观倒推产品。",
+                f"如果 {price_phrase} 能被后续数据确认，价格带验证应独立成一条研发假设。",
+                "每个机会都必须落到结构方向、价格假设、风险和下一步验证动作，避免只输出泛泛的“可关注”。",
+            ],
+            "evidence_ids": evidence_ids,
+        },
+        {
+            "id": "analysis_competition",
+            "title": "竞争与进入门槛判断",
+            "tone": "risk",
+            "summary": "竞争判断要分清“品牌集中度”“商品热度代理”和“关键词流量份额”，不能只凭一个 Top ASIN 下结论。",
+            "bullets": [
+                f"本轮抽取 {brand_count} 条品牌/卖家信号，当前竞争锚点是 {brand_phrase}。",
+                f"本轮抽取 {product_count} 条 Top 商品/ASIN 信号，优先拆解对象是 {product_phrase}。",
+                "如果品牌或商品信号集中，先拆评价门槛和结构差异；如果信号分散，优先找中腰部品牌未覆盖的卖点组合。",
+            ],
+            "evidence_ids": market_report_evidence_ids_from_rows([*(report_data.get("brand_competition") or []), *(report_data.get("top_products") or [])], 4) or evidence_ids,
+        },
+        {
+            "id": "analysis_next",
+            "title": "下一步验证优先级",
+            "tone": "action",
+            "summary": "下一轮不应继续堆工具数量，而应沿着最关键的证据缺口补数。",
+            "bullets": [
+                f"价格线：围绕 {price_phrase} 补齐销量占比、利润率或搜索购买比，决定是否能做主力款/升级款分层。",
+                f"竞品线：围绕 {product_phrase} 做评论门槛、结构卖点和 Listing claim 拆解。",
+                "数据线：若缺 category_node_id，先用 SellerSprite product_node 自动解析并校验节点，再补价格、品牌集中度、评分数分布和上架时间分布。",
+            ],
+            "evidence_ids": evidence_ids,
+        },
+    ]
+
+
+def market_report_swot(report_data: dict[str, Any]) -> dict[str, list[str]]:
+    keyword_count = len(report_data.get("keyword_trends") or [])
+    category_count = len(report_data.get("category_benchmark") or [])
+    gap_count = len(report_data.get("data_gaps") or [])
+    signals = market_report_core_signals(report_data)
+    keyword_phrase = market_report_signal_phrase(signals.get("keyword"), "关键词需求入口待补强")
+    price_phrase = market_report_signal_phrase(signals.get("price"), "价格带证据待补强")
+    competition_phrase = market_report_signal_phrase(signals.get("brand") or signals.get("product"), "竞争锚点待补强")
+    return {
+        "strengths": [
+            f"已看到可跟进的需求入口：{keyword_phrase}。",
+            f"本轮拿到 {keyword_count + category_count} 条关键词/类目结构化市场信号，适合做方向排序。",
+        ],
+        "weaknesses": [
+            "如果缺少节点级数据，价格、品牌集中度和评分门槛只能做方向性判断。",
+            f"当前仍有 {gap_count} 个数据缺口需要在企划会前说明。",
+        ],
+        "opportunities": [
+            f"用 {keyword_phrase} 反推显小、支撑、平滑、全罩杯等可验证结构组合。",
+            f"用 {price_phrase} 和 {competition_phrase} 筛选重点对标方向。",
+        ],
+        "threats": [
+            f"{competition_phrase} 可能代表头部品牌心智、评价门槛或价格优势，需要拆解后再决定进入方式。",
+            "公开工具字段缺失或口径差异会影响跨平台对比，需要保留人工复核节点。",
+        ],
+    }
+
+
+def market_report_decision_matrix(report_data: dict[str, Any]) -> list[dict[str, Any]]:
+    signals = market_report_core_signals(report_data)
+    keyword_score = min(95, 48 + len(report_data.get("keyword_trends") or []) * 3 + (12 if signals.get("keyword") else 0))
+    competition_score = min(
+        92,
+        40
+        + (len(report_data.get("brand_competition") or []) + len(report_data.get("top_products") or [])) * 2
+        + (12 if signals.get("brand") or signals.get("product") else 0),
+    )
+    price_score = min(90, 36 + len(report_data.get("price_distribution") or []) * 4 + (14 if signals.get("price") else 0))
+    gap_penalty = min(35, len(report_data.get("data_gaps") or []) * 5)
+    readiness_score = max(30, min(95, int((keyword_score + competition_score + price_score) / 3) - gap_penalty))
+    return [
+        {
+            "dimension": "需求强度",
+            "score": keyword_score,
+            "signal": market_report_signal_phrase(signals.get("keyword"), "关键词/ABA/搜索历史信号不足"),
+            "recommendation": "优先确认核心词和长尾词根能否被 Hsia 产品结构与 Listing 语言承接。",
+        },
+        {
+            "dimension": "竞争可进入性",
+            "score": competition_score,
+            "signal": market_report_signal_phrase(signals.get("brand") or signals.get("product"), "品牌集中度、Top ASIN、商品集中度不足"),
+            "recommendation": "拆解头部品牌结构、评论门槛和流量份额，寻找非同质化切口。",
+        },
+        {
+            "dimension": "价格/利润空间",
+            "score": price_score,
+            "signal": market_report_signal_phrase(signals.get("price"), "价格分布、销量/销售额、利润相关字段不足"),
+            "recommendation": "把主力款、升级款和价格锚点分开验证，不用单一均价直接定价。",
+        },
+        {
+            "dimension": "数据完备度",
+            "score": readiness_score,
+            "signal": f"{len(report_data.get('data_gaps') or [])} 个数据缺口",
+            "recommendation": "补齐节点级数据后再做 SKU 组合和投产优先级决策。",
+        },
+    ]
+
+
+def market_report_data_to_artifact(report_data: dict[str, Any]) -> dict[str, Any]:
+    insights = report_data.get("insights") if isinstance(report_data.get("insights"), list) else []
+    analysis_sections = report_data.get("analysis_sections") if isinstance(report_data.get("analysis_sections"), list) else []
+    insight_text = [
+        str(item.get("summary") or item.get("title") or "")
+        for item in insights
+        if isinstance(item, dict) and (item.get("summary") or item.get("title"))
+    ]
+    analysis_text = [
+        str(item.get("summary") or item.get("title") or "")
+        for item in analysis_sections
+        if isinstance(item, dict) and (item.get("summary") or item.get("title"))
+    ]
+    opportunity_pool = report_data.get("opportunity_pool") if isinstance(report_data.get("opportunity_pool"), list) else []
+    data_gaps = report_data.get("data_gaps") if isinstance(report_data.get("data_gaps"), list) else []
+    kpis = report_data.get("market_kpis") if isinstance(report_data.get("market_kpis"), list) else []
+    return {
+        "title": report_data.get("title") or f"{report_data.get('category') or '市场'}洞察报告",
+        "executive_summary": report_data.get("executive_summary") or "已完成 MarketReportData 编译，报告基于本轮工具证据生成。",
+        "kpis": kpis,
+        "market_basics": [*analysis_text[:3], *insight_text[:2]],
+        "price_and_margin": [
+            f"{len(report_data.get('price_distribution') or [])} 条价格/利润相关结构化记录。"
+        ],
+        "competition": [
+            f"{len(report_data.get('brand_competition') or [])} 条品牌竞争记录，{len(report_data.get('top_products') or [])} 条商品/ASIN 记录。"
+        ],
+        "user_voice": [],
+        "key_findings": insight_text[:6],
+        "opportunity_pool": opportunity_pool,
+        "opportunities": [
+            str(item.get("name") or item.get("opportunity_name") or "")
+            for item in opportunity_pool
+            if isinstance(item, dict)
+        ],
+        "risks": data_gaps[:8],
+        "data_gaps": data_gaps,
+        "next_steps": report_data.get("next_actions") or [],
+    }
+
+
+def html_report_style_reference(skill_markdown: Any) -> str:
+    text = str(skill_markdown or "")
+    match = re.search(r"^###\s+HTML Report Style Reference\s*$", text, flags=re.MULTILINE)
+    if not match:
+        return ""
+    start = match.end()
+    next_match = re.search(r"^##\s+|^###\s+", text[start:], flags=re.MULTILINE)
+    end = start + next_match.start() if next_match else len(text)
+    return compact_text(text[start:end].strip(), 4200)
+
+
+def market_report_compact_items(value: Any, *, limit: int = 10) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    compacted: list[Any] = []
+    for item in value[:limit]:
+        if not isinstance(item, dict):
+            compacted.append(compact_text(str(item), 240))
+            continue
+        record: dict[str, Any] = {}
+        for key, raw_value in list(item.items())[:18]:
+            if isinstance(raw_value, str):
+                record[str(key)] = compact_text(raw_value, 280)
+            elif isinstance(raw_value, int | float | bool) or raw_value is None:
+                record[str(key)] = raw_value
+            elif isinstance(raw_value, list):
+                record[str(key)] = [
+                    compact_text(str(child), 180) if not isinstance(child, int | float | bool) else child
+                    for child in raw_value[:6]
+                ]
+            elif isinstance(raw_value, dict):
+                record[str(key)] = {
+                    str(child_key): (
+                        child_value
+                        if isinstance(child_value, int | float | bool) or child_value is None
+                        else compact_text(str(child_value), 180)
+                    )
+                    for child_key, child_value in list(raw_value.items())[:8]
+                }
+            else:
+                record[str(key)] = compact_text(str(raw_value), 180)
+        compacted.append(record)
+    return compacted
+
+
+def market_report_llm_context(report_data: dict[str, Any]) -> dict[str, Any]:
+    chart_specs = []
+    for chart in report_data.get("chart_specs", []) if isinstance(report_data.get("chart_specs"), list) else []:
+        if not isinstance(chart, dict):
+            continue
+        chart_specs.append(
+            {
+                "id": chart.get("id"),
+                "title": chart.get("title"),
+                "subtitle": chart.get("subtitle"),
+                "type": chart.get("type"),
+                "insight": chart.get("insight"),
+                "x_label": chart.get("x_label"),
+                "y_label": chart.get("y_label"),
+                "unit": chart.get("unit"),
+                "orientation": chart.get("orientation"),
+                "value_format": chart.get("value_format"),
+                "source": chart.get("source"),
+                "quality_status": chart.get("quality_status"),
+                "data": market_report_compact_items(chart.get("data"), limit=16),
+            }
+        )
+        if len(chart_specs) >= 8:
+            break
+    return {
+        "schema_version": report_data.get("schema_version"),
+        "title": report_data.get("title"),
+        "brand": report_data.get("brand"),
+        "marketplace": report_data.get("marketplace"),
+        "category": report_data.get("category"),
+        "time_range": report_data.get("time_range"),
+        "generated_at": report_data.get("generated_at"),
+        "executive_summary": report_data.get("executive_summary"),
+        "market_kpis": market_report_compact_items(report_data.get("market_kpis"), limit=14),
+        "keyword_trends": market_report_compact_items(report_data.get("keyword_trends"), limit=12),
+        "demand_trend": market_report_compact_items(report_data.get("demand_trend"), limit=14),
+        "category_benchmark": market_report_compact_items(report_data.get("category_benchmark"), limit=10),
+        "top_products": market_report_compact_items(report_data.get("top_products"), limit=10),
+        "brand_competition": market_report_compact_items(report_data.get("brand_competition"), limit=10),
+        "price_distribution": market_report_compact_items(report_data.get("price_distribution"), limit=10),
+        "ratings_count_distribution": market_report_compact_items(report_data.get("ratings_count_distribution"), limit=10),
+        "listing_date_distribution": market_report_compact_items(report_data.get("listing_date_distribution"), limit=10),
+        "analysis_sections": market_report_compact_items(report_data.get("analysis_sections"), limit=8),
+        "insights": market_report_compact_items(report_data.get("insights"), limit=10),
+        "opportunity_pool": market_report_compact_items(report_data.get("opportunity_pool"), limit=10),
+        "swot": report_data.get("swot") if isinstance(report_data.get("swot"), dict) else {},
+        "decision_matrix": market_report_compact_items(report_data.get("decision_matrix"), limit=10),
+        "chart_specs": chart_specs,
+        "evidence_map": market_report_compact_items(report_data.get("evidence_map"), limit=18),
+        "data_gaps": report_data.get("data_gaps") if isinstance(report_data.get("data_gaps"), list) else [],
+    }
+
+
+def normalize_llm_html_document(value: Any) -> str:
+    html_content = str(value or "").strip()
+    if html_content.startswith("{"):
+        try:
+            parsed = json.loads(html_content)
+        except json.JSONDecodeError:
+            parsed = {}
+        if isinstance(parsed, dict):
+            result = parsed.get("result") if isinstance(parsed.get("result"), dict) else {}
+            nested_html = result.get("html") or parsed.get("html")
+            if nested_html:
+                html_content = str(nested_html).strip()
+    fence = re.match(r"^```(?:html)?\s*(.*?)\s*```$", html_content, flags=re.IGNORECASE | re.DOTALL)
+    if fence:
+        html_content = fence.group(1).strip()
+    lowered = html_content.lower()
+    start = lowered.find("<!doctype html")
+    if start < 0:
+        start = lowered.find("<html")
+    end = lowered.rfind("</html>")
+    if start >= 0 and end >= start:
+        html_content = html_content[start : end + len("</html>")].strip()
+    return html_content
+
+
+def html_template_required_sections(template_html: Any) -> list[str]:
+    return list(
+        dict.fromkeys(
+            re.findall(
+                r"data-required-section\s*=\s*['\"]([^'\"]+)['\"]",
+                str(template_html or ""),
+                flags=re.IGNORECASE,
+            )
+        )
+    )
+
+
+def validate_llm_html_document(
+    html_content: str,
+    template_html: Any = "",
+    required_chart_ids: Any = None,
+) -> str:
+    lowered = html_content.lower()
+    if len(html_content) < 500:
+        return "LLM HTML is too short to be a complete report."
+    if "<html" not in lowered or "</html>" not in lowered:
+        return "LLM HTML must be a complete HTML document."
+    if "<style" not in lowered:
+        return "LLM HTML must include inline CSS."
+    forbidden_patterns = [
+        r"<script(?:\s|>)",
+        r"<script[^>]+src\s*=",
+        r"<link[^>]+rel\s*=\s*['\"]?stylesheet",
+        r"@import\s+url",
+    ]
+    for pattern in forbidden_patterns:
+        if re.search(pattern, html_content, flags=re.IGNORECASE):
+            if pattern == r"<script(?:\s|>)":
+                return (
+                    "LLM HTML must render in the sandboxed preview without JavaScript; "
+                    "use static HTML, CSS, and populated inline SVG charts."
+                )
+            return "LLM HTML must be single-file and cannot load external scripts, styles, fonts, or CSS imports."
+    for section_id in html_template_required_sections(template_html):
+        pattern = rf"data-required-section\s*=\s*['\"]{re.escape(section_id)}['\"]"
+        if not re.search(pattern, html_content, flags=re.IGNORECASE):
+            return f"LLM HTML is missing required template section: {section_id}."
+    for chart_id in required_chart_ids if isinstance(required_chart_ids, list) else []:
+        normalized_id = str(chart_id or "").strip()
+        if not normalized_id:
+            continue
+        pattern = rf"data-chart-id\s*=\s*['\"]{re.escape(normalized_id)}['\"]"
+        if not re.search(pattern, html_content, flags=re.IGNORECASE):
+            return f"LLM HTML is missing required business chart: {normalized_id}."
+    chart_markup_error = validate_static_chart_markup(html_content, required_chart_ids)
+    if chart_markup_error:
+        return chart_markup_error
+    return ""
+
+
+class StaticChartMarkupInspector(HTMLParser):
+    graphic_tags = {"path", "rect", "circle", "ellipse", "line", "polyline", "polygon"}
+
+    def __init__(self, required_chart_ids: list[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self.required_chart_ids = set(required_chart_ids)
+        self.figure_stack: list[str] = []
+        self.svg_depth = 0
+        self.charts = {
+            chart_id: {"figure_count": 0, "svg_count": 0, "graphic_count": 0}
+            for chart_id in required_chart_ids
+        }
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.lower()
+        attr_map = {str(key).lower(): value for key, value in attrs}
+        if normalized_tag == "figure":
+            chart_id = str(attr_map.get("data-chart-id") or "")
+            self.figure_stack.append(chart_id)
+            if chart_id in self.required_chart_ids:
+                self.charts[chart_id]["figure_count"] += 1
+
+        chart_id = next(
+            (candidate for candidate in reversed(self.figure_stack) if candidate in self.required_chart_ids),
+            "",
+        )
+        if normalized_tag == "svg":
+            self.svg_depth += 1
+            if chart_id:
+                self.charts[chart_id]["svg_count"] += 1
+        elif chart_id and self.svg_depth > 0 and normalized_tag in self.graphic_tags:
+            self.charts[chart_id]["graphic_count"] += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.lower()
+        if normalized_tag == "svg" and self.svg_depth > 0:
+            self.svg_depth -= 1
+        if normalized_tag == "figure" and self.figure_stack:
+            self.figure_stack.pop()
+
+
+def validate_static_chart_markup(html_content: str, required_chart_ids: Any) -> str:
+    if not isinstance(required_chart_ids, list):
+        return ""
+    normalized_ids = [
+        str(chart_id or "").strip()
+        for chart_id in required_chart_ids
+        if str(chart_id or "").strip()
+    ]
+    if not normalized_ids:
+        return ""
+    inspector = StaticChartMarkupInspector(normalized_ids)
+    inspector.feed(html_content)
+    for chart_id in normalized_ids:
+        chart = inspector.charts[chart_id]
+        if chart["svg_count"] == 0:
+            return (
+                f"Required business chart {chart_id} must contain a populated inline SVG; "
+                "canvas and script-rendered charts are not supported in the sandboxed preview."
+            )
+        if chart["graphic_count"] == 0:
+            return (
+                f"Required business chart {chart_id} contains an empty SVG. "
+                "Write visible path, rect, circle, line, polyline, or polygon data marks directly into the HTML."
+            )
+    return ""
+
+
+def html_report_compact_value(value: Any, *, depth: int = 0) -> Any:
+    if isinstance(value, int | float | bool) or value is None:
+        return value
+    if isinstance(value, str):
+        return compact_text(value, 420 if depth < 3 else 220)
+    if isinstance(value, list):
+        if depth >= 4:
+            return [compact_text(str(item), 180) for item in value[:6]]
+        return [html_report_compact_value(item, depth=depth + 1) for item in value[:12]]
+    if isinstance(value, dict):
+        if depth >= 4:
+            return {
+                str(key): compact_text(str(child), 180)
+                for key, child in list(value.items())[:10]
+            }
+        return {
+            str(key): html_report_compact_value(child, depth=depth + 1)
+            for key, child in list(value.items())[:24]
+        }
+    return compact_text(str(value), 240)
+
+
+def html_report_first_http_url(value: Any) -> str:
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        return value
+    if isinstance(value, list):
+        for item in value:
+            found = html_report_first_http_url(item)
+            if found:
+                return found
+    if isinstance(value, dict):
+        for key in ("url", "image", "imageUrl", "image_url", "mainImage", "zoomImageUrl"):
+            found = html_report_first_http_url(value.get(key))
+            if found:
+                return found
+    return ""
+
+
+def hot_product_required_image_urls(tool_results: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    product_urls: list[str] = []
+    review_urls: list[str] = []
+    for tool in tool_results:
+        if not isinstance(tool, dict) or tool.get("status") not in SUCCESS_TOOL_STATUSES:
+            continue
+        name = str(tool.get("name") or "")
+        data = tool.get("data") if isinstance(tool.get("data"), dict) else {}
+        if name == "sellersprite_market_product_concentration":
+            selection = data.get("product_selection") if isinstance(data.get("product_selection"), dict) else {}
+            for product in selection.get("selected") or []:
+                if not isinstance(product, dict):
+                    continue
+                image_url = html_report_first_http_url(
+                    product.get("imageUrl") or product.get("image_url") or product.get("image")
+                )
+                if image_url:
+                    product_urls.append(image_url)
+        if name == "sellersprite_market_research" and not product_urls:
+            container = data.get("data") if isinstance(data.get("data"), dict) else {}
+            for product in container.get("items") or []:
+                if not isinstance(product, dict) or not product.get("asin"):
+                    continue
+                image_url = html_report_first_http_url(product)
+                if image_url:
+                    product_urls.append(image_url)
+        if name == "sellersprite_review":
+            container = data.get("data") if isinstance(data.get("data"), dict) else {}
+            for review in container.get("items") or []:
+                if not isinstance(review, dict):
+                    continue
+                image_url = html_report_first_http_url(review.get("images") or review.get("videos"))
+                if image_url:
+                    review_urls.append(image_url)
+                    break
+    return list(dict.fromkeys(product_urls))[:20], list(dict.fromkeys(review_urls))[:20]
+
+
+def html_report_compact_tool_results(tool_results: Any, *, limit: int = 24) -> list[dict[str, Any]]:
+    if not isinstance(tool_results, list):
+        return []
+    compacted: list[dict[str, Any]] = []
+    for tool in tool_results[:limit]:
+        if not isinstance(tool, dict):
+            continue
+        data = tool.get("data")
+        if str(tool.get("name") or "") == "sellersprite_review" and isinstance(data, dict):
+            review_container = data.get("data") if isinstance(data.get("data"), dict) else {}
+            media_evidence = [
+                item
+                for item in review_container.get("items") or []
+                if isinstance(item, dict) and (item.get("images") or item.get("videos"))
+            ][:6]
+            if media_evidence:
+                data = {**data, "review_media_evidence": media_evidence}
+        compacted_data = html_report_compact_value(data)
+        if not isinstance(compacted_data, dict):
+            compacted_data = {"value": compacted_data} if compacted_data not in (None, "") else {}
+        compacted.append(
+            {
+                "name": tool.get("name"),
+                "label": tool.get("label"),
+                "status": tool.get("status"),
+                "outcome": tool.get("outcome"),
+                "summary": compact_text(str(tool.get("summary") or ""), 360),
+                "input": {
+                    str(key): compact_text(str(value), 180)
+                    for key, value in list((tool.get("input") if isinstance(tool.get("input"), dict) else {}).items())[:16]
+                    if key not in {"toolResults", "marketReportData", "skillMarkdown", "skillHtmlTemplate"}
+                },
+                "data": compacted_data,
+            }
+        )
+    return compacted
+
+
+def html_report_base_artifact(payload: dict[str, Any], report_data: dict[str, Any], tool_results: list[dict[str, Any]]) -> dict[str, Any]:
+    if report_data:
+        existing = report_data.get("artifact") if isinstance(report_data.get("artifact"), dict) else {}
+        return existing or market_report_data_to_artifact(report_data)
+    return fallback_agent_artifact(
+        str(payload.get("prompt") or ""),
+        str(payload.get("mode") or "market"),
+        str(payload.get("category") or ""),
+        tool_results,
+    )
+
+
+def compose_html_report_with_llm(
+    payload: dict[str, Any],
+    *,
+    locale: str = "zh",
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    report_data = payload.get("marketReportData") if isinstance(payload.get("marketReportData"), dict) else {}
+    tool_results = payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else []
+    style_reference = html_report_style_reference(payload.get("skillMarkdown"))
+    skill_html_template = str(payload.get("skillHtmlTemplate") or "")
+    required_product_image_urls: list[str] = []
+    required_review_image_urls: list[str] = []
+    if str(payload.get("skillId") or "") == "hot_product_pain_analysis":
+        required_product_image_urls, required_review_image_urls = hot_product_required_image_urls(tool_results)
+    if not report_data and not tool_results:
+        return "", {}, {"enabled": False, "status": "skipped", "message": "No report data or tool evidence was supplied."}
+    report_context: dict[str, Any] = {
+        "skill_id": payload.get("skillId"),
+        "category": payload.get("category"),
+        "brand": payload.get("brand"),
+        "marketplace": payload.get("marketplace"),
+        "time_range": payload.get("timeRange") or payload.get("time_range"),
+        "generated_at": payload.get("generatedAt"),
+        "mode": payload.get("mode"),
+        "evidence_gaps": payload.get("evidenceGaps") if isinstance(payload.get("evidenceGaps"), list) else [],
+    }
+    if report_data:
+        report_context["market_report_data"] = market_report_llm_context(report_data)
+        report_context["report_data_schema"] = report_data.get("schema_version") or "market_report_data"
+    else:
+        report_context["tool_results"] = html_report_compact_tool_results(tool_results)
+
+    required_sections = html_template_required_sections(skill_html_template)
+    required_chart_ids = [
+        str(chart.get("id"))
+        for chart in report_data.get("chart_specs", [])
+        if isinstance(chart, dict)
+        and chart.get("id")
+        and str(chart.get("quality_status") or "ready") == "ready"
+    ][:5]
+    request_payload = {
+        "language": "Chinese" if locale == "zh" else "English",
+        "user_prompt": payload.get("prompt") or "",
+        "skill_markdown_excerpt": compact_text(str(payload.get("skillMarkdown") or ""), 5200),
+        "style_reference_from_skill": style_reference,
+        "skill_html_template": compact_text(skill_html_template, 18000),
+        "required_template_sections": required_sections,
+        "required_chart_ids": required_chart_ids,
+        "required_product_image_urls": required_product_image_urls,
+        "required_review_image_urls": required_review_image_urls,
+        **report_context,
+        "output_contract": {
+            "format": "raw_html_only",
+            "complete_document": True,
+            "inline_css_required": True,
+            "javascript_forbidden": True,
+            "static_inline_svg_charts_required": bool(required_chart_ids),
+            "external_dependencies_forbidden": True,
+        },
+    }
+    system_message: dict[str, Any] = {
+        "role": "system",
+        "content": (
+            "You are a senior product and R&D insight editor and HTML artifact designer for Hsia. "
+            "Return only one complete HTML document beginning with <!doctype html> and ending with </html>. "
+            "Do not return JSON, Markdown fences, commentary, or explanations outside the HTML. "
+            "Use static HTML, inline CSS, and populated inline SVG only. Do not include JavaScript or canvas; "
+            "the report preview is sandboxed and scripts never execute. Do not load external scripts, stylesheets, "
+            "fonts, CSS imports, or CDNs. External product/review images are allowed only when their URLs "
+            "appear in the supplied evidence. Do not invent metrics, ranks, ASINs, market size, search volume, "
+            "sales, review quotes, or image URLs. Every important claim must show a nearby evidence handle. "
+            "If evidence is missing, mark it as a data gap instead of filling it in."
+            " Render every required chart id in a semantic <figure data-chart-id=\"...\"> element containing "
+            "a populated inline <svg>; write all visible paths, bars, lines, points, labels, and axes directly "
+            "into the HTML instead of creating an empty SVG for runtime population. "
+            "For hot-product pain reports, render every supplied required product image URL and required review image URL "
+            "as an <img> near its matching product or review evidence."
+        ),
+    }
+    messages: list[dict[str, Any]] = [
+        system_message,
+        {
+            "role": "user",
+            "content": json.dumps(request_payload, ensure_ascii=False, default=str),
+        },
+    ]
+    input_profile = {
+        "request_chars": sum(len(str(message.get("content") or "")) for message in messages),
+        "market_report_chars": len(json.dumps(report_context.get("market_report_data") or {}, ensure_ascii=False, default=str)),
+        "tool_results_chars": len(json.dumps(report_context.get("tool_results") or [], ensure_ascii=False, default=str)),
+        "skill_excerpt_chars": len(str(request_payload.get("skill_markdown_excerpt") or "")),
+        "template_chars": len(str(request_payload.get("skill_html_template") or "")),
+    }
+    attempts: list[dict[str, Any]] = []
+    last_error = "LLM did not return a usable self-contained HTML report."
+    last_meta: dict[str, Any] = {}
+    for attempt_index in range(1, 3):
+        attempt_started = time.perf_counter()
+        attempt_request_chars = sum(len(str(message.get("content") or "")) for message in messages)
+        try:
+            response = call_openai_compatible_chat(messages)
+        except LLMUnavailable as exc:
+            attempts.append(
+                {
+                    "attempt": attempt_index,
+                    "status": "unavailable",
+                    "message": str(exc),
+                    "duration_ms": int((time.perf_counter() - attempt_started) * 1000),
+                    "request_chars": attempt_request_chars,
+                }
+            )
+            return "", {}, {
+                "enabled": True,
+                "status": "unavailable",
+                "message": str(exc),
+                "input_profile": input_profile,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
+            }
+        except Exception as exc:  # noqa: BLE001
+            attempts.append(
+                {
+                    "attempt": attempt_index,
+                    "status": "error",
+                    "message": str(exc),
+                    "duration_ms": int((time.perf_counter() - attempt_started) * 1000),
+                    "request_chars": attempt_request_chars,
+                }
+            )
+            return "", {}, {
+                "enabled": True,
+                "status": "error",
+                "message": str(exc),
+                "input_profile": input_profile,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
+            }
+
+        message = response.get("message") if isinstance(response.get("message"), dict) else {}
+        raw_content = str(message.get("content") or "")
+        html_content = normalize_llm_html_document(raw_content)
+        validation_error = validate_llm_html_document(
+            html_content,
+            skill_html_template,
+            required_chart_ids,
+        )
+        if not validation_error and (required_product_image_urls or required_review_image_urls):
+            missing_image_urls = [
+                url
+                for url in [*required_product_image_urls, *required_review_image_urls]
+                if url not in html_content
+            ]
+            if missing_image_urls:
+                validation_error = (
+                    "Generated HTML omitted required evidence image URL(s): "
+                    + ", ".join(missing_image_urls[:4])
+                )
+        last_error = validation_error or ""
+        last_meta = {
+            "provider": response.get("provider"),
+            "model": response.get("model"),
+            "usage": response.get("usage") or {},
+            "finish_reason": response.get("finish_reason"),
+        }
+        attempts.append(
+            {
+                "attempt": attempt_index,
+                "status": "validation_failed" if validation_error else "ok",
+                "message": validation_error,
+                "duration_ms": int((time.perf_counter() - attempt_started) * 1000),
+                "request_chars": attempt_request_chars,
+                "finish_reason": response.get("finish_reason"),
+                "usage": response.get("usage") or {},
+                "response_chars": len(raw_content),
+                "html_chars": len(html_content),
+                "response_prefix": compact_text(raw_content, 240),
+            }
+        )
+        if not validation_error:
+            artifact = html_report_base_artifact(payload, report_data, tool_results)
+            title_match = re.search(r"<title[^>]*>(.*?)</title>", html_content, flags=re.IGNORECASE | re.DOTALL)
+            html_title = html.unescape(re.sub(r"<[^>]+>", "", title_match.group(1))).strip() if title_match else ""
+            artifact.setdefault("title", report_data.get("title") or html_title or "HTML 报告")
+            artifact.setdefault("executive_summary", report_data.get("executive_summary") or "")
+            return html_content, artifact, {
+                "enabled": True,
+                "status": "ok",
+                **last_meta,
+                "input_profile": input_profile,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
+                "quality_notes": [],
+            }
+        if attempt_index == 1:
+            retry_payload = {
+                **request_payload,
+                "validation_feedback": {
+                    "previous_error": validation_error,
+                    "instruction": (
+                        "The previous response failed HTML validation. Regenerate the complete report from the same "
+                        "evidence and return raw HTML only, with no JSON, Markdown fence, preface, or trailing explanation."
+                    ),
+                },
+            }
+            messages = [
+                system_message,
+                {
+                    "role": "user",
+                    "content": json.dumps(retry_payload, ensure_ascii=False, default=str),
+                },
+            ]
+
+    return "", {}, {
+        "enabled": True,
+        "status": "validation_failed",
+        "message": last_error,
+        **last_meta,
+        "input_profile": input_profile,
+        "attempt_count": len(attempts),
+        "attempts": attempts,
+    }
+
+
+def build_market_report_data(payload: dict[str, Any]) -> dict[str, Any]:
+    category = str(payload.get("category") or "").strip()
+    if not category:
+        raise ValueError("category is required for MarketReportData; do not default to an example category.")
+    brand = str(payload.get("brand") or "Hsia")
+    marketplace = str(payload.get("marketplace") or "US")
+    time_range = str(payload.get("timeRange") or payload.get("time_range") or "90d")
+    generated_at = str(payload.get("generatedAt") or now_iso())
+    tool_results = [
+        item
+        for item in (payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else [])
+        if isinstance(item, dict)
+        and str(item.get("name") or "") not in {"build_market_report_data", "build_market_report_charts", "render_html_report"}
+    ]
+    evidence_items = market_report_evidence_items(tool_results)
+    successful = [tool for tool in tool_results if tool.get("status") in SUCCESS_TOOL_STATUSES]
+    successful_tool_names = {str(tool.get("name") or "") for tool in successful}
+    failed = [
+        tool
+        for tool in tool_results
+        if tool.get("status") not in SUCCESS_TOOL_STATUSES
+        and str(tool.get("name") or "") not in successful_tool_names
+    ]
+    kpis = kpi_from_tool_results(tool_results)
+    seen_kpis = {(item.get("label"), item.get("source")) for item in kpis}
+    for tool, evidence in zip(tool_results, evidence_items, strict=False):
+        if tool.get("status") not in SUCCESS_TOOL_STATUSES:
+            continue
+        for metric in market_report_metric_items(tool.get("data"), evidence["id"], limit=6):
+            key = (metric.get("label"), metric.get("source"))
+            if key in seen_kpis:
+                continue
+            seen_kpis.add(key)
+            kpis.append(
+                {
+                    "label": str(metric.get("label")),
+                    "value": str(metric.get("value")),
+                    "change": str(metric.get("field") or ""),
+                    "source": str(metric.get("source") or evidence["id"]),
+                }
+            )
+            if len(kpis) >= 12:
+                break
+        if len(kpis) >= 12:
+            break
+    keyword_trends = market_report_keyword_rows(
+        tool_results,
+        evidence_items,
+        category=category,
+        limit=24,
+    )
+    demand_trend = market_report_selected_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_product_demand_trend",),
+        preferred_keys=("items",),
+        limit=18,
+    )
+    demand_metrics = market_report_selected_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_product_demand_trend",),
+        include_container=True,
+        limit=2,
+    )
+    category_benchmark = market_report_selected_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_research",),
+        preferred_keys=("items",),
+        include_terms=("category", "market", "node", "department", "subcategory", "path"),
+        include_container=True,
+        limit=18,
+    )
+    category_benchmark.extend(demand_metrics[:2])
+    top_products = market_report_first_available_rows(
+        tool_results,
+        evidence_items,
+        tool_names=(
+            "sellersprite_market_product_concentration",
+            "sif_market_get_keyword_competition",
+            "sellersprite_market_research",
+        ),
+        preferred_keys=("top_competitors", "products", "items", "top10Images"),
+        include_terms=("asin", "product", "listing", "title", "brand"),
+        limit=30,
+    )
+    brand_competition = market_report_first_available_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_brand_concentration", "sellersprite_market_research"),
+        preferred_keys=("brands", "items"),
+        include_terms=("brand", "seller", "merchant"),
+        limit=24,
+    )
+    price_distribution = market_report_first_available_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_price_distribution", "sellersprite_market_research"),
+        preferred_keys=("price_distribution", "priceDistribution", "items"),
+        include_terms=("price", "profit", "margin", "revenue", "sales", "distribution"),
+        limit=24,
+    )
+    ratings_count_distribution = market_report_selected_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_ratings_count_distribution",),
+        preferred_keys=("items",),
+        limit=16,
+    )
+    listing_date_distribution = market_report_selected_rows(
+        tool_results,
+        evidence_items,
+        tool_names=("sellersprite_market_listing_date_distribution",),
+        preferred_keys=("items",),
+        limit=16,
+    )
+    review_pain_points = market_report_user_voice(tool_results, evidence_items)
+    data_gaps = [
+        f"{tool.get('label') or tool.get('name')} 未成功：{tool.get('summary') or tool.get('outcome') or '未知原因'}"
+        for tool in failed
+    ]
+    data_gaps.extend(
+        str(gap.get("artifact_requirement") or f"缺少 {gap.get('tool')} 证据")
+        for gap in payload.get("evidenceGaps", [])
+        if isinstance(gap, dict)
+    )
+    if not keyword_trends:
+        data_gaps.append("关键词趋势结构化字段不足，需补充 Sif/SellerSprite 关键词历史或 ABA 数据。")
+    if not category_benchmark:
+        data_gaps.append("类目对标结构化字段不足，需补充 SellerSprite market research 或节点级数据。")
+    signal_context = {
+        "keyword_trends": keyword_trends,
+        "category_benchmark": category_benchmark,
+        "top_products": top_products,
+        "brand_competition": brand_competition,
+        "price_distribution": price_distribution,
+        "evidence_map": evidence_items,
+        "data_gaps": list(dict.fromkeys(data_gaps))[:16],
+    }
+    signals = market_report_core_signals(signal_context)
+    verdict = market_report_verdict(signal_context)
+    success_evidence_ids = signals.get("evidence_ids") or [item["id"] for item in evidence_items if item.get("status") in SUCCESS_TOOL_STATUSES][:6]
+    demand_phrase = market_report_signal_phrase(signals.get("keyword"), "关键词需求锚点不足")
+    category_phrase = market_report_signal_phrase(signals.get("category"), "类目基本盘字段不足")
+    price_phrase = market_report_signal_phrase(signals.get("price"), "价格带证据不足")
+    brand_phrase = market_report_signal_phrase(signals.get("brand"), "品牌集中度证据不足")
+    product_phrase = market_report_signal_phrase(signals.get("product"), "Top 商品证据不足")
+    keyword_label = str((signals.get("keyword") or {}).get("label") or category)
+    price_label = str((signals.get("price") or {}).get("label") or "主力价格带")
+    competitor_label = str((signals.get("product") or signals.get("brand") or {}).get("label") or "头部竞品")
+    insights = [
+        {
+            "id": "insight_market_base",
+            "title": verdict["label"],
+            "summary": f"{verdict['body']} 核心需求锚点是 {demand_phrase}，类目参照是 {category_phrase}。",
+            "evidence_ids": success_evidence_ids,
+        },
+        {
+            "id": "insight_competition",
+            "title": "竞争锚点",
+            "summary": f"品牌/卖家信号指向 {brand_phrase}，商品/ASIN 信号指向 {product_phrase}；进入方式应先拆门槛，再谈差异化。",
+            "evidence_ids": market_report_evidence_ids_from_rows([*brand_competition[:2], *top_products[:2]], 4) or success_evidence_ids,
+        },
+        {
+            "id": "insight_price",
+            "title": "价格与边界",
+            "summary": f"价格/利润相关记录 {len(price_distribution)} 条，当前价格锚点是 {price_phrase}；若缺少节点级分布，只能作为方向性假设。",
+            "evidence_ids": market_report_evidence_ids_from_rows(price_distribution, 4) or success_evidence_ids,
+        },
+    ]
+    opportunity_pool = [
+        {
+            "name": f"{keyword_label} 需求承接款",
+            "market_evidence": f"需求锚点：{demand_phrase}；类目参照：{category_phrase}。",
+            "competitor_evidence": f"货架/竞品参照：{product_phrase}；品牌参照：{brand_phrase}。",
+            "product_direction": "把显小、全罩杯、侧收、上托支撑和平滑外观拆成可测试结构组合。",
+            "risk": "关键词强不等于新品能承接，必须确认头部 ASIN 的评价门槛、价格带和卖点表达。",
+            "priority": "A" if keyword_trends and (top_products or brand_competition) else "B",
+            "next_action": "把高需求词拆成主词、长尾词和场景词，映射到 Hsia 的结构卖点、尺码覆盖和 Listing claim。",
+            "evidence_ids": market_report_evidence_ids_from_rows(keyword_trends, 4),
+        },
+        {
+            "name": f"{price_label} 价格带验证",
+            "market_evidence": f"价格、销量、销售额或利润相关记录 {len(price_distribution)} 条；当前锚点：{price_phrase}。",
+            "competitor_evidence": f"对应竞品参照：{brand_phrase} / {product_phrase}。",
+            "product_direction": "把主力款与升级款拆开验证，不用单一均价直接决定 Hsia 的价格架构。",
+            "risk": "如果价格数据来自关键词/类目搜索而非节点级分布，不能直接推导利润空间。",
+            "priority": "A" if price_distribution and (brand_competition or top_products) else "B",
+            "next_action": "补齐价格带销量占比、搜索购买比和利润率字段，再决定 Hsia 是否做主力价位或升级款价位。",
+            "evidence_ids": market_report_evidence_ids_from_rows(price_distribution, 4),
+        },
+        {
+            "name": f"拆解 {competitor_label} 的进入门槛",
+            "market_evidence": f"类目/市场对标记录 {len(category_benchmark)} 条，用于判断该竞品是否代表市场基本盘。",
+            "competitor_evidence": f"品牌锚点：{brand_phrase}；商品锚点：{product_phrase}。",
+            "product_direction": "拆评价门槛、功能 claim、尺码覆盖、颜色结构和主图表达，找 Hsia 能差异化而非照搬的切口。",
+            "risk": "Top 商品热度代理可能来自评论数、销量代理或排名字段，不能等同真实销量。",
+            "priority": "A" if brand_competition and top_products else "B",
+            "next_action": "筛出 Top ASIN 和品牌集中度最高的对标对象，进入爆款竞品拆解。",
+            "evidence_ids": market_report_evidence_ids_from_rows([*brand_competition[:2], *top_products[:2]], 4),
+        },
+        {
+            "name": "节点级补数与新品窗口验证",
+            "market_evidence": f"数据缺口 {len(data_gaps)} 个，类目对标记录 {len(category_benchmark)} 条。",
+            "competitor_evidence": "节点级需求趋势、价格分布、评分数分布和上架时间分布会直接影响新品机会判断。",
+            "product_direction": "补数后再决定 SKU 数、尺码深度、颜色优先级和新品上市节奏。",
+            "risk": "自动类目节点解析仍无唯一高置信结果时，报告只能给方向排序，不能输出最终进入门槛。",
+            "priority": "B" if data_gaps else "C",
+            "next_action": "先用 SellerSprite product_node 自动解析并校验 nodeIdPath，再复跑节点级工具；只有候选仍有歧义时才让用户选择。",
+            "evidence_ids": market_report_evidence_ids_from_rows(category_benchmark, 4),
+        },
+    ]
+    report_data: dict[str, Any] = {
+        "schema_version": "market_report_data.v1",
+        "title": f"{brand} {marketplace}市场 {category} 洞察报告",
+        "brand": brand,
+        "marketplace": marketplace,
+        "category": category,
+        "time_range": time_range,
+        "generated_at": generated_at,
+        "source_summary": {
+            "tool_count": len(tool_results),
+            "successful_tool_count": len(successful),
+            "failed_tool_count": len(failed),
+        },
+        "market_kpis": kpis[:12],
+        "keyword_trends": keyword_trends,
+        "demand_trend": demand_trend,
+        "category_benchmark": category_benchmark,
+        "top_products": top_products,
+        "brand_competition": brand_competition,
+        "price_distribution": price_distribution,
+        "ratings_count_distribution": ratings_count_distribution,
+        "listing_date_distribution": listing_date_distribution,
+        "review_pain_points": review_pain_points,
+        "insights": insights,
+        "opportunity_pool": opportunity_pool,
+        "evidence_map": evidence_items,
+        "data_gaps": list(dict.fromkeys(data_gaps))[:16],
+        "next_actions": [
+            "用 SellerSprite/Sif 补齐缺失的节点级或关键词级指标，再更新 MarketReportData。",
+            "将 Top 商品、关键词需求和价格带信号映射为爆款基因候选。",
+            "在企划会中确认 Hsia 要优先验证的价格带、结构方向和风险假设。",
+        ],
+    }
+    report_data["analysis_sections"] = market_report_analysis_sections(report_data)
+    report_data["swot"] = market_report_swot(report_data)
+    report_data["decision_matrix"] = market_report_decision_matrix(report_data)
+    report_data["chart_specs"] = market_report_chart_specs(report_data)
+    report_signals = market_report_core_signals(report_data)
+    report_verdict = market_report_verdict(report_data)
+    report_data["executive_summary"] = (
+        f"{report_verdict['label']}。本轮围绕 {marketplace} {category} 的核心判断是："
+        f"先用 {market_report_signal_phrase(report_signals.get('keyword'), '关键词需求锚点')} 判断需求入口，"
+        f"再用 {market_report_signal_phrase(report_signals.get('brand') or report_signals.get('product'), '竞争锚点')} 判断进入门槛，"
+        f"最后用 {market_report_signal_phrase(report_signals.get('price'), '价格带锚点')} 验证 Hsia 的价格与结构假设。"
+        f"报告已沉淀 {len(opportunity_pool)} 个研发机会；若涉及节点级市场规模、价格分布或新品进入门槛，"
+        "需先补齐缺口再进入 SKU 决策。"
+    )
+    report_data["artifact"] = market_report_data_to_artifact(report_data)
+    return report_data
+
+
+def render_html_report_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    report_data = payload.get("marketReportData") if isinstance(payload.get("marketReportData"), dict) else {}
+    if not payload.get("useLlm"):
+        raise RuntimeError("render_html_report requires LLM-authored HTML. Enable useLlm=true; no template renderer is available.")
+    chart_specs = payload.get("chartSpecs") if isinstance(payload.get("chartSpecs"), list) else []
+    if report_data and chart_specs:
+        report_data = {**report_data, "chart_specs": chart_specs}
+    elif report_data and (not isinstance(report_data.get("chart_specs"), list) or not report_data.get("chart_specs")):
+        chart_payload = build_market_report_charts(report_data)
+        generated_specs = chart_payload.get("chart_specs") if isinstance(chart_payload, dict) else []
+        if isinstance(generated_specs, list):
+            report_data = {**report_data, "chart_specs": generated_specs}
+    render_payload = dict(payload)
+    if report_data:
+        render_payload["marketReportData"] = report_data
+    html_content, artifact, html_analysis = compose_html_report_with_llm(
+        render_payload,
+        locale="zh",
+    )
+    if not html_content:
+        status = html_analysis.get("status") or "error"
+        detail = html_analysis.get("message") or "LLM did not return a usable self-contained HTML report."
+        raise HtmlReportGenerationError(
+            f"LLM HTML generation failed ({status}): {detail}",
+            html_analysis,
+        )
+    if not artifact:
+        artifact = (
+            report_data.get("artifact")
+            if isinstance(report_data.get("artifact"), dict)
+            else market_report_data_to_artifact(report_data)
+        )
+    return {
+        "format": "html",
+        "title": report_data.get("title") or artifact.get("title") or "HTML 报告",
+        "html": html_content,
+        "market_report_data": report_data,
+        "artifact": artifact,
+        "renderer": "llm-html",
+        "html_analysis": html_analysis,
+    }
 
 
 def write_agent_run_json(run_id: str, filename: str, payload: Any) -> str:
     run_dir = CACHE_DIR / "agent-runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / filename
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    os.replace(temporary, path)
     return str(path)
 
 
@@ -5567,7 +7446,7 @@ AGENT_PARAM_LABELS = {
 AGENT_PARAM_SUGGESTIONS = {
     "brand": ["Hsia / 遐"],
     "marketplace": ["US", "美国站(com)"],
-    "category": ["minimizer bra", "full coverage bra", "large bust bra"],
+    "category": ["sports bra", "minimizer bra", "full coverage bra"],
     "time_range": ["最近30天", "最近90天", "最近一年"],
 }
 
@@ -5582,6 +7461,35 @@ def load_agent_run(run_id: str) -> dict[str, Any] | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         return None
+
+
+def load_agent_run_state(run_id: str) -> dict[str, Any] | None:
+    completed = load_agent_run(run_id)
+    if completed:
+        return {
+            "run_id": run_id,
+            "status": completed.get("status") or "ok",
+            "updated_at": completed.get("generated_at"),
+            "events": completed.get("events") or [],
+            "result": completed,
+        }
+    if not re.fullmatch(r"[a-f0-9]{12}", run_id or ""):
+        return None
+    path = CACHE_DIR / "agent-runs" / run_id / "progress.json"
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        progress = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    return {
+        "run_id": run_id,
+        "status": progress.get("status") or "running",
+        "updated_at": progress.get("updated_at"),
+        "events": progress.get("events") or [],
+        "error": progress.get("error"),
+        "progress": progress,
+    }
 
 
 def build_agent_clarification(
@@ -5742,12 +7650,11 @@ def run_agent(payload: dict[str, Any], emit_event: Any | None = None) -> dict[st
             payload_with_skill_params=agent_payload_with_skill_params,
             tool_input_payload=agent_tool_input_payload,
             execute_tool=execute_agent_tool_with_timeout,
-            synthesize_artifact=synthesize_agent_artifact,
-            render_html_report=render_agent_html_report,
             build_clarification=build_agent_clarification,
             build_clarification_artifact=build_clarification_artifact,
             tool_catalog=agent_tool_catalog,
             cache_dir=lambda: CACHE_DIR,
+            render_html_report=render_html_report_tool,
         )
     )
     return runtime.run(payload, emit_event=emit_event)
@@ -5767,6 +7674,9 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/settings/llm":
             self.send_json(build_llm_settings_response())
+            return
+        if parsed.path == "/api/settings/mcp":
+            self.send_json(build_mcp_settings_response())
             return
         if parsed.path == "/api/settings/reddit":
             self.send_json(build_reddit_settings_response())
@@ -5788,6 +7698,14 @@ class AppHandler(SimpleHTTPRequestHandler):
             except ValueError as exc:
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
+        if parsed.path.startswith("/api/agent/runs/"):
+            run_id = parsed.path.removeprefix("/api/agent/runs/").strip("/")
+            state = load_agent_run_state(run_id)
+            if state is None:
+                self.send_json({"error": "Agent run was not found."}, status=HTTPStatus.NOT_FOUND)
+            else:
+                self.send_json(state)
+            return
         return super().do_GET()
 
     def do_POST(self) -> None:
@@ -5796,6 +7714,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             "/api/agent/run",
             "/api/agent/run/stream",
             "/api/settings/llm",
+            "/api/settings/mcp",
             "/api/settings/reddit",
             "/api/settings/research",
             "/api/settings/agent-reach",
@@ -5816,6 +7735,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return
             elif parsed.path == "/api/settings/llm":
                 result = update_llm_settings(payload)
+            elif parsed.path == "/api/settings/mcp":
+                result = update_mcp_settings(payload)
             elif parsed.path == "/api/settings/reddit":
                 result = update_reddit_settings(payload)
             elif parsed.path == "/api/settings/research":
@@ -5862,13 +7783,24 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.close_connection = True
         self.end_headers()
 
+        connected = True
+
+        def safe_send(event_name: str, event_payload: dict[str, Any]) -> None:
+            nonlocal connected
+            if not connected:
+                return
+            try:
+                self.send_sse(event_name, event_payload)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                connected = False
+
         try:
-            result = run_agent(payload, emit_event=lambda event: self.send_sse("event", event))
-            self.send_sse("result", result)
+            result = run_agent(payload, emit_event=lambda event: safe_send("event", event))
+            safe_send("result", result)
         except ValueError as exc:
-            self.send_sse("error", {"error": str(exc)})
+            safe_send("error", {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001
-            self.send_sse("error", {"error": f"Analysis failed: {exc}"})
+            safe_send("error", {"error": f"Analysis failed: {exc}"})
 
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:

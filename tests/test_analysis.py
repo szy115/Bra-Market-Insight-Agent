@@ -11,7 +11,11 @@ from insight_agent.ingestion import agent_reach as agent_reach_module
 from insight_agent.ingestion import tiktok_browser as tiktok_browser_module
 from insight_agent.ingestion import youtube_ytdlp as youtube_module
 from insight_agent.ingestion.agent_reach import normalize_opencli_read_items
-from insight_agent.ingestion.amazon_opencli import AmazonResult, build_amazon_queries
+from insight_agent.ingestion.amazon_opencli import (
+    AmazonResult,
+    build_amazon_queries,
+    normalize_review_samples,
+)
 from insight_agent.ingestion.schema import EvidenceItem, ProviderResult
 from insight_agent.server import (
     amazon_review_url,
@@ -34,10 +38,12 @@ from insight_agent.server import (
 )
 from insight_agent.settings import (
     build_llm_settings_response,
+    build_mcp_settings_response,
     build_reddit_settings_response,
     build_research_settings_response,
     build_web_search_settings_response,
     load_llm_providers,
+    update_mcp_settings,
     update_reddit_settings,
     update_research_settings,
     update_web_search_settings,
@@ -980,6 +986,7 @@ def test_compact_agent_amazon_shelf_keeps_all_products() -> None:
             "title": f"Example Minimizer Bra {i}",
             "brand": "Example",
             "product_url": f"https://www.amazon.com/dp/B000000{i:03d}",
+            "image_url": f"https://images.example.com/B000000{i:03d}.jpg",
             "price_text": "$29.99",
             "rating_value": 4.2,
             "review_count": 100 + i,
@@ -1006,11 +1013,375 @@ def test_compact_agent_amazon_shelf_keeps_all_products() -> None:
 
     assert len(result["products"]) == 12
     assert result["products"][0]["asin"] == "B000000000"
+    assert result["products"][0]["image_url"] == "https://images.example.com/B000000000.jpg"
     assert result["products"][-1]["asin"] == "B000000011"
     assert result["products"][0]["review_sample_count"] == 1
     assert result["products"][0]["review_samples"][0]["body"] == "Review body 0"
     assert result["products"][-1]["review_samples"][0]["body"] == "Review body 11"
     assert "review_samples" not in result
+
+
+def test_normalize_review_samples_keeps_review_media_urls() -> None:
+    reviews = normalize_review_samples(
+        [
+            {
+                "review_id": "R1",
+                "title": "Band rolls up",
+                "body": "The band rolls and the cup gaps.",
+                "images": [{"url": "https://images.example.com/review-1.jpg"}],
+                "media_urls": ["https://images.example.com/review-2.jpg"],
+            }
+        ]
+    )
+
+    assert reviews[0]["media_urls"] == [
+        "https://images.example.com/review-2.jpg",
+        "https://images.example.com/review-1.jpg",
+    ]
+
+
+def test_hot_product_pain_report_uses_generic_llm_html_renderer(monkeypatch) -> None:
+    tool_results = [
+        {
+            "name": "sellersprite_market_research",
+            "label": "SellerSprite market research",
+            "status": "ok",
+            "summary": "SellerSprite returned top product candidates.",
+            "data": {
+                "data": {
+                    "items": [
+                        {
+                            "asin": "B000TEST1",
+                            "title": "Smoothing Minimizer Bra",
+                            "brand": "Example",
+                            "price": "$25.99",
+                            "rating": 4.1,
+                            "review_count": 1234,
+                            "image_url": "https://m.media-amazon.com/images/I/product._SY200.jpg",
+                        }
+                    ]
+                }
+            },
+        },
+        {
+            "name": "sellersprite_review",
+            "label": "SellerSprite review",
+            "status": "ok",
+            "outcome": "ok_with_data",
+            "summary": "SellerSprite review completed.",
+            "input": {"asin": "B000TEST1"},
+            "data": {
+                "data": {
+                    "total": 1,
+                    "items": [
+                        {
+                            "star": 1,
+                            "title": "Too small",
+                            "content": "Band is too tight.",
+                            "images": ["https://m.media-amazon.com/images/I/review._SY200.jpg"],
+                            "skus": ["Size: 40DDD"],
+                        }
+                    ],
+                }
+            },
+        },
+    ]
+
+    def fake_call_openai_compatible(messages):
+        payload = json.loads(messages[-1]["content"])
+        serialized = json.dumps(payload["tool_results"], ensure_ascii=False)
+        assert "market_report_data" not in payload
+        assert "B000TEST1" in serialized
+        assert "https://m.media-amazon.com/images/I/product._SY200.jpg" in serialized
+        assert "https://m.media-amazon.com/images/I/review._SY200.jpg" in serialized
+        assert payload["required_product_image_urls"] == [
+            "https://m.media-amazon.com/images/I/product._SY200.jpg"
+        ]
+        assert payload["required_review_image_urls"] == [
+            "https://m.media-amazon.com/images/I/review._SY200.jpg"
+        ]
+        assert "逐商品卡片" in payload["style_reference_from_skill"]
+        return {
+            "provider": "test-provider",
+            "model": "html-model",
+            "usage": {"total_tokens": 222},
+            "result": {
+                "title": "LLM 自写爆款痛点报告",
+                "executive_summary": "LLM directly authored the hot product pain report from SellerSprite evidence.",
+                "html": """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM 自写爆款痛点报告</title>
+<style>
+body{margin:0;background:#fff;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.65}
+.report{max-width:1180px;margin:0 auto;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px}
+.hero{border-bottom:1px solid #e5e7eb;padding-bottom:20px}
+.product-card{display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;border:1px solid #e5e7eb;border-radius:8px;padding:18px;margin-top:18px}
+.product-card img{width:120px;aspect-ratio:1;object-fit:contain;border:1px solid #eef2f7;border-radius:6px}
+.evidence{color:#64748b;font-size:12px}
+.matrix{border-top:1px solid #e5e7eb;margin-top:22px;padding-top:18px}
+aside{position:sticky;top:16px;align-self:start;border-left:3px solid #2563eb;padding-left:14px}
+</style>
+</head>
+<body>
+<div class="report">
+<main>
+<header class="hero"><h1>LLM 自写爆款痛点报告</h1><p>答案先行：头部商品被购买是因为平滑显小，但差评集中在尺码偏小和穿着压迫。</p></header>
+<article class="product-card">
+<img src="https://m.media-amazon.com/images/I/product._SY200.jpg" alt="B000TEST1 product">
+<div><h2>B000TEST1 · Smoothing Minimizer Bra</h2><p>痛点证据：1 星评论 Too small，内容为 Band is too tight。</p><img src="https://m.media-amazon.com/images/I/review._SY200.jpg" alt="review media"><p class="evidence">SellerSprite review · ASIN B000TEST1 · Size: 40DDD</p></div>
+</article>
+<section class="matrix"><h2>横向痛点矩阵</h2><p>尺码/版型：偏小；舒适度：压迫。该判断只来自 SellerSprite review 样本，不扩展为全市场结论。</p></section>
+</main>
+<aside><strong>目录</strong><a href="#cards">逐商品证据</a></aside>
+</div>
+</body>
+</html>""",
+                "artifact": {
+                    "title": "LLM 自写爆款痛点报告",
+                    "executive_summary": "LLM directly authored the hot product pain report from SellerSprite evidence.",
+                    "key_findings": ["尺码偏小来自 B000TEST1 评论证据。"],
+                    "opportunity_pool": [],
+                    "risks": [],
+                    "next_steps": [],
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+    )
+
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_html_report",
+        "minimizer bra",
+        {
+            "prompt": "使用 hot_product_pain_analysis Skill 做爆款痛点分析。参数：head_listing_count=1。",
+            "toolResults": tool_results,
+            "useLlm": True,
+            "skillId": "hot_product_pain_analysis",
+            "skillMarkdown": "### HTML Report Style Reference\n\n必须输出逐商品卡片和横向痛点矩阵。",
+            "agentToolRetryDelayMs": 0,
+        },
+    )
+
+    assert rendered["status"] == "ok"
+    assert rendered["data"]["renderer"] == "llm-html"
+    assert "LLM 自写爆款痛点报告" in rendered["data"]["html"]
+    assert "https://m.media-amazon.com/images/I/review._SY200.jpg" in rendered["data"]["html"]
+    assert "Hot Product Pain Analysis" not in rendered["data"]["html"]
+    assert "report-shell" not in rendered["data"]["html"]
+
+
+def test_competitor_product_deep_dive_skill_loads_product_report_template() -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    required_sections = server_module.html_template_required_sections(skill["html_template"])
+
+    assert skill["html_template_path"].replace("\\", "/").endswith(
+        "skills/competitor_product_deep_dive/assets/report-template.html"
+    )
+    assert required_sections == [
+        "executive",
+        "product-baseline",
+        "positioning",
+        "product-system",
+        "fit-voc",
+        "comparison",
+        "genes",
+        "hsia-actions",
+        "evidence-gaps",
+    ]
+    assert "Listing SEO" in skill["markdown"]
+    assert "不应照搬" in skill["markdown"]
+
+
+def test_hot_product_pain_and_competitor_deep_dive_remain_separate_skills() -> None:
+    pain_skill = server_module.AGENT_SKILL_REGISTRY["hot_product_pain_analysis"]
+    deep_dive_skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+
+    assert pain_skill["name"] == "爆款痛点分析 Skill"
+    assert pain_skill["input_schema"]["required"] == ["marketplace", "category", "head_listing_count"]
+    assert pain_skill["html_template"] == ""
+    assert deep_dive_skill["name"] == "爆款深度拆解 Skill"
+    assert deep_dive_skill["input_schema"]["required"] == ["marketplace", "asin"]
+    assert deep_dive_skill["html_template"]
+
+
+def test_hot_product_pain_skill_requires_complete_review_and_sif_evidence() -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["hot_product_pain_analysis"]
+    policy = {row["tool"]: row["policy"] for row in skill["tool_policy"]}
+    evidence = {row["evidence_id"]: row for row in skill["evidence_contract"]}
+
+    assert skill["input_schema"]["defaults"]["time_range"] == "180d"
+    assert skill["input_schema"]["defaults"]["review_sample_size"] == 30
+    assert policy["sellersprite_product_node"] == "required"
+    assert policy["sellersprite_market_product_concentration"] == "required"
+    assert policy["sellersprite_review"] == "required"
+    assert policy["sif_ops_get_asin_sales_list"] == "required"
+    assert policy["sif_market_get_keyword_competition"] == "required"
+    assert evidence["sellersprite_review_samples"]["min_success"] == "param:head_listing_count"
+    assert evidence["sellersprite_review_samples"]["severity"] == "block"
+    assert evidence["sif_sales_proxy"]["severity"] == "block"
+
+
+def test_competitor_product_deep_dive_skill_registers_single_asin_and_reddit_contract() -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    policy = {row["tool"]: row["policy"] for row in skill["tool_policy"]}
+    evidence = {row["evidence_id"]: row for row in skill["evidence_contract"]}
+
+    assert skill["input_schema"]["required"] == ["marketplace", "asin"]
+    assert policy["sellersprite_asin_detail"] == "required"
+    assert policy["sellersprite_review"] == "required"
+    assert policy["reddit_voc"] == "required"
+    assert policy["sellersprite_market_research"] == "disallowed"
+    assert evidence["product_identity"]["severity"] == "block"
+    assert evidence["reddit_user_voc"]["severity"] == "warn"
+    for expected in ("这个款为什么卖", "核心用户是谁", "Hsia 能学什么", "不应该照搬什么"):
+        assert expected in skill["markdown"]
+
+
+def test_product_report_template_is_sent_to_llm_and_enforced(monkeypatch) -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    required_sections = server_module.html_template_required_sections(skill["html_template"])
+    captured: dict[str, Any] = {}
+
+    def fake_call_openai_compatible(messages):
+        payload = json.loads(messages[-1]["content"])
+        captured.update(payload)
+        sections = "".join(
+            f'<section data-required-section="{section_id}"><h2>{section_id}</h2></section>'
+            for section_id in required_sections
+        )
+        return {
+            "provider": "test-provider",
+            "model": "html-model",
+            "usage": {"total_tokens": 321},
+            "result": {
+                "title": "产品研发竞品拆解",
+                "executive_summary": "基于商品和评论证据的产品判断。",
+                "html": (
+                    "<!doctype html><html lang=\"zh-CN\"><head><style>"
+                    "body{font-family:sans-serif;color:#222}section{padding:16px;border-bottom:1px solid #ddd}"
+                    "</style></head><body>"
+                    f"{sections}<p>{'产品证据与研发验证。' * 80}</p></body></html>"
+                ),
+                "artifact": {"title": "产品研发竞品拆解"},
+            },
+        }
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+    )
+
+    html_content, _, analysis = server_module.compose_html_report_with_llm(
+        {
+            "prompt": "从产品研发角度深拆 Amazon US ASIN B000TEST1。",
+            "category": "minimizer bra",
+            "toolResults": [{"name": "sellersprite_asin_detail", "status": "ok", "data": {"asin": "B000TEST1"}}],
+            "skillId": "competitor_product_deep_dive",
+            "skillMarkdown": skill["markdown"],
+            "skillHtmlTemplate": skill["html_template"],
+        }
+    )
+
+    assert analysis["status"] == "ok"
+    assert captured["required_template_sections"] == required_sections
+    assert "data-required-section=\"executive\"" in captured["skill_html_template"]
+    assert all(f'data-required-section="{section_id}"' in html_content for section_id in required_sections)
+
+
+def test_html_validator_rejects_missing_product_report_section() -> None:
+    template = (
+        '<section data-required-section="executive"></section>'
+        '<section data-required-section="genes"></section>'
+    )
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<section data-required-section="executive"><h1>结论</h1></section>'
+        f"<p>{'evidence ' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(html_content, template) == (
+        "LLM HTML is missing required template section: genes."
+    )
+
+
+def test_html_normalizer_extracts_raw_document_and_supports_legacy_json() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head>"
+        f"<body><p>{'完整报告内容。' * 80}</p></body></html>"
+    )
+
+    assert server_module.normalize_llm_html_document(f"preface\n{html_content}\ntrailing") == html_content
+    assert server_module.normalize_llm_html_document(
+        json.dumps({"result": {"html": html_content}}, ensure_ascii=False)
+    ) == html_content
+
+
+def test_html_validator_requires_ready_business_chart_ids() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        f"<main><p>{'完整市场报告。' * 80}</p></main></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["price_band_distribution"],
+    ) == "LLM HTML is missing required business chart: price_band_distribution."
+
+
+def test_html_validator_rejects_javascript_chart_rendering() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="price_band_distribution"><svg viewBox="0 0 100 100"></svg></figure>'
+        "<script>document.querySelector('svg').innerHTML='<rect width=\"50\" height=\"50\" />';</script>"
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["price_band_distribution"],
+    ) == (
+        "LLM HTML must render in the sandboxed preview without JavaScript; "
+        "use static HTML, CSS, and populated inline SVG charts."
+    )
+
+
+def test_html_validator_rejects_empty_required_chart_svg() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="price_band_distribution"><svg viewBox="0 0 100 100"></svg></figure>'
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["price_band_distribution"],
+    ) == (
+        "Required business chart price_band_distribution contains an empty SVG. "
+        "Write visible path, rect, circle, line, polyline, or polygon data marks directly into the HTML."
+    )
+
+
+def test_html_validator_accepts_static_required_chart_svg() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="price_band_distribution">'
+        '<svg viewBox="0 0 100 100"><rect x="10" y="20" width="30" height="70"></rect></svg>'
+        "</figure>"
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["price_band_distribution"],
+    ) == ""
 
 
 def test_compact_agent_reddit_voc_keeps_all_posts_with_comments() -> None:
@@ -1127,162 +1498,645 @@ def native_chat_response(tool_calls: list[dict] | None = None, content: str = ""
     }
 
 
-def test_run_agent_uses_native_tool_calls_and_synthesizes_artifact(monkeypatch) -> None:
-    chat_responses = [
-        native_chat_response(
-            [
-                native_tool_call(
-                    "call-load",
-                    "load_skill",
-                    {
-                        "skill_id": "breakout_competitor_discovery",
-                        "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
-                    },
-                )
-            ]
-        ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {"limit": 30})]),
-        native_chat_response([native_tool_call("call-tiktok", "tiktok_social", {"limit": 6})]),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {"reason": "enough evidence"})]),
+def html_chat_response_from_result(response: dict[str, Any]) -> dict[str, Any]:
+    result = response.get("result") if isinstance(response.get("result"), dict) else {}
+    return {
+        "provider": response.get("provider") or "test",
+        "model": response.get("model") or "html-model",
+        "usage": response.get("usage") or {},
+        "finish_reason": response.get("finish_reason") or "stop",
+        "message": {"role": "assistant", "content": str(result.get("html") or "")},
+    }
+
+
+def install_weekly_market_test_catalog(monkeypatch) -> None:
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {
+            "sif_market_get_keyword_demand": {
+                "label": "Sif keyword demand",
+                "description": "Mock Sif keyword demand tool.",
+                "source": "sif_mcp",
+            },
+            "sif_market_get_keyword_history": {
+                "label": "Sif keyword history",
+                "description": "Mock Sif keyword history tool.",
+                "source": "sif_mcp",
+            },
+            "sif_market_get_keyword_root_trend": {
+                "label": "Sif root trend",
+                "description": "Mock Sif root trend tool.",
+                "source": "sif_mcp",
+            },
+            "sif_market_get_keyword_competition": {
+                "label": "Sif keyword competition",
+                "description": "Mock Sif keyword competition tool.",
+                "source": "sif_mcp",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "get_sellersprite_tool_catalog",
+        lambda: {
+            "sellersprite_market_research": {
+                "label": "SellerSprite market research",
+                "description": "Mock SellerSprite market baseline tool.",
+                "source": "sellersprite_mcp",
+            },
+            "sellersprite_aba_research_weekly": {
+                "label": "SellerSprite ABA weekly",
+                "description": "Mock SellerSprite weekly ABA keyword tool.",
+                "source": "sellersprite_mcp",
+            }
+        },
+    )
+
+
+WEEKLY_MARKET_BASELINE_TOOLS = [
+    "sif_market_get_keyword_demand",
+    "sif_market_get_keyword_history",
+    "sif_market_get_keyword_root_trend",
+    "sif_market_get_keyword_competition",
+    "sellersprite_market_research",
+    "sellersprite_aba_research_weekly",
+]
+
+
+def weekly_market_baseline_tool_responses() -> list[dict[str, Any]]:
+    return [
+        native_chat_response([native_tool_call(f"call-{tool_name}", tool_name, {})])
+        for tool_name in WEEKLY_MARKET_BASELINE_TOOLS
     ]
 
-    def fake_call_chat(messages, tools=None, tool_choice=None):
-        assert tools
-        assert any(tool["function"]["name"] == "load_skill" for tool in tools)
-        return chat_responses.pop(0)
+
+WEEKLY_MARKET_REPORT_TOOLS = [
+    "build_market_report_data",
+    "render_html_report",
+]
+
+
+def weekly_market_report_tool_responses() -> list[dict[str, Any]]:
+    return [
+        native_chat_response([native_tool_call(f"call-{tool_name}", tool_name, {})])
+        for tool_name in WEEKLY_MARKET_REPORT_TOOLS
+    ]
+
+
+def fake_agent_tool_result(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+    catalog = server_module.agent_tool_catalog()
+    data: dict[str, Any] = {}
+    if tool_name == "build_market_report_data":
+        data = {
+            "schema_version": "market_report_data.v1",
+            "title": f"Hsia Amazon US市场 {category} 洞察报告",
+            "category": category,
+            "market_kpis": [{"label": "需求锚点", "value": "100", "source": "E01"}],
+            "chart_specs": [
+                {
+                    "id": "keyword-demand",
+                    "title": "关键词需求",
+                    "type": "bar",
+                    "data": [{"label": category, "value": 100}, {"label": "adjacent", "value": 60}],
+                }
+            ],
+            "artifact": {"title": f"Hsia Amazon US市场 {category} 洞察报告"},
+        }
+    elif tool_name == "render_html_report":
+        data = {
+            "format": "html",
+            "title": "Fake LLM-authored market report",
+            "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><style>body{font-family:sans-serif}</style></head><body><main><h1>Fake LLM-authored market report</h1><p>Rendered by the test HTML tool.</p></main></body></html>",
+            "artifact": {
+                "title": "Fake LLM-authored market report",
+                "executive_summary": "Rendered by the test HTML tool.",
+                "key_findings": [],
+                "opportunity_pool": [],
+                "risks": [],
+                "next_steps": [],
+            },
+            "renderer": "llm-html",
+            "html_analysis": {"enabled": True, "status": "ok", "provider": "test", "model": "html"},
+        }
+    return {
+        "name": tool_name,
+        "label": catalog[tool_name]["label"],
+        "status": "ok",
+        "summary": f"{tool_name} completed",
+        "duration_ms": 1,
+        "input": {"category": category, **payload},
+        "data": data,
+    }
+
+
+def test_market_report_data_tools_compile_and_render_llm_authored_report(monkeypatch) -> None:
+    assert "build_market_report_charts" not in server_module.agent_tool_catalog()
+    tool_results = [
+        {
+            "name": "sif_market_get_keyword_history",
+            "label": "Sif keyword history",
+            "status": "ok",
+            "summary": "Sif returned keyword history.",
+            "data": {
+                "keywords": [
+                    {"keyword": "minimizer bra", "search_volume": 18787, "rank": 18},
+                    {"keyword": "full coverage bra", "search_volume": 12000, "rank": 24},
+                ]
+            },
+        },
+        {
+            "name": "sellersprite_market_research",
+            "label": "SellerSprite market research",
+            "status": "ok",
+            "summary": "SellerSprite returned market data.",
+            "data": {
+                "monthly_sales": 141000,
+                "monthly_revenue": 3670000,
+                "avg_price": 26.17,
+                "brands": [{"brand": "HSIA", "share": 12}, {"brand": "Bali", "share": 10}],
+                "price_distribution": [{"priceRange": "$25-$35", "sales": 72000}],
+            },
+        },
+    ]
+
+    compiled = server_module.execute_agent_tool_with_timeout(
+        "build_market_report_data",
+        "minimizer bra",
+        {
+            "brand": "Hsia",
+            "marketplace": "Amazon US",
+            "timeRange": "90d",
+            "toolResults": tool_results,
+            "agentToolRetryDelayMs": 0,
+        },
+    )
+
+    assert compiled["status"] == "ok"
+    assert compiled["data"]["schema_version"] == "market_report_data.v1"
+    assert compiled["data"]["market_kpis"]
+    assert compiled["data"]["keyword_trends"]
+    assert compiled["data"]["brand_competition"]
+    assert compiled["data"]["analysis_sections"]
+    assert compiled["data"]["swot"]
+    assert compiled["data"]["decision_matrix"]
+    assert compiled["data"]["chart_specs"]
+    assert len(compiled["data"]["chart_specs"]) <= 5
+    assert all(chart["quality_status"] == "ready" for chart in compiled["data"]["chart_specs"])
+    assert all(chart["type"] != "line" for chart in compiled["data"]["chart_specs"])
+    assert compiled["data"]["opportunity_pool"]
+    assert compiled["data"]["evidence_map"][0]["tool"] == "sif_market_get_keyword_history"
+
+    assert "evidence_sources" not in {chart["id"] for chart in compiled["data"]["chart_specs"]}
+    assert "data_readiness" not in {chart["id"] for chart in compiled["data"]["chart_specs"]}
 
     def fake_call_openai_compatible(messages):
+        payload = json.loads(messages[-1]["content"])
+        assert payload["market_report_data"]["chart_specs"]
+        assert payload["market_report_data"]["market_kpis"]
+        assert "tool_results" not in payload
+        assert payload["output_contract"]["javascript_forbidden"] is True
+        assert payload["output_contract"]["static_inline_svg_charts_required"] is True
+        chart_figures = "".join(
+            f'<figure class="chart-card" data-chart-id="{chart_id}">'
+            f'<figcaption>{chart_id}</figcaption>'
+            '<svg viewBox="0 0 100 100"><rect x="10" y="20" width="30" height="70"></rect></svg>'
+            "</figure>"
+            for chart_id in payload["required_chart_ids"]
+        )
         return {
-            "provider": "test",
-            "model": "synth",
-            "usage": {"total_tokens": 24},
+            "provider": "test-provider",
+            "model": "html-model",
+            "usage": {"total_tokens": 321},
             "result": {
-                "title": "AI competitor artifact",
-                "executive_summary": "Amazon and TikTok tools found directional breakout evidence.",
-                "key_findings": ["Wacoal is a strong candidate."],
-                "opportunities": ["Validate smoother minimizer claims."],
-                "risks": ["Review count is not true sales."],
-                "next_steps": ["Send Wacoal to teardown."],
+                "title": "Hsia LLM 市场洞察报告",
+                "executive_summary": "LLM authored the final HTML from MarketReportData and chart_specs.",
+                "html": """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hsia LLM 市场洞察报告</title>
+<style>
+body{margin:0;background:#fff;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.65}
+.report{max-width:1180px;margin:0 auto;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px}
+.report-header{background:linear-gradient(135deg,#4f46e5,#06b6d4);color:white;border-radius:12px;padding:28px}
+.content-section{padding:22px 0;border-bottom:1px solid #e5e7eb}
+.source{color:#64748b;font-size:12px}
+</style>
+</head>
+<body>
+<div class="report">
+<main>
+<header class="report-header"><h1>Hsia LLM 市场洞察报告</h1><p>MarketReportData 和 chart_specs 已交给 LLM 直接组织最终 HTML。</p></header>
+<section id="answer" class="content-section"><h2>答案先行</h2><p>基于关键词和 SellerSprite 市场证据，先判断需求入口，再判断价格与竞争锚点。</p><p class="source">数据源：Sif / SellerSprite</p></section>
+<section class="content-section"><h2>业务图表</h2>{chart_figures}<p>chart_specs 被用于组织业务图表，而不是生成工具执行调试图。</p></section>
+</main>
+<aside><a href="#answer">答案先行</a></aside>
+</div>
+</body>
+</html>""".replace("{chart_figures}", chart_figures),
+                "artifact": {
+                    "title": "Hsia LLM 市场洞察报告",
+                    "executive_summary": "LLM authored the final HTML from MarketReportData and chart_specs.",
+                    "key_findings": ["MarketReportData was used."],
+                    "opportunity_pool": [],
+                    "risks": [],
+                    "next_steps": [],
+                },
             },
         }
 
-    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
-    monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
     monkeypatch.setattr(
         server_module,
-        "analyze_amazon_category",
-        lambda payload: {
-            "metrics": {"products": 1, "total_review_count": 1200},
-            "price_bands": [],
-            "brands": [{"name": "Wacoal", "count": 1}],
-            "queries": ["minimizer bra"],
-            "products": [
-                {
-                    "asin": "B000TEST",
-                    "title": "Wacoal Visual Effects Minimizer",
-                    "brand": "Wacoal",
-                    "product_url": "https://www.amazon.com/dp/B000TEST",
-                    "price_text": "$68.00",
-                    "rating_value": 4.4,
-                    "review_count": 1200,
-                    "badges": ["Best Seller"],
-                }
-            ],
-        },
+        "call_openai_compatible_chat",
+        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
     )
-    monkeypatch.setattr(
-        server_module,
-        "analyze_tiktok_category",
-        lambda payload: {
-            "metrics": {"videos": 1},
-            "data_volume": {"comment_samples": 2},
-            "market_signal": {"summary": "TikTok has directional discussion."},
-            "hashtags": [{"name": "minimizerbra", "count": 1}],
-            "pain_points": [],
-            "videos": [
-                {
-                    "title": "Minimizer bra review",
-                    "url": "https://www.tiktok.com/@creator/video/1",
-                    "author": "@creator",
-                    "view_count": 1000,
-                    "comment_samples": [{"text": "looks smooth"}, {"text": "need support"}],
-                }
-            ],
+
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_html_report",
+        "minimizer bra",
+        {
+            "marketReportData": compiled["data"],
+            "useLlm": True,
+            "skillMarkdown": "### HTML Report Style Reference\n\n使用 LinkFox editorial 风格，必须答案先行。",
+            "agentToolRetryDelayMs": 0,
         },
     )
 
-    result = server_module.run_agent(
+    assert rendered["status"] == "ok"
+    assert rendered["data"]["format"] == "html"
+    assert rendered["data"]["renderer"] == "llm-html"
+    assert "<html" in rendered["data"]["html"]
+    assert "MarketReportData 和 chart_specs" in rendered["data"]["html"]
+    assert "mr-shell" not in rendered["data"]["html"]
+    assert rendered["data"]["artifact"]["title"] == compiled["data"]["title"]
+
+
+def test_market_report_data_preserves_requested_sports_bra_category() -> None:
+    tool_results = [
         {
-            "prompt": "帮我发现美国 minimizer bra 爆款竞品",
-            "agentMode": "competitor",
+            "name": "sif_market_get_keyword_history",
+            "label": "Sif keyword history",
+            "status": "ok",
+            "summary": "Sif returned keyword history.",
+            "data": {"keywords": [{"keyword": "sports bra", "search_volume": 26000, "rank": 9}]},
+        },
+        {
+            "name": "sellersprite_market_research",
+            "label": "SellerSprite market research",
+            "status": "ok",
+            "summary": "SellerSprite returned sports bra category data.",
+            "data": {
+                "nodeLabelName": "Sports Bras",
+                "monthly_revenue": 29107722,
+                "avg_price": 24.96,
+                "brands": [{"brand": "Nike", "share": 12}],
+            },
+        },
+    ]
+
+    report_data = server_module.build_market_report_data(
+        {
+            "category": "sports bra",
+            "brand": "Hsia",
+            "marketplace": "Amazon US",
+            "timeRange": "90d",
+            "toolResults": tool_results,
+        }
+    )
+    charts = server_module.build_market_report_charts(report_data)
+
+    assert report_data["category"] == "sports bra"
+    assert "sports bra" in report_data["title"]
+    assert "minimizer bra" not in json.dumps(report_data, ensure_ascii=False).lower()
+    assert all(chart["quality_status"] == "ready" for chart in charts["chart_specs"])
+    assert len(charts["chart_specs"]) <= 5
+
+    with pytest.raises(ValueError, match="category is required"):
+        server_module.build_market_report_data({"brand": "Hsia", "toolResults": tool_results})
+
+
+def test_market_report_data_maps_node_tools_to_semantic_chart_specs() -> None:
+    tool_results = [
+        {
+            "name": "sif_market_get_keyword_history",
+            "label": "Sif keyword history",
+            "status": "ok",
+            "data": {
+                "keywords": [
+                    {"keyword": "minimizer bra", "search_volume": 18000, "rank": 10},
+                    {"keyword": "minimizer bras", "search_volume": 9000, "rank": 18},
+                ]
+            },
+        },
+        {
+            "name": "sellersprite_market_research",
+            "label": "SellerSprite market research",
+            "status": "ok",
+            "data": {"data": {"items": [{"nodeLabelName": "Minimizers", "totalUnits": 146474, "avgPrice": 26.17}]}},
+        },
+        {
+            "name": "sellersprite_market_product_demand_trend",
+            "label": "SellerSprite demand trend",
+            "status": "ok",
+            "data": {
+                "data": {
+                    "asinCount": 73101,
+                    "items": [
+                        {"date": "2026-03-01", "glanceViews": 1807620},
+                        {"date": "2026-04-01", "glanceViews": 1818243},
+                        {"date": "2026-05-01", "glanceViews": 2031461},
+                        {"date": "2026-06-01", "glanceViews": 938946},
+                    ],
+                }
+            },
+        },
+        {
+            "name": "sellersprite_market_product_concentration",
+            "label": "SellerSprite product concentration",
+            "status": "ok",
+            "data": {"data": [
+                {"asin": "B001", "brand": "Bali", "price": 22.42, "totalUnits": 40128},
+                {"asin": "B002", "brand": "Vanity Fair", "price": 26.99, "totalUnits": 30100},
+            ]},
+        },
+        {
+            "name": "sellersprite_market_brand_concentration",
+            "label": "SellerSprite brand concentration",
+            "status": "ok",
+            "data": {"data": [
+                {"brand": "Bali", "totalUnitsRatio": 0.40},
+                {"brand": "Vanity Fair", "totalUnitsRatio": 0.30},
+                {"brand": "Playtex", "totalUnitsRatio": 0.20},
+            ]},
+        },
+        {
+            "name": "sellersprite_market_price_distribution",
+            "label": "SellerSprite price distribution",
+            "status": "ok",
+            "data": {"data": [
+                {"label": "20-25", "units": 75089, "unitsRatio": 0.60},
+                {"label": "25-35", "units": 40810, "unitsRatio": 0.40},
+            ]},
+        },
+        {
+            "name": "sellersprite_market_ratings_count_distribution",
+            "label": "SellerSprite ratings distribution",
+            "status": "ok",
+            "data": {"data": [{"label": "1000+", "units": 90000, "unitsRatio": 0.7}]},
+        },
+        {
+            "name": "sellersprite_market_listing_date_distribution",
+            "label": "SellerSprite listing date distribution",
+            "status": "ok",
+            "data": {"data": [{"label": "5年以上", "units": 80000, "unitsRatio": 0.6}]},
+        },
+        {
+            "name": "sellersprite_aba_research_weekly",
+            "label": "SellerSprite ABA weekly",
+            "status": "ok",
+            "data": {"data": {"items": [
+                {"keyword": "airpods", "searches": 2531170},
+                {"keyword": "minimizer bra for women", "searches": 4200},
+            ]}},
+        },
+    ]
+
+    report_data = server_module.build_market_report_data(
+        {
             "category": "minimizer bra",
-            "useLlm": True,
+            "brand": "Hsia",
+            "marketplace": "US",
+            "toolResults": tool_results,
         }
     )
 
-    assert "competitor_discovery" not in server_module.AGENT_TOOL_CATALOG
-    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf", "tiktok_social"]
-    assert all(tool["status"] == "ok" for tool in result["tools"])
-    assert result["planner"]["status"] == "ok"
-    assert result["planner"]["native_tool_calls"] is True
-    assert result["skill"]["skill_id"] == "breakout_competitor_discovery"
-    assert result["llm_analysis"]["status"] == "ok"
-    assert result["artifact"]["title"] == "AI competitor artifact"
-    assert result["artifact"]["key_findings"]
-    assert [event["type"] for event in result["events"]] == ["input", "skill", "tool", "tool", "artifact"]
-    assert result["events"][1]["file_path"].endswith("skill-breakout_competitor_discovery.md")
-    assert result["events"][2]["tool"] == "amazon_shelf"
-    assert result["events"][3]["tool"] == "tiktok_social"
-    assert result["events"][2]["input"]["category"] == "minimizer bra"
-    assert result["events"][2]["output"]["summary"].startswith("1 Amazon products")
-    assert result["events"][2]["file_path"].endswith("tool-01-amazon_shelf.json")
-    assert [item["type"] for item in result["output_files"]] == ["skill", "tool", "tool", "report"]
-    opened_skill_file = server_module.read_agent_output_file(result["output_files"][0]["path"])
-    assert opened_skill_file["format"] == "markdown"
-    assert "# 爆款竞品发现 Skill" in opened_skill_file["content"]
-    assert "```json skill-spec" not in opened_skill_file["content"]
-    assert "Fixed Steps" not in opened_skill_file["content"]
-    assert result["planner"]["planned_tools"] == ["amazon_shelf", "tiktok_social"]
-    opened_tool_file = server_module.read_agent_output_file(result["output_files"][1]["path"])
-    assert opened_tool_file["name"] == "tool-01-amazon_shelf.json"
-    assert opened_tool_file["content"]["name"] == "amazon_shelf"
-    with pytest.raises(ValueError):
-        server_module.read_agent_output_file(__file__)
+    assert report_data["price_distribution"][0]["label"] == "20-25"
+    assert report_data["price_distribution"][0]["evidence_id"] == "E06"
+    assert report_data["brand_competition"][0]["brand"] == "Bali"
+    assert report_data["brand_competition"][0]["evidence_id"] == "E05"
+    assert report_data["top_products"][0]["asin"] == "B001"
+    assert report_data["demand_trend"][0]["date"] == "2026-03-01"
+    assert all(row["keyword"] != "airpods" for row in report_data["keyword_trends"])
+    charts = {chart["id"]: chart for chart in report_data["chart_specs"]}
+    assert set(charts) == {
+        "category_demand_trend",
+        "keyword_demand",
+        "price_band_distribution",
+        "brand_competition",
+        "top_product_signal",
+    }
+    assert [point["value"] for point in charts["price_band_distribution"]["data"]] == [60.0, 40.0]
+    assert charts["brand_competition"]["type"] == "donut"
+    assert charts["category_demand_trend"]["type"] == "line"
+    assert all(chart["quality_status"] == "ready" for chart in charts.values())
 
-    emitted: list[dict] = []
-    chat_responses.extend(
-        [
-            native_chat_response(
-                [
-                    native_tool_call(
-                        "call-load-2",
-                        "load_skill",
-                        {
-                            "skill_id": "breakout_competitor_discovery",
-                            "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
-                        },
-                    )
-                ]
-            ),
-            native_chat_response([native_tool_call("call-amazon-2", "amazon_shelf", {})]),
-            native_chat_response([native_tool_call("call-tiktok-2", "tiktok_social", {})]),
-            native_chat_response([native_tool_call("call-synth-2", "synthesize_artifact", {})]),
+
+def test_market_report_llm_context_keeps_full_annual_chart_series() -> None:
+    report_data = {
+        "chart_specs": [
+            {
+                "id": "category_demand_trend",
+                "title": "类目需求趋势",
+                "type": "line",
+                "quality_status": "ready",
+                "data": [
+                    {"label": f"2025-{month:02d}", "value": month * 1000}
+                    for month in range(1, 14)
+                ],
+            }
         ]
+    }
+
+    context = server_module.market_report_llm_context(report_data)
+
+    assert len(context["chart_specs"][0]["data"]) == 13
+
+
+def test_market_report_html_can_be_authored_by_llm_from_skill_style(monkeypatch) -> None:
+    report_data = {
+        "schema_version": "market_report_data.v1",
+        "title": "Hsia Amazon US市场 minimizer bra 洞察报告",
+        "brand": "Hsia",
+        "marketplace": "Amazon US",
+        "category": "minimizer bra",
+        "time_range": "90d",
+        "generated_at": "2026-07-08T00:00:00Z",
+        "executive_summary": "Compiled summary should be rewritten into the final HTML report.",
+        "market_kpis": [{"label": "搜索量", "value": "18787", "source": "E01"}],
+        "keyword_trends": [{"keyword": "minimizer bra", "search_volume": 18787, "source": "Sif MCP", "evidence_id": "E01"}],
+        "category_benchmark": [],
+        "top_products": [],
+        "brand_competition": [],
+        "price_distribution": [],
+        "opportunity_pool": [],
+        "evidence_map": [{"id": "E01", "source": "Sif MCP", "tool": "sif_market_get_keyword_history", "status": "ok"}],
+        "data_gaps": [],
+        "chart_specs": [],
+        "artifact": {"title": "Hsia Amazon US市场 minimizer bra 洞察报告"},
+    }
+
+    def fake_call_openai_compatible(messages):
+        payload = json.loads(messages[-1]["content"])
+        assert "HTML Report Style Reference" not in payload["style_reference_from_skill"]
+        assert payload["market_report_data"]["category"] == "minimizer bra"
+        assert payload["output_contract"]["format"] == "raw_html_only"
+        return {
+            "provider": "test-provider",
+            "model": "html-model",
+            "usage": {"total_tokens": 123},
+            "result": {
+                "title": "LLM 主导市场洞察报告",
+                "executive_summary": "LLM 直接基于证据写最终 HTML。",
+                "html": """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM 主导市场洞察报告</title>
+<style>
+body{margin:0;background:#fff;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.65}
+.report{max-width:1180px;margin:0 auto;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px}
+.report-header{background:linear-gradient(135deg,#4f46e5,#06b6d4);color:white;border-radius:12px;padding:28px}
+.kpi-grid{display:flex;gap:12px;border-bottom:1px solid #e5e7eb;padding:16px 0}
+.kpi-card{display:flex;gap:8px;align-items:baseline}
+.content-section{padding:22px 0;border-bottom:1px solid #e5e7eb}
+.source{color:#64748b;font-size:12px}
+aside{position:sticky;top:16px;align-self:start;border-left:3px solid #4f46e5;padding-left:14px}
+</style>
+</head>
+<body>
+<div class="report">
+<main>
+<header class="report-header">
+<h1>LLM 主导市场洞察报告</h1>
+<p>答案先行：当前可以进入企划验证，但只基于 E01 的关键词搜索量证据做方向判断。</p>
+</header>
+<section class="kpi-grid">
+<article class="kpi-card"><span>需求锚点</span><strong>18787</strong><em>E01 / Sif MCP</em></article>
+</section>
+<section id="llm-authored" class="content-section">
+<h2>LLM 自定义洞察章节</h2>
+<p>这一段由 LLM 直接组织最终 HTML，不再经过固定中间蓝图渲染层。判断依赖 minimizer bra 的搜索量字段，来源为 E01。</p>
+<p class="source">数据源：Sif MCP · 证据：E01 · 周期：90d</p>
+</section>
+<section class="content-section">
+<h2>数据缺口</h2>
+<p>没有节点级价格分布和品牌集中度时，报告只能给方向性判断，不能断言类目垄断程度。</p>
+</section>
+</main>
+<aside><strong>目录</strong><a href="#llm-authored">LLM 自定义洞察章节</a></aside>
+</div>
+</body>
+</html>""",
+                "artifact": {
+                    "title": "LLM 主导市场洞察报告",
+                    "executive_summary": "LLM 直接基于证据写最终 HTML。",
+                    "key_findings": ["只使用已有搜索量字段。"],
+                    "opportunity_pool": [],
+                    "risks": ["节点级证据缺口仍需标注。"],
+                    "next_steps": ["验证尺码和结构承接。"],
+                },
+                "quality_notes": ["HTML was authored directly from MarketReportData."],
+            },
+        }
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
     )
-    server_module.run_agent(
+
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_html_report",
+        "minimizer bra",
         {
-            "prompt": "帮我发现美国 minimizer bra 爆款竞品",
-            "agentMode": "competitor",
-            "category": "minimizer bra",
+            "marketReportData": report_data,
             "useLlm": True,
+            "skillMarkdown": "### HTML Report Style Reference\n\n使用 LinkFox editorial 风格，必须答案先行。",
+            "agentToolRetryDelayMs": 0,
         },
-        emit_event=emitted.append,
     )
-    assert any(event["id"].startswith("tool-amazon_shelf") and event["status"] == "running" for event in emitted)
-    assert any(event["id"].startswith("tool-amazon_shelf") and event["status"] == "ok" and event.get("file_path") for event in emitted)
+
+    assert rendered["status"] == "ok"
+    assert rendered["data"]["html_analysis"]["status"] == "ok"
+    assert rendered["data"]["renderer"] == "llm-html"
+    assert "blueprint_analysis" not in rendered["data"]
+    assert "report_blueprint" not in rendered["data"]
+    assert "LLM 自定义洞察章节" in rendered["data"]["html"]
+    assert 'id="llm-authored"' in rendered["data"]["html"]
+    assert rendered["data"]["artifact"]["executive_summary"] == report_data["executive_summary"]
+
+
+def test_market_report_html_fails_closed_when_llm_html_is_invalid(monkeypatch) -> None:
+    report_data = {
+        "schema_version": "market_report_data.v1",
+        "title": "Hsia Amazon US市场 minimizer bra 洞察报告",
+        "brand": "Hsia",
+        "marketplace": "Amazon US",
+        "category": "minimizer bra",
+        "time_range": "90d",
+        "executive_summary": "Compiled summary should not be rendered by the old template.",
+        "market_kpis": [{"label": "搜索量", "value": "18787", "source": "E01"}],
+        "evidence_map": [{"id": "E01", "source": "Sif MCP", "tool": "sif_market_get_keyword_history", "status": "ok"}],
+        "chart_specs": [],
+    }
+
+    calls: list[list[dict[str, Any]]] = []
+
+    def fake_call_openai_compatible(messages):
+        calls.append(messages)
+        return {
+            "provider": "test-provider",
+            "model": "html-model",
+            "usage": {"total_tokens": 12},
+            "result": {
+                "title": "Bad HTML",
+                "executive_summary": "Bad HTML should fail.",
+                "html": "<html><body>too short</body></html>",
+            },
+        }
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+    )
+
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_html_report",
+        "minimizer bra",
+        {
+            "marketReportData": report_data,
+            "useLlm": True,
+            "skillMarkdown": "### HTML Report Style Reference\n\n使用 LinkFox editorial 风格，必须答案先行。",
+            "agentToolRetryAttempts": 0,
+            "agentToolRetryDelayMs": 0,
+        },
+    )
+
+    assert rendered["status"] == "retry_exhausted"
+    assert rendered["data"]["html_analysis"]["status"] == "validation_failed"
+    assert rendered["data"]["html_analysis"]["attempt_count"] == 2
+    assert len(calls) == 2
+    assert "previous response failed HTML validation" in calls[1][-1]["content"]
+    assert rendered["recovery"]["attempt_count"] == 1
+    assert "LLM HTML is too short" in rendered["summary"]
+    assert "mr-shell" not in rendered["summary"]
+
+
+def test_breakout_competitor_discovery_skill_is_not_registered() -> None:
+    assert "breakout_competitor_discovery" not in server_module.AGENT_SKILL_REGISTRY
+    assert all(
+        skill.get("skill_id") != "breakout_competitor_discovery"
+        for skill in server_module.agent_skill_manifests()
+    )
+    assert "competitor_discovery" not in server_module.AGENT_TOOL_CATALOG
 
 
 def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_disclosure(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     chat_responses = [
         native_chat_response(
             [
@@ -1302,7 +2156,8 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
             ]
         ),
         native_chat_response([native_tool_call("call-synth-too-early", "synthesize_artifact", {})]),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
     synth_tool_results: list[list[dict[str, Any]]] = []
@@ -1319,8 +2174,8 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
             "usage": {"total_tokens": 20},
             "result": {
                 "title": "Evidence gated artifact",
-                "executive_summary": "Amazon evidence was collected after the gate blocked early synthesis.",
-                "key_findings": ["The final gate required Amazon shelf evidence."],
+                "executive_summary": "MarketReportData was built after the gate blocked early synthesis.",
+                "key_findings": ["The final gate required the report data and HTML renderer tools."],
                 "opportunities": [],
                 "risks": [],
                 "next_steps": [],
@@ -1329,19 +2184,7 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     result = server_module.run_agent(
         {
@@ -1353,16 +2196,131 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
     )
 
     assert result["status"] == "ok"
-    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
+    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
     assert any(event["title"] == "Evidence Contract 阻止生成 Artifact" for event in result["events"])
-    assert result["evidence_gaps"][0]["evidence_id"] == "reddit_user_voc"
-    assert result["artifact"]["evidence_gaps"][0]["evidence_id"] == "reddit_user_voc"
-    assert any("Reddit" in risk for risk in result["artifact"]["risks"])
-    assert synth_tool_results
-    assert synth_tool_results[0][-1]["name"] == "evidence_gate"
+    assert result["evidence_gaps"] == []
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
+    assert synth_tool_results == []
+
+
+def test_weekly_market_agent_does_not_fallback_to_generic_html_when_render_file_missing(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_tool_without_render_file(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+        result = fake_agent_tool_result(tool_name, category, payload)
+        if tool_name == "render_html_report":
+            result["data"] = {}
+            result["summary"] = "render_html_report completed without an HTML file"
+        return result
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_tool_without_render_file)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 minimizer bra 市场最近90天在变什么，品牌 Hsia，市场 Amazon US",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["response_type"] == "message"
+    assert "artifact" not in result
+    assert not any(item.get("type") == "report" for item in result.get("output_files", []))
+    assert any(event["type"] == "artifact" and event["status"] == "error" for event in result["events"])
+    assert "不会再改用固定模板" in result["message"]["content"]
+
+
+def test_weekly_market_agent_blocks_html_render_when_node_evidence_is_missing(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                            "category_node_id": "7141123011:1045002",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        native_chat_response([native_tool_call("call-build", "build_market_report_data", {})]),
+        native_chat_response([native_tool_call("call-render", "render_html_report", {})]),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-respond",
+                    "respond_to_user",
+                    {"message": "节点级必需证据未成功，因此未生成报告。"},
+                )
+            ]
+        ),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "生成 minimizer bra 市场洞察报告，节点 7141123011:1045002。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert all(tool["name"] != "render_html_report" for tool in result["tools"])
+    assert "artifact" not in result
+    assert not any(item.get("type") == "report" for item in result.get("output_files", []))
+    blocked_event = next(event for event in result["events"] if event["title"] == "Evidence Contract 阻止 HTML renderer")
+    missing = blocked_event["output"]["recommended_tool_calls"]
+    assert "sellersprite_market_product_demand_trend" in missing
+    assert "sellersprite_market_price_distribution" in missing
+    assert "sellersprite_market_ratings_count_distribution" in missing
+    assert "sellersprite_market_listing_date_distribution" in missing
 
 
 def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     chat_calls: list[list[dict]] = []
     chat_responses = [
         native_chat_response(
@@ -1382,7 +2340,8 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -1397,7 +2356,7 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
             "usage": {"total_tokens": 20},
             "result": {
                 "title": "Action-loop market artifact",
-                "executive_summary": "The model selected only Amazon shelf evidence.",
+                "executive_summary": "The model built MarketReportData before rendering HTML.",
                 "key_findings": ["Tool choice came from the action loop."],
                 "opportunities": [],
                 "risks": [],
@@ -1407,23 +2366,11 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     result = server_module.run_agent(
         {
-            "prompt": "帮我分析美国 minimizer bra 市场，先只看 Amazon 货架",
+            "prompt": "帮我分析美国 minimizer bra 市场，先做市场底盘，再生成标准市场洞察报告",
             "agentMode": "market",
             "category": "minimizer bra",
             "useLlm": True,
@@ -1433,11 +2380,220 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
     assert result["runtime"]["engine"] == "langgraph"
     assert result["runtime"]["pattern"] == "native_tool_call_loop"
     assert result["skill"]["skill_id"] == "weekly_market_insight"
-    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
-    assert result["planner"]["planned_tools"] == ["amazon_shelf"]
-    assert result["artifact"]["title"] == "Action-loop market artifact"
-    assert len(chat_calls) == 3
+    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert result["planner"]["planned_tools"] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
+    render_tool = next(tool for tool in result["tools"] if tool["name"] == "render_html_report")
+    assert render_tool["input"]["marketReportData"]["schema_version"] == "market_report_data.v1"
+    assert render_tool["input"]["toolResults"] == []
+    assert "chartSpecs" not in render_tool["input"]
+    assert len(chat_calls) == 10
     assert any(message.get("role") == "tool" and message.get("name") == "load_skill" for message in chat_calls[1])
+
+
+def test_weekly_market_agent_uses_llm_extracted_open_category(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    chat_system_prompts: list[str] = []
+    tool_categories: list[tuple[str, str, str]] = []
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "market": "US",
+                            "category": "yoga pants",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
+        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        chat_system_prompts.append(messages[0]["content"])
+        return chat_responses.pop(0)
+
+    def fake_tool_result(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+        tool_categories.append((tool_name, category, str(payload.get("category") or "")))
+        return fake_agent_tool_result(tool_name, category, payload)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析美国 Amazon US 市场 yoga pants 最近90天在变什么。",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["category"] == "yoga pants"
+    assert result["skill"]["params"]["category"] == "yoga pants"
+    assert "Current requested category: unresolved" in chat_system_prompts[0]
+    assert "Current requested category: yoga pants." in chat_system_prompts[1]
+    assert "US minimizer-bra research" not in chat_system_prompts[0]
+    assert "US minimizer-bra research" not in "\n".join(chat_system_prompts)
+    assert [tool for tool, _, _ in tool_categories] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert all(category == "yoga pants" for _, category, _ in tool_categories)
+    assert all(payload_category == "yoga pants" for _, _, payload_category in tool_categories)
+
+
+def test_weekly_market_agent_promotes_resolved_category_node_for_followup_tool(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    seller_catalog = {
+        "sellersprite_market_research": {
+            "label": "SellerSprite market research",
+            "description": "Mock SellerSprite market baseline tool.",
+            "source": "sellersprite_mcp",
+        },
+        "sellersprite_aba_research_weekly": {
+            "label": "SellerSprite ABA weekly",
+            "description": "Mock SellerSprite weekly ABA keyword tool.",
+            "source": "sellersprite_mcp",
+        },
+        "sellersprite_product_node": {
+            "label": "SellerSprite product node",
+            "description": "Resolve a category node path.",
+            "source": "sellersprite_mcp",
+        },
+        "sellersprite_market_product_concentration": {
+            "label": "SellerSprite product concentration",
+            "description": "Use a resolved category node path.",
+            "source": "sellersprite_mcp",
+        },
+    }
+    monkeypatch.setattr(server_module, "get_sellersprite_tool_catalog", lambda: seller_catalog)
+    node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [native_tool_call("call-node", "sellersprite_product_node", {"keyword": "Minimizers"})]
+        ),
+        native_chat_response(
+            [native_tool_call("call-concentration", "sellersprite_market_product_concentration", {})]
+        ),
+        native_chat_response(
+            [native_tool_call("call-done", "respond_to_user", {"message": "节点已自动解析。"})]
+        ),
+    ]
+    tool_payloads: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_tool_result(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+        tool_payloads.append((tool_name, dict(payload)))
+        data: dict[str, Any] = {}
+        if tool_name == "sellersprite_product_node":
+            data = {
+                "resolved_params": {
+                    "category_node_id": node_id_path,
+                    "category_node_label_path": "Clothing, Shoes & Jewelry:Women:Clothing:Lingerie:Bras:Minimizers",
+                }
+            }
+        return {
+            "name": tool_name,
+            "label": seller_catalog[tool_name]["label"],
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category},
+            "data": data,
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我分析 Amazon US minimizer bra 市场，品牌 Hsia，并自动解析类目节点。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["skill"]["params"]["category_node_id"] == node_id_path
+    followup_payload = next(payload for name, payload in tool_payloads if name == "sellersprite_market_product_concentration")
+    assert followup_payload["category_node_id"] == node_id_path
+
+
+def test_weekly_market_agent_rejects_example_category_extracted_by_model(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "market": "US",
+                            "category": "minimizer bra",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-ask",
+                    "ask_user",
+                    {
+                        "reason": "需要确认研究品类。",
+                        "missing_params": ["category"],
+                        "questions": [{"field": "category", "question": "请确认要研究的具体品类。"}],
+                    },
+                )
+            ]
+        ),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "帮我生成 Hsia 美国市场 Sports Bras 本周洞察报告。重点回答：市场最近在变什么。",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "needs_input"
+    assert result["skill"]["missing_params"] == ["category"]
+    assert result["tools"] == []
 
 
 def test_run_agent_can_return_normal_chat_without_artifact(monkeypatch) -> None:
@@ -1448,7 +2604,7 @@ def test_run_agent_can_return_normal_chat_without_artifact(monkeypatch) -> None:
                 native_tool_call(
                     "call-respond",
                     "respond_to_user",
-                    {"message": "你好，我可以帮你做市场洞察、爆款竞品发现和证据驱动的研发机会分析。"},
+                    {"message": "你好，我可以帮你做市场洞察、爆款痛点分析和证据驱动的研发机会分析。"},
                 )
             ]
         )
@@ -1670,7 +2826,7 @@ def test_run_agent_forces_capability_inspection_when_model_answers_directly(monk
                     native_tool_call(
                         "call-respond",
                         "respond_to_user",
-                        {"message": "你好，我可以帮你做市场洞察、爆款竞品发现和证据驱动的研发机会分析。"},
+                        {"message": "你好，我可以帮你做市场洞察、爆款痛点分析和证据驱动的研发机会分析。"},
                     )
                 ]
             )
@@ -1706,6 +2862,7 @@ def test_run_agent_forces_capability_inspection_when_model_answers_directly(monk
 
 
 def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     captured_messages: list[list[dict]] = []
     chat_responses = [
         native_chat_response(
@@ -1714,14 +2871,19 @@ def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
                     "call-load",
                     "load_skill",
                     {
-                        "skill_id": "breakout_competitor_discovery",
-                        "extracted_params": {"brand": "Hsia", "category": "minimizer bra", "marketplace": "US"},
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
                     },
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
-        native_chat_response([native_tool_call("call-tiktok", "tiktok_social", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -1746,40 +2908,29 @@ def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     prompt = (
-        "任务：帮我发现美国 minimizer bra 爆款竞品。\n\n"
-        "工作流要求：调用 amazon_shelf 和 tiktok_social，排除 HSIA 作为竞品。"
+        "任务：帮我分析美国 minimizer bra 市场，品牌 Hsia。\n\n"
+        "工作流要求：先调用 Sif 和 SellerSprite 市场工具，再生成标准 HTML 报告。"
     )
     result = server_module.run_agent(
         {
             "prompt": prompt,
-            "agentMode": "competitor",
+            "agentMode": "market",
             "category": "minimizer bra",
             "useLlm": True,
         }
     )
 
-    assert result["skill"]["skill_id"] == "breakout_competitor_discovery"
+    assert result["skill"]["skill_id"] == "weekly_market_insight"
     first_user_message = next(message["content"] for message in captured_messages[0] if message["role"] == "user")
     assert "workflow_skill" not in first_user_message
-    assert "工作流要求：调用 amazon_shelf" in first_user_message
-    assert "排除 HSIA" in first_user_message
-    assert result["artifact"]["title"] == "Prompt workflow artifact"
-    assert [event["type"] for event in result["events"]] == ["input", "skill", "tool", "tool", "artifact"]
+    assert "工作流要求：先调用 Sif" in first_user_message
+    assert "SellerSprite 市场工具" in first_user_message
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
+    assert [event["type"] for event in result["events"][:2]] == ["input", "skill"]
     assert result["events"][1]["status"] == "ok"
 
 
@@ -1822,12 +2973,14 @@ def test_run_agent_returns_needs_input_when_skill_required_params_are_missing(mo
 
     result = server_module.run_agent(
         {
+            "runId": "abcdef123456",
             "prompt": "分析 minimizer bra 市场",
             "agentMode": "market",
             "useLlm": True,
         }
     )
 
+    assert result["run_id"] == "abcdef123456"
     assert result["status"] == "needs_input"
     assert result["tools"] == []
     assert result["skill"]["status"] == "needs_input"
@@ -1839,9 +2992,40 @@ def test_run_agent_returns_needs_input_when_skill_required_params_are_missing(mo
     assert "artifact" not in result
     assert "需要品牌、市场和时间范围" in result["message"]["content"]
     assert [item["type"] for item in result["output_files"]] == ["skill"]
+    assert all(event["run_id"] == "abcdef123456" for event in result["events"])
+    progress_path = tmp_path / "agent-runs" / "abcdef123456" / "progress.json"
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert progress["run_id"] == "abcdef123456"
+    assert progress["status"] == "running"
+    restored = server_module.load_agent_run_state("abcdef123456")
+    assert restored is not None
+    assert restored["status"] == "needs_input"
+    assert restored["result"]["run_id"] == "abcdef123456"
+
+
+def test_load_agent_run_state_recovers_progress_without_final_result(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    server_module.write_agent_run_json(
+        "123456abcdef",
+        "progress.json",
+        {
+            "run_id": "123456abcdef",
+            "status": "running",
+            "updated_at": "2026-07-10T00:00:00+00:00",
+            "events": [{"id": "evt-001", "run_id": "123456abcdef", "status": "ok"}],
+        },
+    )
+
+    restored = server_module.load_agent_run_state("123456abcdef")
+
+    assert restored is not None
+    assert restored["status"] == "running"
+    assert "result" not in restored
+    assert restored["events"][0]["run_id"] == "123456abcdef"
 
 
 def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     chat_responses = [
         native_chat_response(
             [
@@ -1860,7 +3044,8 @@ def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(mon
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -1884,19 +3069,7 @@ def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(mon
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     result = server_module.run_agent(
         {
@@ -1910,10 +3083,12 @@ def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(mon
     assert result["status"] == "ok"
     assert result["skill"]["missing_params"] == []
     assert result["skill"]["params"]["marketplace"] == "Amazon US"
-    assert result["artifact"]["title"] == "Alias normalized artifact"
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
 
 
 def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     chat_responses = [
         native_chat_response(
             [
@@ -1924,7 +3099,8 @@ def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(mon
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -1948,19 +3124,7 @@ def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(mon
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     result = server_module.run_agent(
         {
@@ -1976,10 +3140,12 @@ def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(mon
     assert result["skill"]["params"]["brand"] == "Hsia"
     assert result["skill"]["params"]["marketplace"] == "Amazon US"
     assert result["skill"]["params"]["time_range"] == "90d"
-    assert result["artifact"]["title"] == "Prompt params artifact"
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
 
 
 def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeypatch, tmp_path) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
 
     chat_responses = [
@@ -2026,8 +3192,8 @@ def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeyp
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-reddit", "reddit_voc", {})]),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -2051,19 +3217,7 @@ def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeyp
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     pending = server_module.run_agent(
         {
@@ -2087,12 +3241,14 @@ def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeyp
     assert continued["skill"]["params"]["brand"] == "Hsia"
     assert continued["skill"]["params"]["marketplace"] == "US"
     assert continued["skill"]["params"]["time_range"] == "90d"
-    assert [tool["name"] for tool in continued["tools"]] == ["reddit_voc", "amazon_shelf"]
+    assert [tool["name"] for tool in continued["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
     assert continued["events"][2]["input"]["timeRange"] == "90d"
-    assert continued["artifact"]["title"] == "Continued market artifact"
+    assert continued["artifact"]["title"] == "Fake LLM-authored market report"
+    assert continued["llm_analysis"]["renderer"] == "llm-html"
 
 
 def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolved(monkeypatch) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
     chat_calls: list[list[dict]] = []
     chat_responses = [
         native_chat_response(
@@ -2128,7 +3284,8 @@ def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolv
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-amazon", "amazon_shelf", {})]),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
         native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
@@ -2153,19 +3310,7 @@ def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolv
 
     monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
     monkeypatch.setattr(server_module, "call_openai_compatible", fake_call_openai_compatible)
-    monkeypatch.setattr(
-        server_module,
-        "execute_agent_tool_with_timeout",
-        lambda tool_name, category, payload: {
-            "name": tool_name,
-            "label": server_module.AGENT_TOOL_CATALOG[tool_name]["label"],
-            "status": "ok",
-            "summary": f"{tool_name} completed",
-            "duration_ms": 1,
-            "input": {"category": category, **payload},
-            "data": {},
-        },
-    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
 
     result = server_module.run_agent(
         {
@@ -2178,8 +3323,9 @@ def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolv
 
     assert result["status"] == "ok"
     assert result["skill"]["missing_params"] == []
-    assert [tool["name"] for tool in result["tools"]] == ["amazon_shelf"]
-    assert result["artifact"]["title"] == "Resolved params artifact"
+    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert result["llm_analysis"]["renderer"] == "llm-html"
     ask_user_observation = [
         json.loads(message["content"])
         for message in chat_calls[2]
@@ -2200,7 +3346,7 @@ def test_run_agent_does_not_use_hardcoded_tool_routing_when_planner_unavailable(
 
     result = server_module.run_agent(
         {
-            "prompt": "帮我发现美国 minimizer bra 爆款竞品，并用 TikTok 交叉验证",
+            "prompt": "帮我分析美国 minimizer bra 前 10 名爆款痛点，并输出研发机会",
             "agentMode": "competitor",
             "category": "minimizer bra",
             "useLlm": True,
@@ -2212,7 +3358,7 @@ def test_run_agent_does_not_use_hardcoded_tool_routing_when_planner_unavailable(
     assert result["response_type"] == "message"
     assert result["llm_analysis"]["status"] == "unavailable"
     assert "artifact" not in result
-    assert "LLM API 不可用" in result["message"]["content"]
+    assert "无法继续执行" in result["message"]["content"]
     assert [event["status"] for event in result["events"]] == ["ok", "error", "skipped", "ok"]
 
 
@@ -2446,6 +3592,70 @@ def test_llm_provider_settings_are_data_driven() -> None:
     assert "openai" in names
     assert settings["providers"]
     assert "api_key_configured" in settings
+
+
+def test_mcp_settings_redact_sellersprite_and_sif_credentials() -> None:
+    settings = build_mcp_settings_response(
+        {
+            "SELLERSPRITE_MCP_SECRET_KEY": "seller-secret",
+            "SIF_API_KEY": "sif-secret",
+        }
+    )
+    sources = {source["id"]: source for source in settings["sources"]}
+
+    assert sources["sellersprite"]["configured"] is True
+    assert sources["sif"]["configured"] is True
+    assert sources["sellersprite"]["env_name"] == "SELLERSPRITE_MCP_SECRET_KEY"
+    assert sources["sif"]["env_name"] == "SIF_MCP_TOKEN"
+    assert "seller-secret" not in json.dumps(settings)
+    assert "sif-secret" not in json.dumps(settings)
+
+
+def test_update_mcp_settings_writes_env_and_syncs_process(monkeypatch, tmp_path) -> None:
+    env_path = tmp_path / ".env"
+    example_path = tmp_path / ".env.example"
+    env_path.write_text("", encoding="utf-8")
+    example_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(settings_module, "ENV_PATH", env_path)
+    monkeypatch.setattr(settings_module, "ENV_EXAMPLE_PATH", example_path)
+    for key in (
+        "SELLERSPRITE_MCP_SECRET_KEY",
+        "SELLERSPRITE_SECRET_KEY",
+        "SELLERSPRITE_API_KEY",
+        "SIF_MCP_TOKEN",
+        "SIF_API_KEY",
+        "SIF_TOKEN",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    result = update_mcp_settings(
+        {
+            "credentials": {
+                "sellersprite": {"value": "seller-test"},
+                "sif": {"value": "sif-test"},
+            }
+        }
+    )
+
+    assert all(source["configured"] for source in result["sources"])
+    assert os.environ["SELLERSPRITE_MCP_SECRET_KEY"] == "seller-test"
+    assert os.environ["SIF_MCP_TOKEN"] == "sif-test"
+    env_text = env_path.read_text(encoding="utf-8")
+    assert "SELLERSPRITE_MCP_SECRET_KEY=seller-test" in env_text
+    assert "SIF_MCP_TOKEN=sif-test" in env_text
+
+    cleared = update_mcp_settings(
+        {
+            "credentials": {
+                "sellersprite": {"clear": True},
+                "sif": {"clear": True},
+            }
+        }
+    )
+
+    assert not any(source["configured"] for source in cleared["sources"])
+    assert "SELLERSPRITE_MCP_SECRET_KEY" not in os.environ
+    assert "SIF_MCP_TOKEN" not in os.environ
 
 
 def test_reddit_settings_redacts_secret() -> None:

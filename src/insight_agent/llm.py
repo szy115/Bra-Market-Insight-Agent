@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -21,6 +23,34 @@ from .settings import (
 
 class LLMUnavailable(RuntimeError):
     """Raised when LLM analysis is requested but not configured or fails."""
+
+
+LLM_TRANSIENT_RETRY_COUNT = 2
+LLM_TRANSIENT_RETRY_DELAY_SECONDS = 0.8
+
+
+def is_transient_llm_transport_error(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, ssl.SSLError, ConnectionError, ConnectionResetError, ConnectionAbortedError)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, BaseException):
+            return is_transient_llm_transport_error(reason)
+        text = str(reason).lower()
+        return any(token in text for token in ("timeout", "eof", "ssl", "connection", "reset"))
+    if isinstance(exc, OSError):
+        text = str(exc).lower()
+        return any(token in text for token in ("timeout", "eof", "ssl", "connection reset", "connection aborted"))
+    return False
+
+
+def llm_transport_error_hint(exc: BaseException) -> str:
+    text = str(exc)
+    if "UNEXPECTED_EOF_WHILE_READING" in text or "EOF occurred in violation of protocol" in text:
+        return "LLM connection closed during TLS response reading; this is usually a transient network/provider/proxy issue, not an API-key validation failure."
+    if "timed out" in text.lower() or "timeout" in text.lower():
+        return "LLM request timed out; the provider may be slow or the configured timeout may be too low."
+    return "LLM transport failed; this is usually caused by a transient network/provider/proxy connection issue."
 
 
 def compact_report_context(report: dict[str, Any]) -> dict[str, Any]:
@@ -379,14 +409,21 @@ def call_openai_compatible_chat(
         headers=headers,
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=int(settings["timeout_seconds"])) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")[:500]
-        raise LLMUnavailable(f"LLM HTTP {exc.code}: {detail}") from exc
-    except Exception as exc:  # noqa: BLE001
-        raise LLMUnavailable(f"LLM request failed: {exc}") from exc
+    max_attempts = LLM_TRANSIENT_RETRY_COUNT + 1
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=int(settings["timeout_seconds"])) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")[:500]
+            raise LLMUnavailable(f"LLM HTTP {exc.code}: {detail}") from exc
+        except Exception as exc:  # noqa: BLE001
+            if attempt < max_attempts and is_transient_llm_transport_error(exc):
+                time.sleep(LLM_TRANSIENT_RETRY_DELAY_SECONDS * attempt)
+                continue
+            hint = llm_transport_error_hint(exc) if is_transient_llm_transport_error(exc) else "LLM request failed."
+            raise LLMUnavailable(f"LLM request failed after {attempt} attempt(s): {exc}. {hint}") from exc
 
     choice = payload.get("choices", [{}])[0]
     message = choice.get("message") if isinstance(choice.get("message"), dict) else {}

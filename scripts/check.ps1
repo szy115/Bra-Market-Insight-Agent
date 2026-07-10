@@ -10,7 +10,9 @@ $Frontend = Join-Path $Root "frontend"
 $env:PYTHONPATH = Join-Path $Root "src"
 Set-Location $Root
 & $Python -m ruff check .
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $Python -m pytest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $PackageManager = Get-InsightPackageManager
 Set-Location $Frontend

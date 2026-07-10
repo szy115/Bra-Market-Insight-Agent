@@ -33,6 +33,14 @@ AGENT_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
         "类目",
         "关键词",
     ),
+    "asin": (
+        "ASIN",
+        "product_asin",
+        "competitor_asin",
+        "target_asin",
+        "商品ASIN",
+        "竞品ASIN",
+    ),
     "time_range": (
         "timeRange",
         "date_range",
@@ -60,7 +68,22 @@ AGENT_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
         "top_listing_count",
         "头部商品数量",
     ),
+    "review_sample_size": (
+        "reviewSampleSize",
+        "review_limit",
+        "reviews_per_product",
+        "评论样本数",
+        "每商品评论数",
+    ),
     "new_product_window": ("newProductWindow", "new_product_period", "新品定义"),
+    "category_node_id": (
+        "categoryNodeId",
+        "nodeIdPath",
+        "node_id_path",
+        "departmentNodeIdPath",
+        "类目节点",
+        "类目节点路径",
+    ),
     "reddit_post_limit": ("redditLimit", "reddit_limit", "reddit_posts", "reddit_post_count"),
     "reddit_detail_limit": ("redditDetailLimit", "reddit_detail_limit"),
     "reddit_comments_per_post": ("redditCommentsPerPost", "reddit_comments_per_post"),
@@ -152,6 +175,34 @@ def normalize_agent_params(params: dict[str, Any] | None) -> dict[str, Any]:
     return normalized
 
 
+def _category_tokens(value: Any) -> list[str]:
+    words = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", str(value or "").lower())
+    normalized: list[str] = []
+    for word in words:
+        if len(word) > 3 and word.endswith("s"):
+            word = word[:-1]
+        normalized.append(word)
+    return normalized
+
+
+def category_supported_by_prompt(category: Any, prompt: Any) -> bool:
+    category_text = str(category or "").strip()
+    prompt_text = str(prompt or "").strip()
+    if not category_text:
+        return True
+    if not prompt_text:
+        return False
+    if category_text.lower() in prompt_text.lower():
+        return True
+
+    category_tokens = _category_tokens(category_text)
+    prompt_tokens = _category_tokens(prompt_text)
+    if not category_tokens or not prompt_tokens:
+        return False
+    window = len(category_tokens)
+    return any(prompt_tokens[index : index + window] == category_tokens for index in range(len(prompt_tokens) - window + 1))
+
+
 def infer_agent_params_from_prompt(prompt: Any) -> dict[str, Any]:
     text = str(prompt or "").strip()
     if not text:
@@ -178,12 +229,13 @@ def infer_agent_params_from_prompt(prompt: Any) -> dict[str, Any]:
     elif "美国" in text or re.search(r"\bus\b", lower_text):
         params["marketplace"] = "US"
 
+    asin_match = re.search(r"\bB[A-Z0-9]{9}\b", text.upper())
+    if asin_match:
+        params["asin"] = asin_match.group(0)
+
     time_range = normalize_agent_time_range(text)
     if time_range:
         params["time_range"] = time_range
-
-    if "minimizer bra" in lower_text:
-        params["category"] = "minimizer bra"
 
     return normalize_agent_params(params)
 
@@ -211,12 +263,19 @@ def resolve_canonical_agent_params(
     schema = skill.get("input_schema") or {}
     defaults = schema.get("defaults") if isinstance(schema.get("defaults"), dict) else {}
     payload_params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    prompt_params = infer_agent_params_from_prompt(payload.get("prompt"))
+    extracted = normalize_agent_params(extracted_params)
+    explicit_payload_params = merge_agent_param_sources(payload_params, payload_param_source(payload))
+    if extracted.get("category") and not explicit_payload_params.get("category") and not category_supported_by_prompt(
+        extracted.get("category"),
+        payload.get("prompt"),
+    ):
+        extracted.pop("category", None)
     params = merge_agent_param_sources(
         defaults,
-        infer_agent_params_from_prompt(payload.get("prompt")),
-        extracted_params,
-        payload_params,
-        payload_param_source(payload),
+        prompt_params,
+        extracted,
+        explicit_payload_params,
     )
     required = schema.get("required") or []
     required = [ALIAS_TO_CANONICAL.get(str(key), str(key)) for key in required]
@@ -236,6 +295,7 @@ def agent_payload_from_params(payload: dict[str, Any], params: dict[str, Any]) -
     mapped["brand"] = canonical.get("brand") or payload.get("brand")
     mapped["marketplace"] = canonical.get("marketplace") or payload.get("marketplace")
     mapped["category"] = canonical.get("category") or payload.get("category")
+    mapped["asin"] = canonical.get("asin") or payload.get("asin")
     mapped["timeRange"] = canonical.get("time_range") or payload.get("timeRange")
     mapped["amazonLimit"] = canonical.get("listing_sample_size") or payload.get("amazonLimit")
     mapped["redditLimit"] = canonical.get("reddit_post_limit") or payload.get("redditLimit")
@@ -246,6 +306,10 @@ def agent_payload_from_params(payload: dict[str, Any], params: dict[str, Any]) -
     mapped["articleQueryLimit"] = canonical.get("article_query_limit") or payload.get("articleQueryLimit")
     mapped["articleResultsPerQuery"] = canonical.get("article_results_per_query") or payload.get("articleResultsPerQuery")
     mapped["articleCandidateLimit"] = canonical.get("article_candidate_limit") or payload.get("articleCandidateLimit")
+    mapped["head_listing_count"] = canonical.get("head_listing_count") or payload.get("head_listing_count")
+    mapped["review_sample_size"] = canonical.get("review_sample_size") or payload.get("review_sample_size")
+    mapped["new_product_window"] = canonical.get("new_product_window") or payload.get("new_product_window")
+    mapped["category_node_id"] = canonical.get("category_node_id") or payload.get("category_node_id")
     mapped["bypassCache"] = bool(canonical.get("bypass_cache") or payload.get("bypassCache"))
     return mapped
 
@@ -293,5 +357,34 @@ def adapt_agent_params_for_tool(tool_name: str, category: str, payload: dict[str
             "limit": bounded_int(canonical.get("tiktok_video_limit"), 6, 1, 12),
             "tiktokCommentsPerVideo": bounded_int(canonical.get("tiktok_comments_per_video"), 4, 1, 20),
             "bypassCache": bypass_cache,
+        }
+    if tool_name == "build_market_report_data":
+        return {
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand"),
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace"),
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "90d",
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "market",
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else [],
+            "evidenceGaps": payload.get("evidenceGaps") if isinstance(payload.get("evidenceGaps"), list) else [],
+        }
+    if tool_name == "render_html_report":
+        return {
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand"),
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace"),
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "90d",
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "market",
+            "generatedAt": payload.get("generatedAt"),
+            "marketReportData": payload.get("marketReportData") if isinstance(payload.get("marketReportData"), dict) else {},
+            "toolResults": payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else [],
+            "evidenceGaps": payload.get("evidenceGaps") if isinstance(payload.get("evidenceGaps"), list) else [],
+            "useLlm": bool(payload.get("useLlm")),
+            "skillId": payload.get("skillId"),
+            "skillMarkdown": payload.get("skillMarkdown"),
+            "skillHtmlTemplate": payload.get("skillHtmlTemplate"),
         }
     return {"category": tool_category, "bypassCache": bypass_cache}

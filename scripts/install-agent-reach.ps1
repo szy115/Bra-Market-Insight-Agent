@@ -34,6 +34,13 @@ $UserNpmBin = Join-Path $env:APPDATA "npm"
 $AgentReachBin = Join-Path $env:USERPROFILE ".agent-reach\bin"
 $McporterConfig = Join-Path $env:USERPROFILE ".agent-reach\mcporter.json"
 
+function Assert-InstallStep {
+  param([Parameter(Mandatory = $true)] [string] $Step)
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Step failed with exit code $LASTEXITCODE."
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $AgentReachBin | Out-Null
 Set-Content -Path (Join-Path $AgentReachBin "true.cmd") -Value "@echo off`r`nexit /b 0" -Encoding ASCII
 
@@ -64,7 +71,7 @@ function Set-LocalEnvValue {
     $Line = $Lines[$Index].TrimStart()
     $Candidate = if ($Line.StartsWith("#")) { $Line.Substring(1).TrimStart() } else { $Line }
     if ($Candidate.StartsWith("$Name=")) {
-      $Escaped = $Value.Replace("\", "\\")
+      $Escaped = $Value.Replace('"', '\"')
       $Lines[$Index] = "$Name=""$Escaped"""
       $Updated = $true
       break
@@ -74,14 +81,16 @@ function Set-LocalEnvValue {
     if ($Lines.Count -gt 0 -and $Lines[-1].Trim()) {
       $Lines += ""
     }
-    $Escaped = $Value.Replace("\", "\\")
+    $Escaped = $Value.Replace('"', '\"')
     $Lines += "$Name=""$Escaped"""
   }
   Set-Content -Path $EnvFile -Value $Lines -Encoding UTF8
 }
 
 & $AgentReachPython -m pip install --upgrade pip
+Assert-InstallStep "Upgrading Agent Reach pip"
 & $AgentReachPython -m pip install "https://github.com/Panniantong/agent-reach/archive/main.zip"
+Assert-InstallStep "Installing Agent Reach"
 
 $env:PATH = "$AgentReachScripts;$env:PATH"
 Set-LocalEnvValue -Name "AGENT_REACH_VENV" -Value $AgentReachVenv
@@ -110,19 +119,23 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
 
 Write-Host "Installing OpenCLI npm package..."
 & npm.cmd install -g @jackwener/opencli
+Assert-InstallStep "Installing OpenCLI"
 
 $AgentReachExe = Join-Path $AgentReachScripts "agent-reach.exe"
 
 Write-Host "Installing Agent Reach core channels: web, search, GitHub, YouTube, RSS, V2EX, Bilibili basic"
 & $AgentReachExe install --env=auto
+Assert-InstallStep "Installing Agent Reach core channels"
 
 Write-Host "Installing Agent Reach optional channels: opencli,reddit"
 & $AgentReachExe install --env=auto --channels=opencli,reddit
+Assert-InstallStep "Installing Agent Reach OpenCLI and Reddit channels"
 
 $env:PATH = "$NodeInstallBin;$UserNpmBin;$env:PATH"
 if (-not (Get-Command mcporter -ErrorAction SilentlyContinue)) {
   Write-Host "Installing mcporter manually through npm..."
   & npm.cmd install -g mcporter
+  Assert-InstallStep "Installing mcporter"
 }
 if (Get-Command mcporter -ErrorAction SilentlyContinue) {
   Write-Host "Configuring mcporter Exa MCP at: $McporterConfig"
