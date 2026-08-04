@@ -1,0 +1,3339 @@
+{
+  "metadata": {
+    "project": "美国站 minimizer bra 设计研发工作流",
+    "researchDate": "2026-07-14",
+    "amazonMarketplace": "US",
+    "amazonMonth": "202606",
+    "amazonNode": "Women's Minimizer Bras (1045002)",
+    "amazonSampleCount": 50,
+    "amazonReviewAsinCount": 11,
+    "amazonNegativeReviews": 155,
+    "amazonPositiveReviews": 40,
+    "tiktokProducts": 3,
+    "agentReachStatus": "agent-reach CLI与Exa MCP未注册；趋势网页使用系统网页检索兜底，未伪称Agent Reach结果。"
+  },
+  "samples": [
+    {
+      "asin": "B00BXMHSCC",
+      "parent": "B004N3BHZ2",
+      "title": "Vanity Fair Women's Beauty Back Smoothing Minimizer Bra, Minimizes Bust Line up to 1.5\", Non Padded Cups up to H",
+      "brand": "Vanity Fair",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/711OGi6ce9L._AC_US200_.jpg",
+      "price": 22.42,
+      "averagePrice": 27.22,
+      "rating": 4.3,
+      "ratings": 34761,
+      "units": 40128,
+      "revenue": 1092284.1,
+      "variations": 422,
+      "bsr": 198,
+      "bsrCv": 28,
+      "bsrCr": 12.39,
+      "availableDate": 1398470400000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 245,
+      "badge": {
+        "bestSeller": "#1 Best Seller  in Women's Minimizer Bras",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 1,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "背部/侧比平整",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "背部平整",
+      "matchReason": "背部平整代表款；背部/侧比平整、轻薄无衬垫；月销约40,128件",
+      "amazonUrl": "https://www.amazon.com/dp/B00BXMHSCC",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0012M839K",
+      "parent": "B0FXN2CLL3",
+      "title": "Bali Women's Minimizer Bras for Women - Passion for Comfort Underwire Bras - Adjustable Support, Plus Size Women",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71NrlMBNJ-L._AC_US200_.jpg",
+      "price": 20.78,
+      "averagePrice": 20.78,
+      "rating": 4.1,
+      "ratings": 26368,
+      "units": 22351,
+      "revenue": 464453.78,
+      "variations": 186,
+      "bsr": 771,
+      "bsrCv": 30,
+      "bsrCr": 3.75,
+      "availableDate": 1361750400000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 41,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 2,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "大码大胸"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、大码大胸；月销约22,351件",
+      "amazonUrl": "https://www.amazon.com/dp/B0012M839K",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B083HWX2ZX",
+      "parent": "B0CTJ95NB1",
+      "title": "DELIMIRA Women's Strapless Bra Unlined Underwire Minimizer Plus Size Support",
+      "brand": "DELIMIRA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71VCYFKw0WL._AC_US200_.jpg",
+      "price": 27.99,
+      "averagePrice": 27.94,
+      "rating": 4.1,
+      "ratings": 7844,
+      "units": 12296,
+      "revenue": 343550.25,
+      "variations": 323,
+      "bsr": 2099,
+      "bsrCv": 379,
+      "bsrCr": 15.29,
+      "availableDate": 1578873600000,
+      "fulfillment": "FBA",
+      "sellerName": "CRZ YOGA",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 80,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 3,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、大码大胸、轻薄无衬垫；月销约12,296件",
+      "amazonUrl": "https://www.amazon.com/dp/B083HWX2ZX",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B001PGMSDU",
+      "parent": "B000MX3UXE",
+      "title": "Bali Women's Minimizer Bra, Satin Tracings Underwire Bra, Bustline Slimmer, Full Coverage Bra",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/619MPvMjm2L._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 21.46,
+      "rating": 4,
+      "ratings": 31176,
+      "units": 6897,
+      "revenue": 148009.61,
+      "variations": 106,
+      "bsr": 4415,
+      "bsrCv": 501,
+      "bsrCr": 10.19,
+      "availableDate": 1422489600000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 43,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 4,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯；月销约6,897件",
+      "amazonUrl": "https://www.amazon.com/dp/B001PGMSDU",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B07VQPN5KQ",
+      "parent": "B0DLMPVJ4R",
+      "title": "Bali Women's Lilyette Minimizer Underwire Bra with Lace Trim, Microfiber Full Coverage Bra",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/91Aw+0J4JcL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 21.93,
+      "rating": 4.2,
+      "ratings": 6003,
+      "units": 6345,
+      "revenue": 139145.86,
+      "variations": 102,
+      "bsr": 4771,
+      "bsrCv": 173,
+      "bsrCr": 3.5,
+      "availableDate": 1569801600000,
+      "fulfillment": "NA",
+      "sellerName": "Amazon",
+      "sellerNation": null,
+      "monthlyReviewIncrease": 37,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 5,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "轻薄网纱",
+      "matchReason": "轻薄网纱代表款；有钢圈、全罩杯、蕾丝/网纱；月销约6,345件",
+      "amazonUrl": "https://www.amazon.com/dp/B07VQPN5KQ",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B01NAEXDAZ",
+      "parent": "B0D52XC985",
+      "title": "Wingslove Women's Full Coverage Non Padded Comfort Minimizer Wire-Free Bra Plus Size",
+      "brand": "Wingslove",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81tLo4P6+tL._AC_US200_.jpg",
+      "price": 19.98,
+      "averagePrice": 19.88,
+      "rating": 4.2,
+      "ratings": 21771,
+      "units": 5619,
+      "revenue": 111705.72,
+      "variations": 905,
+      "bsr": 3277,
+      "bsrCv": 3783,
+      "bsrCr": 53.58,
+      "availableDate": 1488672000000,
+      "fulfillment": "FBA",
+      "sellerName": "Wingslove",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 103,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 5,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约5,619件",
+      "amazonUrl": "https://www.amazon.com/dp/B01NAEXDAZ",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B08MVF8QDL",
+      "parent": "B08BY6RFNW",
+      "title": "Visual Effects Unlined Full Coverage Underwire Minimizer Bra, 857210",
+      "brand": "Wacoal",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/91cBNO3uCCL._AC_US200_.jpg",
+      "price": 74.99,
+      "averagePrice": 0,
+      "rating": 4.2,
+      "ratings": 3206,
+      "units": 4613,
+      "revenue": 345928.88,
+      "variations": 540,
+      "bsr": 9729,
+      "bsrCv": -1299,
+      "bsrCr": -15.41,
+      "availableDate": 1626480000000,
+      "fulfillment": "NA",
+      "sellerName": "Key_Products",
+      "sellerNation": null,
+      "monthlyReviewIncrease": 15,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 431,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯、轻薄无衬垫；月销约4,613件",
+      "amazonUrl": "https://www.amazon.com/dp/B08MVF8QDL",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B001FSKA4W",
+      "parent": "B0GFWMTS9H",
+      "title": "Bali Women's Minimizer Bra for Women, Lilyette Dream Keyhole Minimizer Underwire Women's Bra, Unlined",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71eUSkkJv9L._AC_US200_.jpg",
+      "price": 20.79,
+      "averagePrice": 20.76,
+      "rating": 4.3,
+      "ratings": 4699,
+      "units": 4476,
+      "revenue": 92921.76,
+      "variations": 70,
+      "bsr": 7994,
+      "bsrCv": 731,
+      "bsrCr": 8.38,
+      "availableDate": 1304121600000,
+      "fulfillment": "NA",
+      "sellerName": "StarCrossing",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 14,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 336,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、轻薄无衬垫；月销约4,476件",
+      "amazonUrl": "https://www.amazon.com/dp/B001FSKA4W",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B088KNW69Z",
+      "parent": "B088L39CT8",
+      "title": "Playtex Women's 18 Hour Minimizer Smoothing Full-Coverage Wireless T-Shirt Bra with Mesh Trim",
+      "brand": "PLAYTEX",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81j7dl+Yz5L._AC_US200_.jpg",
+      "price": 19.99,
+      "averagePrice": 19.99,
+      "rating": 4.2,
+      "ratings": 4437,
+      "units": 3080,
+      "revenue": 61569.2,
+      "variations": 60,
+      "bsr": 13228,
+      "bsrCv": -42,
+      "bsrCr": -0.32,
+      "availableDate": 1610755200000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 32,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 8,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "无痕T恤",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、无痕T恤、蕾丝/网纱；月销约3,080件",
+      "amazonUrl": "https://www.amazon.com/dp/B088KNW69Z",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B08TR7XYHC",
+      "parent": "B0849XZ5XR",
+      "title": "Women's Strapless Bra for Large Bust Minimizer Unlined Bandeau with Underwire",
+      "brand": "MELENECA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/61NvHCpE7aL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 25.99,
+      "rating": 4.2,
+      "ratings": 7475,
+      "units": 3066,
+      "revenue": 79685.34,
+      "variations": 941,
+      "bsr": 13198,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1618790400000,
+      "fulfillment": "FBA",
+      "sellerName": "MELENECA Fashion",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 7,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、大码大胸、轻薄无衬垫；月销约3,066件",
+      "amazonUrl": "https://www.amazon.com/dp/B08TR7XYHC",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B07D7936DF",
+      "parent": "B000VK6QTI",
+      "title": "Glamorise Women's Full Figure Wirefree Minimizer Support Bra #1003",
+      "brand": "Glamorise",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/91X4X4nuEbL._AC_US200_.jpg",
+      "price": 39,
+      "averagePrice": 39,
+      "rating": 4.2,
+      "ratings": 14601,
+      "units": 2701,
+      "revenue": 105339,
+      "variations": 231,
+      "bsr": 15245,
+      "bsrCv": -164,
+      "bsrCr": -1.09,
+      "availableDate": 1539216000000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 22,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 8,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "大码大胸"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、大码大胸；月销约2,701件",
+      "amazonUrl": "https://www.amazon.com/dp/B07D7936DF",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0D7VC8BTR",
+      "parent": "B0D5B37X9M",
+      "title": "DELIMIRA Women's Minimizer Bra Plus Size Underwire Smooth Full Coverage Seamless Bras",
+      "brand": "DELIMIRA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71oQIVnps9L._AC_US200_.jpg",
+      "price": 27.99,
+      "averagePrice": 27.99,
+      "rating": 4.2,
+      "ratings": 6807,
+      "units": 2516,
+      "revenue": 70422.84,
+      "variations": 651,
+      "bsr": 25736,
+      "bsrCv": -4051,
+      "bsrCr": -18.68,
+      "availableDate": 1750032000000,
+      "fulfillment": "FBA",
+      "sellerName": "CRZ YOGA",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 41,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 11,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；有钢圈、全罩杯、大码大胸、无痕T恤；月销约2,516件",
+      "amazonUrl": "https://www.amazon.com/dp/B0D7VC8BTR",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B09YCQVTTL",
+      "parent": "B0D9MWCKJ7",
+      "title": "Wacoal Visual Effects Strapless Minimizer Bra",
+      "brand": "Wacoal",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71M5Nx-NwrL._AC_US200_.jpg",
+      "price": 76,
+      "averagePrice": 75.99,
+      "rating": 4.2,
+      "ratings": 275,
+      "units": 1941,
+      "revenue": 147496.58,
+      "variations": 46,
+      "bsr": 19555,
+      "bsrCv": -1901,
+      "bsrCr": -10.77,
+      "availableDate": 1681948800000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 3,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 10,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸；月销约1,941件",
+      "amazonUrl": "https://www.amazon.com/dp/B09YCQVTTL",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0CW9PLXJ8",
+      "parent": "B0D57T3S9N",
+      "title": "DELIMIRA Women's Strapless Bra Minimizer Seamless Underwire Unlined Bandeau for Big Bust",
+      "brand": "DELIMIRA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71awHB+aLKL._AC_US200_.jpg",
+      "price": 19.99,
+      "averagePrice": 25.99,
+      "rating": 3.9,
+      "ratings": 12597,
+      "units": 1647,
+      "revenue": 42805.53,
+      "variations": 622,
+      "bsr": 37171,
+      "bsrCv": -12409,
+      "bsrCr": -50.11,
+      "availableDate": 1713225600000,
+      "fulfillment": "FBA",
+      "sellerName": "CRZ YOGA",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 21,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 20,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "背部平整",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "back smoothing minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、轻薄无衬垫、无痕T恤；月销约1,647件",
+      "amazonUrl": "https://www.amazon.com/dp/B0CW9PLXJ8",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B09NN919KV",
+      "parent": "B09NBLJX6J",
+      "title": "TELIMUSSTO Women's Floral Lace Bra Plus Size Firm Hold Non Wired Non Padded Full Coverage Minimizer",
+      "brand": "TELIMUSSTO",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71tbbjAyh8S._AC_US200_.jpg",
+      "price": 19.98,
+      "averagePrice": 19.98,
+      "rating": 4.3,
+      "ratings": 1384,
+      "units": 1588,
+      "revenue": 31728.24,
+      "variations": 739,
+      "bsr": 31826,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1650844800000,
+      "fulfillment": "FBA",
+      "sellerName": "Suoyimaoyi",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 37,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 657,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸",
+        "全罩杯",
+        "大码",
+        "无钢圈",
+        "无肩带",
+        "无衬垫轻薄"
+      ],
+      "matchedKeywords": [
+        "minimizer bra",
+        "full coverage minimizer bra",
+        "plus size minimizer bra",
+        "wireless minimizer bra",
+        "strapless minimizer bra",
+        "unlined minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、有钢圈、全罩杯、大码大胸；月销约1,588件",
+      "amazonUrl": "https://www.amazon.com/dp/B09NN919KV",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0GT8RS2F4",
+      "parent": "B0DZ2JDMS6",
+      "title": "Lover-Beauty Minimizer Bras for Women Full Coverage Unlined Underwire Bras Plus Size Lifting Bra for Heavy Breast",
+      "brand": "Lover-Beauty",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81FtWTTESbL._AC_US200_.jpg",
+      "price": 23.99,
+      "averagePrice": 23.99,
+      "rating": 4,
+      "ratings": 304,
+      "units": 1341,
+      "revenue": 32170.59,
+      "variations": 113,
+      "bsr": 37882,
+      "bsrCv": 6152,
+      "bsrCr": 13.97,
+      "availableDate": 1774569600000,
+      "fulfillment": "FBA",
+      "sellerName": "LOVER-BEAUTY OFFICIAL",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 27,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 17,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约1,341件",
+      "amazonUrl": "https://www.amazon.com/dp/B0GT8RS2F4",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B09D75NHK2",
+      "parent": "B08KVWSPTY",
+      "title": "DotVol Women's Seamless Bandeau Unlined Underwire Minimizer Strapless Bra for Large Bust",
+      "brand": "DotVol",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71vXkUonxZL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 25.99,
+      "rating": 4.3,
+      "ratings": 285,
+      "units": 1295,
+      "revenue": 33657.05,
+      "variations": 90,
+      "bsr": 37942,
+      "bsrCv": -8548,
+      "bsrCr": -29.08,
+      "availableDate": 1633651200000,
+      "fulfillment": "FBA",
+      "sellerName": "DotVol US",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 2,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 1842,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "大码大胸",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、大码大胸、轻薄无衬垫；月销约1,295件",
+      "amazonUrl": "https://www.amazon.com/dp/B09D75NHK2",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B06XPGGFWH",
+      "parent": "B07BL3D2P3",
+      "title": "Olga Women's Plus-size Cloud 9 Minimizer Bra",
+      "brand": "Olga",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/711Wd7yWE1L._AC_US200_.jpg",
+      "price": 24.15,
+      "averagePrice": 24.15,
+      "rating": 4.4,
+      "ratings": 2753,
+      "units": 1262,
+      "revenue": 30477.3,
+      "variations": 76,
+      "bsr": 27883,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1494979200000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 13,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；缩胸基础结构；月销约1,262件",
+      "amazonUrl": "https://www.amazon.com/dp/B06XPGGFWH",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B07TXD9LP7",
+      "parent": "B005IV7O0A",
+      "title": "Olga Women's Sheer Leaves Minimizer Bra",
+      "brand": "Olga",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71fZphpxVqL._AC_US200_.jpg",
+      "price": 35.99,
+      "averagePrice": 0,
+      "rating": 4.2,
+      "ratings": 6678,
+      "units": 1224,
+      "revenue": 44051.76,
+      "variations": 161,
+      "bsr": 45447,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1562284800000,
+      "fulfillment": "NA",
+      "sellerName": null,
+      "sellerNation": null,
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 684,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "轻薄网纱",
+      "matchReason": "轻薄网纱代表款；蕾丝/网纱；月销约1,224件",
+      "amazonUrl": "https://www.amazon.com/dp/B07TXD9LP7",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0GJ2T3SYT",
+      "parent": "B0D97GCNP8",
+      "title": "HACI Women's Minimizer Bra Full Coverage Everyday Wirefree Non Padded Plus Size for Large Bust Support Seamless | Women's, Support, for Large Bust, Non Padded, Seamless, Everyday",
+      "brand": "HACI",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71c5vk3lAyL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 25.99,
+      "rating": 4.3,
+      "ratings": 855,
+      "units": 1114,
+      "revenue": 28952.86,
+      "variations": 240,
+      "bsr": 44467,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1772841600000,
+      "fulfillment": "FBA",
+      "sellerName": "HACI US",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 15,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 23,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约1,114件",
+      "amazonUrl": "https://www.amazon.com/dp/B0GJ2T3SYT",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0G18XFZKQ",
+      "parent": "B0FJX953NG",
+      "title": "Wingslove Women's Minimizer Bras Full Coverage Wirefree Comfort Plus Size Bra Large Bust Non Padded",
+      "brand": "Wingslove",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71zFjM-hK7L._AC_US200_.jpg",
+      "price": 29.99,
+      "averagePrice": 29.99,
+      "rating": 4.3,
+      "ratings": 133,
+      "units": 1109,
+      "revenue": 33258.91,
+      "variations": 525,
+      "bsr": 23859,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1764547200000,
+      "fulfillment": "FBA",
+      "sellerName": "Wingslove",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 18,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约1,109件",
+      "amazonUrl": "https://www.amazon.com/dp/B0G18XFZKQ",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0DQ1G6PBZ",
+      "parent": "B0DQ1GDT43",
+      "title": "Women's Minimizer Bra No Underwire Full Coverage Wireless Jelly Bra Plus Size Seamless T-Shirt Bra",
+      "brand": "Redgray",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71N+xcVUTlL._AC_US200_.jpg",
+      "price": 23.99,
+      "averagePrice": 23.99,
+      "rating": 4,
+      "ratings": 579,
+      "units": 1087,
+      "revenue": 26077.13,
+      "variations": 138,
+      "bsr": 39936,
+      "bsrCv": 5623,
+      "bsrCr": 12.34,
+      "availableDate": 1738368000000,
+      "fulfillment": "FBA",
+      "sellerName": "Redgray",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 27,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 25,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、有钢圈、全罩杯、大码大胸；月销约1,087件",
+      "amazonUrl": "https://www.amazon.com/dp/B0DQ1G6PBZ",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B078PGNRH6",
+      "parent": "B0DYDPTHMH",
+      "title": "Deyllo Women's Full Coverage Plus Size Comfort Minimizer Bra Wirefree Non Padded",
+      "brand": "Deyllo",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71ir6mCToWL._AC_US200_.jpg",
+      "price": 26.59,
+      "averagePrice": 27.59,
+      "rating": 4.2,
+      "ratings": 13307,
+      "units": 952,
+      "revenue": 26265.68,
+      "variations": 722,
+      "bsr": 39572,
+      "bsrCv": 10229,
+      "bsrCr": 20.54,
+      "availableDate": 1519689600000,
+      "fulfillment": "FBA",
+      "sellerName": "Deyllo",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 20,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 21,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约952件",
+      "amazonUrl": "https://www.amazon.com/dp/B078PGNRH6",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0F5WG6YH2",
+      "parent": "B0DTDWYZL7",
+      "title": "Underwire Minimizer Bras for Women Cross Back Full Coverage Plus Size Non Padded Bra,Lifting Bra for Heavy Breast",
+      "brand": "AILIVIN",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71f3Fa5IT4L._AC_US200_.jpg",
+      "price": 24.98,
+      "averagePrice": 24.98,
+      "rating": 4.1,
+      "ratings": 267,
+      "units": 928,
+      "revenue": 23181.44,
+      "variations": 171,
+      "bsr": 46978,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1750291200000,
+      "fulfillment": "FBA",
+      "sellerName": "AILIVIN",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 6,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "2376204011",
+          "rank": 1146,
+          "label": "Everyday Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约928件",
+      "amazonUrl": "https://www.amazon.com/dp/B0F5WG6YH2",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B07ZDXDXHC",
+      "parent": "B07ZDXTQY3",
+      "title": "Wacoal Women's Back Appeal Minimizer Unlined Underwire Bra",
+      "brand": "Wacoal",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/7156om5Z3kL._AC_US200_.jpg",
+      "price": 72,
+      "averagePrice": 0,
+      "rating": 4.2,
+      "ratings": 742,
+      "units": 922,
+      "revenue": 66384,
+      "variations": 103,
+      "bsr": 27562,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1598832000000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": null,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 24,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、轻薄无衬垫；月销约922件",
+      "amazonUrl": "https://www.amazon.com/dp/B07ZDXDXHC",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B07SQ37FL6",
+      "parent": "B0D6ZYTX1K",
+      "title": "SPANX Low Profile Minimizer Bra - Minimize Breast Size by up to 1 Inch - Quick-Drying Fabric - Comfortable Bras for Women",
+      "brand": "SPANX",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71Y64ubFYmL._AC_US200_.jpg",
+      "price": 72,
+      "averagePrice": 72,
+      "rating": 3.7,
+      "ratings": 276,
+      "units": 838,
+      "revenue": 60336,
+      "variations": 97,
+      "bsr": 64698,
+      "bsrCv": -10734,
+      "bsrCr": -19.89,
+      "availableDate": 1663891200000,
+      "fulfillment": "FBA",
+      "sellerName": "Pattern.",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 5,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 25,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；缩胸基础结构；月销约838件",
+      "amazonUrl": "https://www.amazon.com/dp/B07SQ37FL6",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B08TMCR4Y9",
+      "parent": "B0CKZ1KS3N",
+      "title": "DELIMIRA Women's Minimizer Seamless Full Coverage Underwire Non Padded Bra",
+      "brand": "DELIMIRA",
+      "imageUrl": "https://m.media-amazon.com/images/I/51kwFuHbKWL._AC_SR200,200_.jpg",
+      "price": 27.99,
+      "averagePrice": 27.99,
+      "rating": 4.2,
+      "ratings": 1844,
+      "units": 789,
+      "revenue": 22084.11,
+      "variations": 45,
+      "bsr": 285142,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": null,
+      "fulfillment": "FBA",
+      "sellerName": "CRZ YOGA",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": null,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 88,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；有钢圈、全罩杯、轻薄无衬垫、无痕T恤；月销约789件",
+      "amazonUrl": "https://www.amazon.com/dp/B08TMCR4Y9",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0F6349L6C",
+      "parent": "B0FTFZXBKS",
+      "title": "BRABIC Minimizer Bras for Women Full Coverage with Supportive Underwire Unlined Plus Size Seamless Bra for Heavy Breast",
+      "brand": "BRABIC",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71-5WGrxkEL._AC_US200_.jpg",
+      "price": 16.99,
+      "averagePrice": 16.99,
+      "rating": 4,
+      "ratings": 181,
+      "units": 738,
+      "revenue": 12538.62,
+      "variations": 23,
+      "bsr": 85349,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1748908800000,
+      "fulfillment": "FBA",
+      "sellerName": "BRABIC",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 1,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 19,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；有钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约738件",
+      "amazonUrl": "https://www.amazon.com/dp/B0F6349L6C",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0FL82ZQSS",
+      "parent": "B0GCJ4CC3K",
+      "title": "Jelly Bras for Women Plus Size Minimizer No Underwire Supportive Full Coverage Wider Straps Seamless Tshirt Bra",
+      "brand": "Easybunny",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71Ta3I2ZJ5L._AC_US200_.jpg",
+      "price": 17.99,
+      "averagePrice": 15.6,
+      "rating": 4.1,
+      "ratings": 485,
+      "units": 706,
+      "revenue": 11013.6,
+      "variations": 38,
+      "bsr": 55983,
+      "bsrCv": 25682,
+      "bsrCr": 31.45,
+      "availableDate": 1756512000000,
+      "fulfillment": "FBA",
+      "sellerName": "Easybunny",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 35,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 33,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；有钢圈、全罩杯、大码大胸、无痕T恤；月销约706件",
+      "amazonUrl": "https://www.amazon.com/dp/B0FL82ZQSS",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B098RZQF99",
+      "parent": "B089ZSXYMJ",
+      "title": "Wingslove Women's Wireless Minimizer Bra Plus Size Non-Padded Soft Full Figure Bra",
+      "brand": "Wingslove",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71IvcF5+HYL._AC_US200_.jpg",
+      "price": 27.99,
+      "averagePrice": 27.99,
+      "rating": 4.2,
+      "ratings": 3542,
+      "units": 654,
+      "revenue": 18305.46,
+      "variations": 432,
+      "bsr": 65605,
+      "bsrCv": 14656,
+      "bsrCr": 18.26,
+      "availableDate": 1628035200000,
+      "fulfillment": "FBA",
+      "sellerName": "Mirry Fashion",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 16,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 31,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "大码大胸"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、大码大胸；月销约654件",
+      "amazonUrl": "https://www.amazon.com/dp/B098RZQF99",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0CL3XC8MF",
+      "parent": "B0C1P9C79G",
+      "title": "Bali Women's One Smooth U Lace Minimizer Bra, Underwire Full-Coverage Convertible Bra",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81nXLPgRnUL._AC_US200_.jpg",
+      "price": 37,
+      "averagePrice": 30.54,
+      "rating": 4.2,
+      "ratings": 569,
+      "units": 608,
+      "revenue": 18568.32,
+      "variations": 66,
+      "bsr": 70783,
+      "bsrCv": -3661,
+      "bsrCr": -5.45,
+      "availableDate": 1697414400000,
+      "fulfillment": "NA",
+      "sellerName": "Prime Online Outlet",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 4,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 28,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "多穿法",
+        "有钢圈",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "轻薄网纱",
+      "matchReason": "轻薄网纱代表款；多穿法、有钢圈、蕾丝/网纱；月销约608件",
+      "amazonUrl": "https://www.amazon.com/dp/B0CL3XC8MF",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0BTL9J8SS",
+      "parent": "B09RK13MD9",
+      "title": "Lemorosy Women's Plus Size Full Coverage Non Padded Wireless Minimizer Bra -Comfort and Double Support",
+      "brand": "Lemorosy",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81nV-NRSBhL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 25.99,
+      "rating": 4.2,
+      "ratings": 715,
+      "units": 594,
+      "revenue": 15438.06,
+      "variations": 264,
+      "bsr": 69503,
+      "bsrCv": 3112,
+      "bsrCr": 4.29,
+      "availableDate": 1675987200000,
+      "fulfillment": "FBA",
+      "sellerName": "Lemorosy",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 31,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约594件",
+      "amazonUrl": "https://www.amazon.com/dp/B0BTL9J8SS",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B09LGLYL7B",
+      "parent": "B09LGVYL12",
+      "title": "Bali Women's One Smooth U Ultra Light Minimizer Underwire Bra Df3490",
+      "brand": "Bali",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81q89mP+8XL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 31.47,
+      "rating": 3.9,
+      "ratings": 500,
+      "units": 551,
+      "revenue": 17339.97,
+      "variations": 80,
+      "bsr": 66208,
+      "bsrCv": 5111,
+      "bsrCr": 7.17,
+      "availableDate": 1645056000000,
+      "fulfillment": "FBM",
+      "sellerName": "91AMBITIONS LLC",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 4,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 28,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈；月销约551件",
+      "amazonUrl": "https://www.amazon.com/dp/B09LGLYL7B",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0GFWQ7SSN",
+      "parent": "B0G1BC9FSF",
+      "title": "Wingslove Women’s Minimizer Bra Wireless Full Coverage Non-Padded Plus Size No Underwire Everyday Comfort",
+      "brand": "Wingslove",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81JFjelFs1L._AC_US200_.jpg",
+      "price": 19.99,
+      "averagePrice": 19.16,
+      "rating": 4.2,
+      "ratings": 111,
+      "units": 539,
+      "revenue": 10327.24,
+      "variations": 240,
+      "bsr": 64543,
+      "bsrCv": 9702,
+      "bsrCr": 13.07,
+      "availableDate": 1769299200000,
+      "fulfillment": "FBA",
+      "sellerName": "Wingslove",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 18,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 30,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "有钢圈",
+        "全罩杯",
+        "大码大胸"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、有钢圈、全罩杯、大码大胸；月销约539件",
+      "amazonUrl": "https://www.amazon.com/dp/B0GFWQ7SSN",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0D3BW4SP3",
+      "parent": "B0GZ44JVCD",
+      "title": "Minimizer Bras for Women Full Coverage Wireless Plus Size Seamless Bralette Removable Pads Adjustable Comfort 32A-42E",
+      "brand": "Airsong",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/610keUtD0qL._AC_US200_.jpg",
+      "price": 23.99,
+      "averagePrice": 23.99,
+      "rating": 3.9,
+      "ratings": 325,
+      "units": 521,
+      "revenue": 12498.79,
+      "variations": 103,
+      "bsr": 87102,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1720137600000,
+      "fulfillment": "FBA",
+      "sellerName": "AirSong",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 1,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 33,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、无痕T恤；月销约521件",
+      "amazonUrl": "https://www.amazon.com/dp/B0D3BW4SP3",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0H36HFJ6M",
+      "parent": "B0H36HFJ6M",
+      "title": "Minimizer Bras for Women, Soft Cloud Minimizer Bra - Seamless, Full Coverage Unlined Plus Size Bras",
+      "brand": "Hilaine",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71GK-jahKdL._AC_US200_.jpg",
+      "price": 28.99,
+      "averagePrice": 0,
+      "rating": 2.5,
+      "ratings": 6,
+      "units": 482,
+      "revenue": 13973.18,
+      "variations": 1,
+      "bsr": 60533,
+      "bsrCv": 343,
+      "bsrCr": 0.56,
+      "availableDate": 1780012800000,
+      "fulfillment": "NA",
+      "sellerName": "Haus Tank",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 1,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "#1 New Releasein Women's Minimizer Bras",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 57,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；全罩杯、大码大胸、轻薄无衬垫、无痕T恤；月销约482件",
+      "amazonUrl": "https://www.amazon.com/dp/B0H36HFJ6M",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0874WY7MJ",
+      "parent": "B08WSC9813",
+      "title": "Dominique Mystique Minimizer Bra #7000 – Seamless Full Figure Underwire Lingerie for Women, Smooths &amp; Shapes",
+      "brand": "Dominique",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71Yu1QCxM6L._AC_US200_.jpg",
+      "price": 50.25,
+      "averagePrice": 50.25,
+      "rating": 4.4,
+      "ratings": 674,
+      "units": 453,
+      "revenue": 22763.25,
+      "variations": 543,
+      "bsr": 98795,
+      "bsrCv": -20538,
+      "bsrCr": -26.24,
+      "availableDate": 1590537600000,
+      "fulfillment": "FBA",
+      "sellerName": "Dynasty Enterprise",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 4,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 41,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无痕日常",
+      "matchReason": "无痕日常代表款；有钢圈、大码大胸、无痕T恤；月销约453件",
+      "amazonUrl": "https://www.amazon.com/dp/B0874WY7MJ",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B09B545Y1B",
+      "parent": "B08LGPLSWM",
+      "title": "Women's Floral Lace Non-Padded Minimizer Full Coverage Underwire Bra",
+      "brand": "MELENECA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81lGNmXOP3L._AC_US200_.jpg",
+      "price": 23.99,
+      "averagePrice": 23.99,
+      "rating": 3.9,
+      "ratings": 4151,
+      "units": 447,
+      "revenue": 10723.53,
+      "variations": 964,
+      "bsr": 101115,
+      "bsrCv": -16293,
+      "bsrCr": -19.21,
+      "availableDate": 1639440000000,
+      "fulfillment": "FBA",
+      "sellerName": "MELENECA Fashion",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 42,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 52,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "轻薄网纱",
+      "matchReason": "轻薄网纱代表款；有钢圈、全罩杯、蕾丝/网纱；月销约447件",
+      "amazonUrl": "https://www.amazon.com/dp/B09B545Y1B",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B075T99ZL9",
+      "parent": "B0DNQXRSXW",
+      "title": "DELIMIRA Women's Strapless Jacquard Minimizer Bra Plus Size Underwire Non-Padded",
+      "brand": "DELIMIRA",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/714+Rj-+TRL._AC_US200_.jpg",
+      "price": 27.99,
+      "averagePrice": 27.99,
+      "rating": 4.1,
+      "ratings": 5997,
+      "units": 396,
+      "revenue": 11084.04,
+      "variations": 219,
+      "bsr": 121061,
+      "bsrCv": -39163,
+      "bsrCr": -47.82,
+      "availableDate": 1510012800000,
+      "fulfillment": "FBA",
+      "sellerName": "CRZ YOGA",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 16,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 39,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "大码大胸",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、大码大胸、蕾丝/网纱；月销约396件",
+      "amazonUrl": "https://www.amazon.com/dp/B075T99ZL9",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0DTHFDWL2",
+      "parent": "B0DTHF18W7",
+      "title": "Women’s Minimizer Bra Front-Close Bras Wireless Full Figure Wirefree Large Bust Bra Jacquard Support Back Posture",
+      "brand": "Curyon",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71z+N6PdqiL._AC_US200_.jpg",
+      "price": 25.99,
+      "averagePrice": 0,
+      "rating": 3.8,
+      "ratings": 80,
+      "units": 359,
+      "revenue": 9330.41,
+      "variations": 235,
+      "bsr": 86254,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1754352000000,
+      "fulfillment": "FBA",
+      "sellerName": "UTO",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": null,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 41,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "大码大胸",
+        "蕾丝/网纱",
+        "体态支撑"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、大码大胸、蕾丝/网纱、体态支撑；月销约359件",
+      "amazonUrl": "https://www.amazon.com/dp/B0DTHFDWL2",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0GRMN5ZS7",
+      "parent": "B0FQTXL4GZ",
+      "title": "Minimizer Bras for Women Full Coverage Underwire Plus Size Bra, Side Smoothing Floral Lace Unlined Bras",
+      "brand": "Vukoiswe",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81H5e5puHbL._AC_US200_.jpg",
+      "price": 21.99,
+      "averagePrice": 21.99,
+      "rating": 4.2,
+      "ratings": 143,
+      "units": 312,
+      "revenue": 6860.88,
+      "variations": 150,
+      "bsr": 121497,
+      "bsrCv": 13101,
+      "bsrCr": 9.73,
+      "availableDate": 1777939200000,
+      "fulfillment": "FBA",
+      "sellerName": "vukoiswe",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 60,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 44,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "背部/侧比平整",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "背部平整",
+      "matchReason": "背部平整代表款；有钢圈、背部/侧比平整、全罩杯、大码大胸；月销约312件",
+      "amazonUrl": "https://www.amazon.com/dp/B0GRMN5ZS7",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0BGLG94BS",
+      "parent": "B09GB6BDD2",
+      "title": "wirarpa Bras for Women Ultra Soft Wire Free Comfortable Bra Full Coverage Plus Size Minimizer Non Padded",
+      "brand": "wirarpa",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/61Fvy9yVU9L._AC_US200_.jpg",
+      "price": 41.99,
+      "averagePrice": 0,
+      "rating": 4.1,
+      "ratings": 4269,
+      "units": 307,
+      "revenue": 12890.931,
+      "variations": 189,
+      "bsr": 134852,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1696118400000,
+      "fulfillment": "FBA",
+      "sellerName": "HK NANBIN",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": null,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 38,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约307件",
+      "amazonUrl": "https://www.amazon.com/dp/B0BGLG94BS",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0CWQ83HVN",
+      "parent": "B0CYQ78FQZ",
+      "title": "Lemorosy Minimizer Strapless Bra for Women Large Bust Full Support n-Slip Convertible Underwire Bandeau Bra",
+      "brand": "Lemorosy",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71c3Qs6HlLL._AC_US200_.jpg",
+      "price": 24.99,
+      "averagePrice": 24.99,
+      "rating": 4.2,
+      "ratings": 59,
+      "units": 307,
+      "revenue": 7671.93,
+      "variations": 42,
+      "bsr": 106528,
+      "bsrCv": 30678,
+      "bsrCr": 22.36,
+      "availableDate": 1712707200000,
+      "fulfillment": "FBA",
+      "sellerName": "Lemorosy",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 72,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "多穿法",
+        "有钢圈",
+        "大码大胸"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、多穿法、有钢圈、大码大胸；月销约307件",
+      "amazonUrl": "https://www.amazon.com/dp/B0CWQ83HVN",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0F4KGGYQ2",
+      "parent": "B0F5V7TDMZ",
+      "title": "Minimizer Bras for Women Full Coverage Plus Size Bras with Underwire Support for Large Breasts",
+      "brand": "BRABIC",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71Yh8BIAGOL._AC_US200_.jpg",
+      "price": 9.99,
+      "averagePrice": 9.99,
+      "rating": 4.1,
+      "ratings": 231,
+      "units": 301,
+      "revenue": 3006.99,
+      "variations": 21,
+      "bsr": 141170,
+      "bsrCv": -16531,
+      "bsrCr": -13.26,
+      "availableDate": 1747094400000,
+      "fulfillment": "AMZ",
+      "sellerName": "Amazon",
+      "sellerNation": "US",
+      "monthlyReviewIncrease": 17,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 50,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯、大码大胸；月销约301件",
+      "amazonUrl": "https://www.amazon.com/dp/B0F4KGGYQ2",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0GWM4R7H3",
+      "parent": "B0GWM2RPKN",
+      "title": "Women's Minimizer Bra Full Coverage Unlined Underwire Support for Large Bust High Back Coverage Daily Bra 34C-40F",
+      "brand": "Airsong",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71w1p38TDIL._AC_US200_.jpg",
+      "price": 32.99,
+      "averagePrice": 32.99,
+      "rating": 4.6,
+      "ratings": 11,
+      "units": 293,
+      "revenue": 9666.07,
+      "variations": 32,
+      "bsr": 196675,
+      "bsrCv": -59008,
+      "bsrCr": -42.86,
+      "availableDate": 1778457600000,
+      "fulfillment": "FBA",
+      "sellerName": "AirSong",
+      "sellerNation": "CN",
+      "monthlyReviewIncrease": 4,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 210,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "核心缩胸"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "有钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "全罩杯缩胸",
+      "matchReason": "全罩杯缩胸代表款；有钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约293件",
+      "amazonUrl": "https://www.amazon.com/dp/B0GWM4R7H3",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0G4ZTFJ4S",
+      "parent": "B0G4ZTFJ4S",
+      "title": "Women's Minimizer Bra Everyday Comfort Wirefree Plus Size Non Padded Large Busts(Beige,44DD)",
+      "brand": "UPGAMR",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71t98HjPSEL._AC_US200_.jpg",
+      "price": 14.99,
+      "averagePrice": 14.99,
+      "rating": 4.4,
+      "ratings": 13,
+      "units": 277,
+      "revenue": 4152.23,
+      "variations": 88,
+      "bsr": 163783,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1769385600000,
+      "fulfillment": "NA",
+      "sellerName": "Gavueus",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 60,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "补充样本"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "大码大胸",
+        "轻薄无衬垫"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、大码大胸、轻薄无衬垫；月销约277件",
+      "amazonUrl": "https://www.amazon.com/dp/B0G4ZTFJ4S",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0G5173WGF",
+      "parent": "B0G5173WGF",
+      "title": "Full Coverage Minimizer Bras for Women Comfort Wirefree Plus Size Non Padded Large Busts Lace Jacquard(Nude,40D)",
+      "brand": "UPGAMR",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81FRkc8bohL._AC_US200_.jpg",
+      "price": 19.99,
+      "averagePrice": 19.28,
+      "rating": 4.5,
+      "ratings": 13,
+      "units": 269,
+      "revenue": 5186.32,
+      "variations": 1,
+      "bsr": 188047,
+      "bsrCv": -30046,
+      "bsrCr": -19.02,
+      "availableDate": 1769385600000,
+      "fulfillment": "NA",
+      "sellerName": "Gavueus",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 93,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "补充样本"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约269件",
+      "amazonUrl": "https://www.amazon.com/dp/B0G5173WGF",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0G518ZNXF",
+      "parent": "B0G518ZNXF",
+      "title": "Full Coverage Minimizer Bras for Women Comfort Wirefree Plus Size Non Padded Large Busts Lace Jacquard(Nude,40DD)",
+      "brand": "UPGAMR",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/81FRkc8bohL._AC_US200_.jpg",
+      "price": 14.99,
+      "averagePrice": 0,
+      "rating": 4.4,
+      "ratings": 13,
+      "units": 268,
+      "revenue": 4017.3198,
+      "variations": 89,
+      "bsr": 188047,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1769385600000,
+      "fulfillment": "NA",
+      "sellerName": "Gavueus",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 93,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "补充样本"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约268件",
+      "amazonUrl": "https://www.amazon.com/dp/B0G518ZNXF",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0G51C1NWT",
+      "parent": "B0G51C1NWT",
+      "title": "Full Coverage Minimizer Bras for Women Comfort Wirefree Plus Size Non Padded Large Busts Lace Jacquard(Black,38G)",
+      "brand": "UPGAMR",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/810dlvlmb-L._AC_US200_.jpg",
+      "price": 19.99,
+      "averagePrice": 0,
+      "rating": 4.2,
+      "ratings": 14,
+      "units": 260,
+      "revenue": 5197.4,
+      "variations": 91,
+      "bsr": 188047,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1769385600000,
+      "fulfillment": "NA",
+      "sellerName": "Gavueus",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": 0,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "N",
+        "video": "Y"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 54,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "补充样本"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无钢圈",
+        "全罩杯",
+        "大码大胸",
+        "轻薄无衬垫",
+        "蕾丝/网纱"
+      ],
+      "primaryGroup": "柔性无钢圈",
+      "matchReason": "柔性无钢圈代表款；无钢圈、全罩杯、大码大胸、轻薄无衬垫；月销约260件",
+      "amazonUrl": "https://www.amazon.com/dp/B0G51C1NWT",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    },
+    {
+      "asin": "B0C65D759W",
+      "parent": "B0F99BSFQ2",
+      "title": "HACI Women's Minimizer Strapless Bra Anti-Slip Underwire Bandeau for Plus Size Seamless Support",
+      "brand": "HACI",
+      "imageUrl": "https://images-na.ssl-images-amazon.com/images/I/71r13WO5omL._AC_US200_.jpg",
+      "price": 24.99,
+      "averagePrice": 0,
+      "rating": 4.2,
+      "ratings": 62,
+      "units": 260,
+      "revenue": 6497.4,
+      "variations": 42,
+      "bsr": 116174,
+      "bsrCv": null,
+      "bsrCr": null,
+      "availableDate": 1689724800000,
+      "fulfillment": "FBA",
+      "sellerName": "HACI US",
+      "sellerNation": "HK",
+      "monthlyReviewIncrease": null,
+      "badge": {
+        "bestSeller": "N",
+        "amazonChoice": "N",
+        "newRelease": "N",
+        "ebc": "Y",
+        "video": "N"
+      },
+      "subcategories": [
+        {
+          "code": "1045002",
+          "rank": 64,
+          "label": "Women's Minimizer Bras"
+        }
+      ],
+      "matchedGroups": [
+        "补充样本"
+      ],
+      "matchedKeywords": [
+        "minimizer bra"
+      ],
+      "structureClues": [
+        "无肩带/抹胸",
+        "有钢圈",
+        "大码大胸",
+        "无痕T恤"
+      ],
+      "primaryGroup": "无肩带稳定",
+      "matchReason": "无肩带稳定代表款；无肩带/抹胸、有钢圈、大码大胸、无痕T恤；月销约260件",
+      "amazonUrl": "https://www.amazon.com/dp/B0C65D759W",
+      "sourceNote": "SellerSprite US，2026-06月度估算；尺码/材质需进入详情页复核"
+    }
+  ],
+  "sampleSummary": {
+    "count": 50,
+    "monthly_units_sum": 142027,
+    "monthly_revenue_sum": 3952995.4607999995,
+    "median_price": 25.99,
+    "avg_rating": 4.14,
+    "top_brands": [
+      [
+        "Bali",
+        41228
+      ],
+      [
+        "Vanity Fair",
+        40128
+      ],
+      [
+        "DELIMIRA",
+        17644
+      ],
+      [
+        "Wingslove",
+        7921
+      ],
+      [
+        "Wacoal",
+        7476
+      ],
+      [
+        "MELENECA",
+        3513
+      ],
+      [
+        "PLAYTEX",
+        3080
+      ],
+      [
+        "Glamorise",
+        2701
+      ],
+      [
+        "Olga",
+        2486
+      ],
+      [
+        "TELIMUSSTO",
+        1588
+      ]
+    ],
+    "structure_counts": [
+      [
+        "大码大胸",
+        34
+      ],
+      [
+        "有钢圈",
+        29
+      ],
+      [
+        "全罩杯",
+        27
+      ],
+      [
+        "轻薄无衬垫",
+        26
+      ],
+      [
+        "无钢圈",
+        18
+      ],
+      [
+        "无痕T恤",
+        13
+      ],
+      [
+        "蕾丝/网纱",
+        12
+      ],
+      [
+        "无肩带/抹胸",
+        8
+      ],
+      [
+        "背部/侧比平整",
+        2
+      ],
+      [
+        "多穿法",
+        2
+      ],
+      [
+        "体态支撑",
+        1
+      ]
+    ]
+  },
+  "reviewScope": [
+    {
+      "asin": "B00BXMHSCC",
+      "name": "Vanity Fair Beauty Back",
+      "negative": 15,
+      "positive": 8
+    },
+    {
+      "asin": "B0012M839K",
+      "name": "Bali Passion for Comfort",
+      "negative": 15,
+      "positive": 0
+    },
+    {
+      "asin": "B083HWX2ZX",
+      "name": "DELIMIRA Strapless",
+      "negative": 15,
+      "positive": 8
+    },
+    {
+      "asin": "B01NAEXDAZ",
+      "name": "Wingslove Wirefree",
+      "negative": 15,
+      "positive": 8
+    },
+    {
+      "asin": "B088KNW69Z",
+      "name": "Playtex 18 Hour",
+      "negative": 15,
+      "positive": 8
+    },
+    {
+      "asin": "B07D7936DF",
+      "name": "Glamorise MagicLift",
+      "negative": 15,
+      "positive": 8
+    },
+    {
+      "asin": "B0D7VC8BTR",
+      "name": "DELIMIRA Seamless",
+      "negative": 15,
+      "positive": 0
+    },
+    {
+      "asin": "B09YCQVTTL",
+      "name": "Wacoal Strapless",
+      "negative": 15,
+      "positive": 0
+    },
+    {
+      "asin": "B09NN919KV",
+      "name": "TELIMUSSTO Lace",
+      "negative": 5,
+      "positive": 0
+    },
+    {
+      "asin": "B08TR7XYHC",
+      "name": "MELENECA Strapless",
+      "negative": 15,
+      "positive": 0
+    },
+    {
+      "asin": "B0GJ2T3SYT",
+      "name": "HACI Wirefree",
+      "negative": 15,
+      "positive": 0
+    }
+  ],
+  "painMatrix": [
+    {
+      "priority": 1,
+      "painPoint": "尺码偏差与不同杯段不一致",
+      "reviewHits": 76,
+      "sampleBase": 155,
+      "severity": 5,
+      "sourceCoverage": 3,
+      "affected": "全结构，尤其DDD–I杯与大底围",
+      "mechanism": "同一尺码在底围拉伸、杯容与肩带长度上缺少分段级放，消费者出现底围过紧、杯小或杯空。",
+      "solution": "按杯段建立独立版型与拉伸规格；大杯段增加杯深、侧托和肩带有效长度；详情页给出身体测量与姐妹码规则。",
+      "validation": "每个尺码段至少3种体型试穿；底围伸长率与杯容做批次公差；穿脱后复测。",
+      "representativeAsins": "B00BXMHSCC; B0012M839K; B083HWX2ZX; B01NAEXDAZ; B0D7VC8BTR",
+      "caveat": "关键词辅助聚类，类别可重叠。"
+    },
+    {
+      "priority": 2,
+      "painPoint": "支撑不足、压扁或产生单一胸型",
+      "reviewHits": 34,
+      "sampleBase": 155,
+      "severity": 5,
+      "sourceCoverage": 3,
+      "affected": "无钢圈、大胸及无肩带款",
+      "mechanism": "仅靠高弹面料压缩，没有内侧托举与分离结构，容易下垂、外扩、扁平或形成uniboob。",
+      "solution": "三片式全罩杯＋内侧托片＋稳定中心鸡心；将缩胸从单纯压缩改为“向内集中、向侧分散、保持分离”。",
+      "validation": "静态与抬臂/弯腰动态试穿；正侧面投影、乳间分离和上胸溢出对比。",
+      "representativeAsins": "B01NAEXDAZ; B088KNW69Z; B07D7936DF; B09YCQVTTL",
+      "caveat": "Amazon评论与TikTok“No uniboob/提升分离”卖点交叉验证。"
+    },
+    {
+      "priority": 3,
+      "painPoint": "钢圈刺痛、穿出与五金失效",
+      "reviewHits": 24,
+      "sampleBase": 155,
+      "severity": 5,
+      "sourceCoverage": 3,
+      "affected": "有钢圈款及高频穿洗场景",
+      "mechanism": "钢圈形状与胸底不匹配，通道过硬或端部加固不足；洗后钢圈穿出、钩扣变形。",
+      "solution": "柔性钢圈＋加宽绒面钢圈通道；端部套管与套结加固；大杯段调整钢圈弧度，避免侧腋压迫。",
+      "validation": "20次洗涤＋50次穿脱弯折；钢圈端部穿刺、通道位移、钩扣变形零失效。",
+      "representativeAsins": "B00BXMHSCC; B0012M839K; B0D7VC8BTR; B08TR7XYHC",
+      "caveat": "失效次数来自抽样评论，不代表总体退货率。"
+    },
+    {
+      "priority": 4,
+      "painPoint": "勒压刺痛与肩带负担",
+      "reviewHits": 23,
+      "sampleBase": 155,
+      "severity": 4,
+      "sourceCoverage": 3,
+      "affected": "大胸、长时间穿着与窄肩用户",
+      "mechanism": "重量集中在窄肩带、硬钢圈或窄底围，造成肩痕、侧腋切割和鸡心刺痛。",
+      "solution": "前段加宽缓压肩带，后段可调；软包钢圈与加宽下扒；按杯段增加肩带宽度和底围支撑。",
+      "validation": "8小时穿着；肩压、侧腋红痕、肩带滑移每2小时记录。",
+      "representativeAsins": "B00BXMHSCC; B0012M839K; B083HWX2ZX; B08TR7XYHC",
+      "caveat": "舒适度需按不同肩斜和胸根宽度复核。"
+    },
+    {
+      "priority": 5,
+      "painPoint": "轻薄无衬垫与露点之间的冲突",
+      "reviewHits": 30,
+      "sampleBase": 155,
+      "severity": 4,
+      "sourceCoverage": 2,
+      "affected": "无衬垫、薄杯及浅色款",
+      "mechanism": "消费者喜欢轻薄透气，但在T恤和浅色上衣下不接受露点或杯面褶皱。",
+      "solution": "保留无厚垫，增加局部超薄不透点心区；双层轻量杯面并控制经纬稳定性。",
+      "validation": "白色紧身T恤、侧光与运动后湿态可见性测试；不得明显增厚杯体。",
+      "representativeAsins": "B00BXMHSCC; B083HWX2ZX; B08TR7XYHC",
+      "caveat": "产品页需明确“无厚垫但含局部遮点层”。"
+    },
+    {
+      "priority": 6,
+      "painPoint": "闷热、摩擦与面料刺激",
+      "reviewHits": 32,
+      "sampleBase": 155,
+      "severity": 4,
+      "sourceCoverage": 3,
+      "affected": "夏季、长时间穿着和敏感肌",
+      "mechanism": "高克重压缩面料与蕾丝接缝积热，粗糙边缘摩擦皮肤。",
+      "solution": "吸湿快干里层＋轻量稳定网布外层；腋下与下扒使用柔软包边；减少高摩擦蕾丝直接接触。",
+      "validation": "30℃环境4小时穿着；湿态干燥时间、腋下摩擦和皮肤红痕记录。",
+      "representativeAsins": "B0012M839K; B083HWX2ZX; B088KNW69Z; B09NN919KV",
+      "caveat": "面料词命中与实际热感并非一一对应，需实测。"
+    },
+    {
+      "priority": 7,
+      "painPoint": "缩胸效果不明确或视觉更显大",
+      "reviewHits": 18,
+      "sampleBase": 155,
+      "severity": 4,
+      "sourceCoverage": 3,
+      "affected": "高投影胸型与不合身尺码",
+      "mechanism": "过度上托、外扩或单层压缩可能让正面/侧面视觉更大。",
+      "solution": "以三维分散投影和侧向集中为目标；用内托片控制侧扩，避免将重量全部推向上胸。",
+      "validation": "统一紧身上衣下前/侧投影拍摄；目标“视觉缩小1–1.5杯”仅在验证通过后使用。",
+      "representativeAsins": "B00BXMHSCC; B0012M839K; B088KNW69Z; B0GJ2T3SYT",
+      "caveat": "不得把主观视觉结果当作医疗或人体改变宣称。"
+    },
+    {
+      "priority": 8,
+      "painPoint": "背部卷边、上移与侧比不平整",
+      "reviewHits": 11,
+      "sampleBase": 155,
+      "severity": 4,
+      "sourceCoverage": 3,
+      "affected": "大底围、短上身及软组织明显用户",
+      "mechanism": "后比过窄、弹力梯度不合理或底围过松，导致后背上移与卷边。",
+      "solution": "宽U型后背＋高侧比；渐进式弹力Power Mesh；边缘无痕贴合但保留稳定底围。",
+      "validation": "坐立、抬臂、弯腰循环；后背上移≤1cm作为研发目标，卷边不得持续。",
+      "representativeAsins": "B0012M839K; B07D7936DF; B0D7VC8BTR",
+      "caveat": "1cm为内部研发目标，需按尺码段验证。"
+    },
+    {
+      "priority": 9,
+      "painPoint": "无肩带下滑与大胸支撑矛盾",
+      "reviewHits": 10,
+      "sampleBase": 155,
+      "severity": 5,
+      "sourceCoverage": 3,
+      "affected": "无肩带/抹胸款，尤其G杯以上",
+      "mechanism": "上缘抓附不足、侧骨位置不当或底围偏紧，出现下滑、勒压或无法提升。",
+      "solution": "将无肩带作为独立版型：软质微抓附上缘、分区弹力下围、侧骨与可拆肩带；大杯段加高侧比。",
+      "validation": "抬臂50次＋步行2小时；上缘位移、侧腋压痕和承托高度记录。",
+      "representativeAsins": "B083HWX2ZX; B09YCQVTTL; B08TR7XYHC",
+      "caveat": "不建议用日常有肩带版简单去掉肩带。"
+    },
+    {
+      "priority": 10,
+      "painPoint": "款式/肤色包容与“功能款显老”",
+      "reviewHits": 0,
+      "sampleBase": 155,
+      "severity": 3,
+      "sourceCoverage": 2,
+      "affected": "追求日常隐形与自我表达的用户",
+      "mechanism": "传统缩胸文胸颜色单一、视觉厚重；肤色覆盖不足，功能与时尚被割裂。",
+      "solution": "核心多肤色＋黑色，季节色加入Transformative Teal、Berry与Fresh Purple；中心鸡心用微点网纱或轻量蕾丝提升精致感。",
+      "validation": "浅/深肤色与白T隐形测试；用户访谈验证“现代、不显老、不过度性感”。",
+      "representativeAsins": "趋势/品牌独立站/Pinterest证据",
+      "caveat": "该项主要来自趋势和公开消费者讨论，不计入Amazon负评命中。"
+    }
+  ],
+  "designDirections": [
+    {
+      "priority": 1,
+      "theme": "AirSculpt三片式缩胸杯",
+      "feature": "三片式全罩杯＋内侧托片＋稳定鸡心",
+      "why": "同时解决缩胸、支撑和uniboob，不依赖单纯压扁。",
+      "validation": "前/侧投影、乳间分离、上胸溢出、动态稳定。"
+    },
+    {
+      "priority": 2,
+      "theme": "CoolDual轻薄双层杯",
+      "feature": "外层定型网布＋内层吸湿柔软面；局部超薄遮点区",
+      "why": "兼顾轻薄透气与T恤下不露点。",
+      "validation": "30℃穿着、湿态干燥、白T侧光。"
+    },
+    {
+      "priority": 3,
+      "theme": "FlexWire耐久钢圈系统",
+      "feature": "柔性钢圈、宽软通道、端部套管与套结",
+      "why": "钢圈穿出和刺痛是高严重度退货原因。",
+      "validation": "20洗＋50次穿脱弯折，无穿出/变形。"
+    },
+    {
+      "priority": 4,
+      "theme": "Pressure-Share缓压肩带",
+      "feature": "C–F杯18mm前肩带；G–I杯22mm，后段可调",
+      "why": "按杯段分散重量，减少肩痕和滑肩。",
+      "validation": "8小时压力/滑移记录。"
+    },
+    {
+      "priority": 5,
+      "theme": "Smooth-U渐进式后背",
+      "feature": "高侧比宽U背、渐进弹力Power Mesh、柔软贴边",
+      "why": "减少背部卷边、上移和勒痕。",
+      "validation": "抬臂/坐立/弯腰循环，目标位移≤1cm。"
+    },
+    {
+      "priority": 6,
+      "theme": "Fit Architecture分段级放",
+      "feature": "首发34C–46I；按C–DD、DDD–G、H–I三段独立级放",
+      "why": "降低大杯段杯容、底围和肩带长度失真。",
+      "validation": "每段至少3种体型试穿并记录公差。"
+    },
+    {
+      "priority": 7,
+      "theme": "Inclusive Nude＋季节色",
+      "feature": "Warm Sand、Caramel、Cocoa、Espresso、Black；季节色Transformative Teal/Berry/Fresh Purple",
+      "why": "满足隐形与表达需求，并承接2026色彩趋势。",
+      "validation": "不同肤色/白T隐形性与消费者偏好。"
+    },
+    {
+      "priority": 8,
+      "theme": "Elevated Mesh精致功能外观",
+      "feature": "中心微点网纱、轻量花卉线条、无厚重蕾丝堆叠",
+      "why": "功能款需要现代化，兼容内衣外穿与精致日常。",
+      "validation": "外观偏好测试，不牺牲杯面稳定与舒适。"
+    },
+    {
+      "priority": 9,
+      "theme": "Strapless独立支线",
+      "feature": "分区抓附上缘、加高侧比、可拆肩带、侧骨",
+      "why": "TikTok无肩带款需求大，但大胸稳定门槛高。",
+      "validation": "抬臂50次＋步行2小时位移测试。"
+    },
+    {
+      "priority": 10,
+      "theme": "卖点证据化",
+      "feature": "尺码/体型实穿、白T前后对比、8小时舒适与透气演示",
+      "why": "TikTok高转化内容依赖可视化结果；避免空泛材料自夸。",
+      "validation": "内容用语与实测一致，不做医疗或永久塑形宣称。"
+    }
+  ],
+  "tiktokEvidence": [
+    {
+      "product": "HSIA Joan Comfortzone",
+      "productId": "1731579665674768582",
+      "productUrl": "https://www.fastmoss.com/e-commerce/detail/1731579665674768582",
+      "priceMin": 29.99,
+      "priceMax": 37.99,
+      "rating": 4.7,
+      "reviewCount": 346,
+      "l28Gmv": 138904.23,
+      "l28Units": 4577,
+      "l28Creators": 97,
+      "l28Videos": 121,
+      "adShare": 51,
+      "affiliateShare": 31,
+      "videoShare": 52,
+      "topVideoId": "7654707025913433357",
+      "topVideoUrl": "https://www.fastmoss.com/media-source/video/7654707025913433357",
+      "topCreator": "plussizemomstyle",
+      "topCreatorUrl": "https://www.fastmoss.com/influencer/detail/7494432720740402206",
+      "topVideoPlays": 358000,
+      "topVideoGmv": 19343.55,
+      "topVideoCaption": "38G fits true to size #coolingbra #minimizerbra #summervibes #hsiabra #tiktokshopcreatorpicks @Hsia-Bras ",
+      "topVideoIsAd": true,
+      "contentInference": "真人报尺码＋冷感/舒适/缩胸结果；功能信息密度高。",
+      "caveat": "FastMoss，近28天，截至2026-07-13；视频脚本接口SSL失败，内容结构根据caption与互动/成交指标推断。"
+    },
+    {
+      "product": "HSIA Bella Strapless",
+      "productId": "1730931316408357062",
+      "productUrl": "https://www.fastmoss.com/e-commerce/detail/1730931316408357062",
+      "priceMin": 35.75,
+      "priceMax": 35.75,
+      "rating": 4.3,
+      "reviewCount": 6144,
+      "l28Gmv": 825465.43,
+      "l28Units": 22997,
+      "l28Creators": 424,
+      "l28Videos": 729,
+      "adShare": 48,
+      "affiliateShare": 53,
+      "videoShare": 52,
+      "topVideoId": "7654975799111552286",
+      "topVideoUrl": "https://www.fastmoss.com/media-source/video/7654975799111552286",
+      "topCreator": "leah_runhideandread",
+      "topCreatorUrl": "https://www.fastmoss.com/influencer/detail/6863662070174204933",
+      "topVideoPlays": 975000,
+      "topVideoGmv": 17296.52,
+      "topVideoCaption": "#minimizerbra #straplessbra #summerwins #dealsforyoudays #haiabra ",
+      "topVideoIsAd": true,
+      "contentInference": "直接承诺不下滑、不溢杯、不勒；适配露肩/吊带场景。",
+      "caveat": "FastMoss，近28天，截至2026-07-13；视频脚本接口SSL失败，内容结构根据caption与互动/成交指标推断。"
+    },
+    {
+      "product": "Lacsper Daisy Lace",
+      "productId": "1731589895165612280",
+      "productUrl": "https://www.fastmoss.com/e-commerce/detail/1731589895165612280",
+      "priceMin": 22.24,
+      "priceMax": 22.24,
+      "rating": 4.4,
+      "reviewCount": 6140,
+      "l28Gmv": 101248.32,
+      "l28Units": 4612,
+      "l28Creators": 85,
+      "l28Videos": 104,
+      "adShare": 81,
+      "affiliateShare": 85,
+      "videoShare": 84,
+      "topVideoId": "7656923245215567135",
+      "topVideoUrl": "https://www.fastmoss.com/media-source/video/7656923245215567135",
+      "topCreator": "errrcat",
+      "topCreatorUrl": "https://www.fastmoss.com/influencer/detail/6787177090510390277",
+      "topVideoPlays": 982900,
+      "topVideoGmv": 10864.71,
+      "topVideoCaption": "I wouldn’t steer ya wrong sis!!! #tiktokshopdealsforyoudays #dealsforyoudays #summerwins #plussizebra #brareview ",
+      "topVideoIsAd": true,
+      "contentInference": "大胸真人实穿＋“no uniboob/提升分离”痛点回应。",
+      "caveat": "FastMoss，近28天，截至2026-07-13；视频脚本接口SSL失败，内容结构根据caption与互动/成交指标推断。"
+    }
+  ],
+  "trendSources": [
+    {
+      "platform": "WGSN",
+      "theme": "A/W 26/27 女装确认",
+      "insight": "舒适与怀旧居于核心；强调耐久、模块化、深色基础、Statement Red与波点。",
+      "implication": "缩胸基础款保持耐穿与舒适，用微点网纱/深色季节款更新经典。",
+      "url": "https://www.wgsn.com/en/blog/catwalk-trend-confirmations-womens-w-26-27",
+      "caveat": "公开摘要，完整报告需订阅。"
+    },
+    {
+      "platform": "WGSN x Coloro",
+      "theme": "A/W 26/27关键色",
+      "insight": "Transformative Teal、Fresh Purple等作为2026/27关键色。",
+      "implication": "用于季节小批量，不替代多肤色核心盘。",
+      "url": "https://www.wgsn.com/jp/blog/key-colours-w-26-27",
+      "caveat": "公开页面。"
+    },
+    {
+      "platform": "WGSN",
+      "theme": "S/S 26女装预测",
+      "insight": "柔和体量、褪色粉彩、精致蕾丝、透明叠层、度假印花与波点。",
+      "implication": "中心鸡心采用轻量网纱/微点或克制花卉，而非厚重传统蕾丝。",
+      "url": "https://www.wgsn.com/pt/blog/previsoes-das-passarelas-p-v-26-moda-feminina",
+      "caveat": "公开摘要。"
+    },
+    {
+      "platform": "WGSN",
+      "theme": "S/S 25/26色彩数据",
+      "insight": "Enhanced Neutrals在秀场色彩中占36.5%，同比增长1.7ppt。",
+      "implication": "Warm Sand、Caramel、Cocoa等作为商业主色。",
+      "url": "https://www.wgsn.com/pt/blog/dados-analiticos-tendencias-de-moda-p-v-2025-26",
+      "caveat": "秀场数据，不等同内衣销量。"
+    },
+    {
+      "platform": "WGSN",
+      "theme": "Top Trends 2026",
+      "insight": "消费者寻找稳定与低摩擦体验；安抚、支持成为价值驱动。",
+      "implication": "产品语言从“强力压缩”转向“安静支撑、几乎忘记穿着”。",
+      "url": "https://www.wgsn.com/en/blog/top-trends-2026-why-does-everything-suddenly-feel-unserious",
+      "caveat": "宏观消费者趋势。"
+    },
+    {
+      "platform": "Who What Wear",
+      "theme": "2026内衣趋势",
+      "insight": "Soft Structures、轻量柔性材料、舒适与自信并存。",
+      "implication": "优先柔性钢圈/无厚垫、轻量工程而非僵硬塑形。",
+      "url": "https://www.whowhatwear.com/fashion/trends/lingerie-trends-2026",
+      "caveat": "媒体专家采访，非销售数据。"
+    },
+    {
+      "platform": "Livetrend",
+      "theme": "S/S 26 Lingerie",
+      "insight": "Comfort Cottons与Elevated Mesh。",
+      "implication": "吸湿亲肤内层＋视觉精致的透气网布。",
+      "url": "https://livetrend.co/wp-content/uploads/2024/02/SS26-LINGERIE.pdf",
+      "caveat": "第三方趋势预测。"
+    },
+    {
+      "platform": "蝶讯",
+      "theme": "趋势平台能力",
+      "insight": "公开页面覆盖秀场、色彩、面料、图案、工艺与款式。",
+      "implication": "建议设计团队在订阅端复核内衣专属色彩/面料报告。",
+      "url": "https://www.diexun.com/",
+      "caveat": "本次未获取付费报告内容，不作为具体趋势结论。"
+    },
+    {
+      "platform": "Pinterest",
+      "theme": "Beauty Back Strapless",
+      "insight": "全罩杯、无肩带、多穿法与背部平整的组合灵感。",
+      "implication": "无肩带支线采用高侧比与平整后背，而非单纯抹胸。",
+      "url": "https://in.pinterest.com/pin/429179039509530461/",
+      "caveat": "视觉灵感，非销量证据。"
+    },
+    {
+      "platform": "Pinterest",
+      "theme": "CoolComfort Smoothing",
+      "insight": "无衬垫全罩杯、平整与肩压缓解的视觉表达。",
+      "implication": "正背面对比和缓压肩带成为设计/内容重点。",
+      "url": "https://in.pinterest.com/pin/coolcomfort-smoothing-full-coverage-unlined-underwire-minimizer-bra--1116752038842703535/",
+      "caveat": "视觉灵感。"
+    },
+    {
+      "platform": "品牌独立站 HSIA",
+      "theme": "CoolComfort",
+      "insight": "双层冷感、缩小1–1.5杯、柔性钢圈、宽肩带、U背与平整侧比。",
+      "implication": "验证这些功能已被市场教育；研发需在耐久、遮点和尺码一致性上超越。",
+      "url": "https://www.hsialife.com/products/coolcomfort-smoothing-unlined-minimizer-underwire-bra-copy",
+      "caveat": "品牌自述，需评论/测试交叉验证。"
+    },
+    {
+      "platform": "品牌独立站 Glamorise",
+      "theme": "MagicLift",
+      "insight": "无钢圈内托结构、宽缓压肩带、吸湿棉混纺、约缩小一杯。",
+      "implication": "无钢圈支线需要独立内托而非只用弹力面料。",
+      "url": "https://glamorise.com/products/magiclift-minimizer-bra-black",
+      "caveat": "品牌自述。"
+    },
+    {
+      "platform": "品牌独立站 Wacoal",
+      "theme": "Simple Shaping",
+      "insight": "无衬垫单层全罩杯、缩小胸围约1英寸、轻薄透气。",
+      "implication": "高价市场接受简洁无痕，但评论痛点要求更好舒适与尺寸一致性。",
+      "url": "https://wacoal-america.com/products/simple-shaping-minimizer-bra-black?bvstate=pg%3A3%2Fct%3Ar",
+      "caveat": "品牌自述。"
+    }
+  ],
+  "designSpec": {
+    "conceptName": "AirSculpt Cool Minimizer",
+    "targetUser": "美国市场大胸女性，日常T恤/衬衫/轻薄连衣裙场景",
+    "firstLaunchSizes": "34C–46I，按C–DD / DDD–G / H–I三段独立级放",
+    "targetRetail": "US$29.99–34.99",
+    "corePromise": "在保持胸部自然分离与全天舒适的前提下，降低侧面投影、平整侧背，并在T恤下保持轻薄隐形。",
+    "coreStructure": "三片式全罩杯、内侧托片、双层透气杯、局部超薄遮点、柔性钢圈、缓压肩带、高侧比宽U背",
+    "colorPlan": "核心：Warm Sand / Caramel / Cocoa / Espresso / Black；季节：Transformative Teal / Berry Wine / Fresh Purple",
+    "materials": "外层轻量稳定网布；内层吸湿柔软针织；侧比渐进弹力Power Mesh；柔软包边；耐洗钢圈通道",
+    "notClaims": "不使用永久塑形、医学矫正或未经验证的固定缩胸杯数宣称；1–1.5杯仅作为研发验证目标。"
+  }
+}

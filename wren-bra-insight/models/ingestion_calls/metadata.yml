@@ -1,0 +1,98 @@
+name: ingestion_calls
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: source_call
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: provider
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Data provider such as fastmoss, sellersprite, or sif.
+- name: tool_name
+  type: VARCHAR(128)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: request_hash
+  type: BINARY(32)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: request_params
+  type: JSON
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: status
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: summary
+  type: VARCHAR(1000)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: remote_row_count
+  type: UINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Largest list row count in the MCP response.
+- name: new_entity_count
+  type: UINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: New entities discovered by the call.
+- name: new_fact_count
+  type: UINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Normalized fact rows added by the call.
+- name: duration_ms
+  type: UINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: is_cache_hit
+  type: TINYINT(1)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Whether the ingestion reused the MCP cache.
+- name: data_period_start
+  type: DATE
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: data_period_end
+  type: DATE
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: called_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Call start timestamp.
+- name: completed_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+primary_key: id
+cached: false
+properties:
+  description: MCP ingestion audit including cache hits, response rows, entity counts, and fact counts.

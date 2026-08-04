@@ -1,8 +1,6 @@
 ---
 name: hot_product_pain_analysis
 description: Analyze user-specified top Amazon breakout products using only SellerSprite and Sif evidence, summarize reviews, attach product images when available, and extract review-backed pain points and R&D opportunities.
-version: 0.2
-owner: Hsia R&D Insight Agent
 ---
 
 # 爆款痛点分析 Skill
@@ -52,8 +50,9 @@ owner: Hsia R&D Insight Agent
 | load_skill | system | 加载当前 Skill |
 | ask_user | system | 缺参时询问用户 |
 | respond_to_user | system | 回答非任务型问题或解释当前状态 |
-| render_html_report | required | 用 LLM 基于 SellerSprite/Sif 证据直接写最终 HTML 爆款痛点报告 |
-| synthesize_artifact | system | 发布已渲染的最终爆款痛点分析产物 |
+| build_hot_product_pain_report_data | required | 将类目候选、评论、销量代理与关键词竞争证据编译为版本化、有界的 HotProductPainReportData |
+| render_html_report | required | 用 LLM 只基于 HotProductPainReportData 与展示指令写最终 HTML 爆款痛点报告 |
+| synthesize_artifact | system | LangGraph 最终节点；发布已渲染的爆款痛点分析产物，不由 Planner 调用 |
 | sellersprite_product_node | required | 自动解析并校验目标类目的 SellerSprite nodeIdPath，防止关键词跨类目命中 |
 | sellersprite_market_product_concentration | required | 在已校验节点内获取带缓冲的头部候选池、主图和排名证据 |
 | sellersprite_review | required | 对每个最终入选 ASIN 获取近 180 天高低星平衡评论、评论图片和痛点证据 |
@@ -90,8 +89,9 @@ owner: Hsia R&D Insight Agent
    - 评论样本数量、星级分布线索、评论日期线索、评论文本痛点、典型原话、正向喜欢点。
    - 评论样本中如有 `media_urls`、`image_urls`、`images`、`review_media_urls`、`videos` 等字段，保留为评论图片/视频证据。
 10. 不调用 `amazon_shelf`、`reddit_voc`、`tiktok_social`、`media_rankings` 或任何非 SellerSprite/Sif 工具。
-11. 所有 block 级证据成功后才能调用 `render_html_report`。该工具必须让 LLM 直接基于本轮 SellerSprite/Sif 工具结果和本 Skill 的输出规则写最终 HTML；不要调用任何 hot-product 专用固定模板。
-12. HTML 报告成功后调用 `synthesize_artifact` 发布最终产物。如果 HTML 生成失败或校验失败，必须重试或停止并暴露错误，不得继续生成固定脚本模板报告。
+11. 所有 block 级源证据成功后，Planner 停止发出工具调用，表示源数据阶段完成。LangGraph 自动执行 `report_data_builder`，用 `build_hot_product_pain_report_data` 生成含有界 `metric_facts` 与 `chart_specs` 的 HotProductPainReportData，再执行通用 `data_analysis -> insight_synthesis -> chart_render -> html_render ->（report_review 与 report_red_team 并行）-> approval_join -> 必要时 html_revision -> synthesize_artifact` 链路；`data_analysis` 中 LLM 只选择固定指标和绑定事实，脚本校验并计算；`insight_synthesis` 只把有证据的一级/二级指标写成“观察 → 解释 → 产品影响 → 研发动作”，并绑定真实 `evidence_ids`；`chart_render` 固定调用本机 Flint MCP，单图失败时确定性降级。`html_render` 以 `insight_narrative` 为正文分析主轴。Planner 不调用这些报告节点（包括 insight_synthesis、report_review、report_red_team 与 approval_join），也不得把原始 SellerSprite/Sif 工具结果直接交给图表或 HTML renderer。
+12. 每份 HTML 的事实 `report_review` 与独立 `report_red_team` 同时执行，由 `approval_join` 汇合；最多并行审批两轮。任一分支首轮未通过时返工并同时开始第二轮，第二轮仍未通过时再返工一次并直接发布，不发起第三轮审批或红队。HTML 生成失败或校验失败时停止并暴露错误，不得继续生成固定脚本模板报告。
+13. `report_red_team` 不获得源数据工具，只依据当前 HTML、完整裁剪后的 ReviewReportData 与本 Skill 合同在当轮给出 approve/revise；证据不足时收窄、改写或移除当前结论，补数建议仅留给下一次任务，不触发本轮 Builder 或报告链重跑。
 
 ## Evidence Contract
 
@@ -102,7 +102,8 @@ owner: Hsia R&D Insight Agent
 | sellersprite_review_samples | sellersprite_review | always | param:head_listing_count | block | call_missing_tool | 必须取得与用户指定商品数相同的不同相关 ASIN 评论结果；不足时顺延候选或停止，不得带缺口生成报告 |
 | sif_sales_proxy | sif_ops_get_asin_sales_list | always | 1 | block | call_missing_tool | 缺少 Sif 对最终 ASIN 列表的近 30 天销量代理校验时，不得生成爆款强度结论 |
 | sif_keyword_competition | sif_market_get_keyword_competition | always | 1 | block | call_missing_tool | 缺少 Sif 关键词竞争与 Top ASIN 校验时，不得生成流量份额或竞争强度结论 |
-| final_html_report | render_html_report | always | 1 | block | call_missing_tool | 最终产物必须来自 LLM 基于 SellerSprite/Sif 证据直接写出的 HTML 报告，不得使用固定模板兜底 |
+| hot_product_pain_report_data | build_hot_product_pain_report_data | always | 1 | block | call_missing_tool | 最终 HTML 前必须先把源证据编译为 HotProductPainReportData，禁止原始 MCP 结果直送 renderer |
+| final_html_report | render_html_report | always | 1 | block | call_missing_tool | 最终产物必须来自 LLM 只基于 HotProductPainReportData 写出的 HTML 报告，不得使用固定模板兜底 |
 | sellersprite_product_images | sellersprite_market_product_concentration | always | 1 | warn | continue_with_gap | 最终报告必须展示候选池返回的可用商品主图；缺少图片字段的商品必须标注图片缺失，不得伪造替代图片 |
 | sif_sales_trend | sif_ops_get_asin_sales_trend | prompt_mentions:销量趋势,季节性,近期销售,销售变化 | 1 | warn | continue_with_gap | 如果 Sif 销售趋势缺失，报告不得判断近期销量上升或下降 |
 | sif_asin_keyword_signals | sif_market_get_asin_keyword_signals | prompt_mentions:ASIN关键词,关键词流量,自然流量,广告流量 | 1 | warn | continue_with_gap | 如果 Sif ASIN 关键词证据缺失，报告不得声称已验证 ASIN 关键词流量 |
@@ -110,11 +111,11 @@ owner: Hsia R&D Insight Agent
 ## Output Rules
 
 - 最终产物必须包含“逐商品爆款痛点卡”，每个商品一张卡。
-- 最终 HTML 必须由 `render_html_report` 的 LLM 直接组织文案、结构和样式；不得使用固定 Python 模板、hot-product 专用 renderer 或旧通用 fallback 生成报告。
-- 每张商品卡必须包含商品主图；如果 `image_url` 缺失，写明“商品图片缺失”，不得使用无来源图片。
+- 最终 HTML 必须由 `render_html_report` 的 LLM 基于 `hot_product_pain_report_data.v1` 组织文案、结构和样式；不得接收原始 MCP/tool results，也不得使用固定 Python 模板、hot-product 专用 renderer 或旧通用 fallback。
+- 商品卡只使用证据中的商品主图；`image_url` 缺失时省略图片容器，不使用无来源图片，也不生成图片缺失说明。
 - 每张商品卡必须显示评论实际时间窗口、低星/高星样本数以及评论作用域；使用同一变体家族评论时必须明确写“变体家族评论”，不能伪装为当前子 ASIN 原评。
-- 如果评论样本带图片或媒体 URL，必须在对应商品卡中贴出评论图片链接或缩略图；如果没有评论图片字段，必须在“数据缺口”中写明“本次评论样本未返回评论图片”。
-- 每个痛点必须附至少一条评论证据或明确说明证据不足；不要只给抽象标签。
+- 如果评论样本带图片或媒体 URL，在对应商品卡中贴出评论图片链接或缩略图；没有评论图片字段时直接省略媒体模块。
+- 每个痛点必须附至少一条评论证据；没有证据的痛点直接省略，不要只给抽象标签。
 - 横向痛点矩阵至少覆盖：尺码/版型、支撑、舒适度、材质/做工、耐穿/清洗、外观/颜色、物流/包装、价格感知。
 - 区分“用户喜欢点”和“用户痛点”，不要只看差评。
 - review count 只能作为公开热度代理，不能当成真实销量。
@@ -122,7 +123,7 @@ owner: Hsia R&D Insight Agent
 - 报告只能包含 `product_selection.eligible_candidates` 中且 SellerSprite review 成功的前 `head_listing_count` 个不同 ASIN；类目错配、重复 ASIN和评论空结果不能占位。
 - 当前 Skill 只能引用 SellerSprite 和 Sif 工具证据；不得引入 Amazon shelf、Reddit、TikTok、媒体文章或网页搜索证据。
 - 不得编造销量、搜索量、人口画像、市场规模、评论原文、商品图片或评论图片。
-- 如果 Evidence Contract 有 warn 级缺口，最终报告必须在逐商品卡或“数据缺口/风险”中标注。
+- Evidence Contract 的 warn 级缺口只冻结依赖它的结论并保留在内部运行元数据，不进入最终 HTML。
 - 输出 Hsia 机会时必须包含：机会名称、对应痛点、证据商品/评论、建议研发动作、优先级、验证动作。
 
 ### HTML Report Style Reference
@@ -133,6 +134,6 @@ owner: Hsia R&D Insight Agent
 - 不生成右侧目录、侧边栏、TOC 或锚点导航；页面采用单栏主内容布局，桌面端和移动端都以正文阅读为主。页面保持白底、轻边框、清晰留白，少用厚重卡片。
 - 逐商品卡片必须优先展示 ASIN、品牌、商品图、价格/评分/评论量、样本数量、3-5 条评论证据、评论媒体链接/缩略图和该商品的研发启发。
 - 横向痛点矩阵必须按痛点维度组织，不按工具调用组织。至少覆盖：尺码/版型、支撑、舒适度、材质/做工、耐穿/清洗、外观/颜色、物流/包装、价格感知。
-- 每个重要判断后给出证据锚点：工具名、ASIN、评论星级/标题/摘要、字段名或数据缺口。没有证据就标注为待验证，不要补故事。
+- 每个重要判断后给出证据锚点：工具名、ASIN、评论星级/标题/摘要或字段名。没有证据的判断直接省略，不要补故事或生成待验证/缺口段落。
 - 把“用户喜欢点”和“用户痛点”分开；机会建议要写成研发动作，例如结构、材料、尺码、工艺、包装、Listing claim 或验证实验。
 - 不展示工具调用成功率、原始 JSON、调试表、执行按钮或中间文件链接；这些只属于执行时间线。

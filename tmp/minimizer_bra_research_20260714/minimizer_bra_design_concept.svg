@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="cup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E7773" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#1F5D5A" stop-opacity="0.96"/>
+    </linearGradient>
+    <pattern id="mesh" width="12" height="12" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="3" r="1.3" fill="#B9D3D1" opacity="0.75"/>
+      <circle cx="9" cy="9" r="1.3" fill="#B9D3D1" opacity="0.75"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#173B39" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .title{font-family:'Microsoft YaHei','Noto Sans SC',sans-serif;font-size:34px;font-weight:700;fill:#173B39}
+      .sub{font-family:'Microsoft YaHei','Noto Sans SC',sans-serif;font-size:17px;fill:#5E6B68}
+      .label{font-family:'Microsoft YaHei','Noto Sans SC',sans-serif;font-size:17px;font-weight:600;fill:#173B39}
+      .small{font-family:'Microsoft YaHei','Noto Sans SC',sans-serif;font-size:14px;fill:#5E6B68}
+      .call{stroke:#A25462;stroke-width:2;fill:none}
+      .outline{stroke:#173B39;stroke-width:4;stroke-linejoin:round;fill:url(#cup)}
+      .seam{stroke:#D7ECEA;stroke-width:2.2;stroke-dasharray:7 6;fill:none}
+      .wire{stroke:#F2C7A8;stroke-width:6;stroke-linecap:round;fill:none;opacity:.95}
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#F7F5F1"/>
+  <rect x="45" y="38" width="1510" height="924" rx="28" fill="#FFFFFF" stroke="#DCE6E3" stroke-width="2"/>
+  <text x="90" y="100" class="title">AirSculpt Cool Minimizer — 研发结构概念图</text>
+  <text x="90" y="134" class="sub">美国站日常大胸缩胸文胸｜功能目标：自然分离、降低侧面投影、平整侧背、轻薄透气</text>
+
+  <text x="310" y="195" class="label">FRONT / 正面结构</text>
+  <g filter="url(#shadow)">
+    <path d="M390 296 C310 244 198 261 154 367 C128 430 156 515 330 552 C388 498 415 397 390 296 Z" class="outline"/>
+    <path d="M410 296 C490 244 602 261 646 367 C672 430 644 515 470 552 C412 498 385 397 410 296 Z" class="outline"/>
+    <path d="M390 296 C397 322 401 353 400 387 C399 353 403 322 410 296 L430 512 C420 536 380 536 370 512 Z" fill="url(#mesh)" stroke="#173B39" stroke-width="4"/>
+    <path d="M154 367 C105 382 84 414 92 464 C132 506 205 538 330 552 L318 596 C215 590 130 568 70 520 L76 395 C95 374 118 360 154 353 Z" fill="#8EB1AA" stroke="#173B39" stroke-width="4"/>
+    <path d="M646 367 C695 382 716 414 708 464 C668 506 595 538 470 552 L482 596 C585 590 670 568 730 520 L724 395 C705 374 682 360 646 353 Z" fill="#8EB1AA" stroke="#173B39" stroke-width="4"/>
+    <path d="M70 520 C202 610 598 610 730 520 L728 561 C585 650 215 650 72 561 Z" fill="#173B39" opacity="0.9"/>
+    <path d="M212 278 C208 230 225 193 251 168 C270 150 294 152 306 172 C278 211 265 247 270 286" fill="none" stroke="#173B39" stroke-width="22" stroke-linecap="round"/>
+    <path d="M588 278 C592 230 575 193 549 168 C530 150 506 152 494 172 C522 211 535 247 530 286" fill="none" stroke="#173B39" stroke-width="22" stroke-linecap="round"/>
+    <path d="M390 298 C330 316 284 370 266 470" class="seam"/>
+    <path d="M410 298 C470 316 516 370 534 470" class="seam"/>
+    <path d="M166 410 C228 430 279 464 330 552" class="seam"/>
+    <path d="M634 410 C572 430 521 464 470 552" class="seam"/>
+    <path d="M158 374 C170 496 228 552 330 560" class="wire"/>
+    <path d="M642 374 C630 496 572 552 470 560" class="wire"/>
+    <path d="M206 356 C235 327 282 314 344 328 C330 385 314 438 266 470 C218 460 183 422 170 388 Z" fill="#B9D3D1" opacity="0.55" stroke="#D7ECEA" stroke-width="2"/>
+    <path d="M594 356 C565 327 518 314 456 328 C470 385 486 438 534 470 C582 460 617 422 630 388 Z" fill="#B9D3D1" opacity="0.55" stroke="#D7ECEA" stroke-width="2"/>
+  </g>
+
+  <text x="1060" y="195" class="label">BACK / 宽U背结构</text>
+  <g filter="url(#shadow)">
+    <path d="M880 350 C948 315 1010 309 1068 332 L1050 565 C990 583 924 575 858 535 L842 420 Z" fill="#8EB1AA" stroke="#173B39" stroke-width="4"/>
+    <path d="M1320 350 C1252 315 1190 309 1132 332 L1150 565 C1210 583 1276 575 1342 535 L1358 420 Z" fill="#8EB1AA" stroke="#173B39" stroke-width="4"/>
+    <path d="M1068 332 C1090 373 1110 373 1132 332 L1150 565 C1120 595 1080 595 1050 565 Z" fill="#D7ECEA" stroke="#173B39" stroke-width="4"/>
+    <path d="M945 333 C958 278 974 224 1012 178" fill="none" stroke="#173B39" stroke-width="22" stroke-linecap="round"/>
+    <path d="M1255 333 C1242 278 1226 224 1188 178" fill="none" stroke="#173B39" stroke-width="22" stroke-linecap="round"/>
+    <path d="M1012 178 C1040 231 1064 283 1080 344" fill="none" stroke="#8EB1AA" stroke-width="18" stroke-linecap="round"/>
+    <path d="M1188 178 C1160 231 1136 283 1120 344" fill="none" stroke="#8EB1AA" stroke-width="18" stroke-linecap="round"/>
+    <path d="M842 520 C955 606 1245 606 1358 520 L1358 562 C1235 654 965 654 842 562 Z" fill="#173B39" opacity="0.9"/>
+    <path d="M858 428 C932 455 997 485 1050 565" class="seam"/>
+    <path d="M1342 428 C1268 455 1203 485 1150 565" class="seam"/>
+    <rect x="1355" y="447" width="54" height="85" rx="6" fill="#F2C7A8" stroke="#173B39" stroke-width="3"/>
+    <circle cx="1372" cy="468" r="4" fill="#173B39"/><circle cx="1390" cy="468" r="4" fill="#173B39"/>
+    <circle cx="1372" cy="488" r="4" fill="#173B39"/><circle cx="1390" cy="488" r="4" fill="#173B39"/>
+    <circle cx="1372" cy="508" r="4" fill="#173B39"/><circle cx="1390" cy="508" r="4" fill="#173B39"/>
+  </g>
+
+  <g>
+    <path d="M170 330 L92 270 L92 228" class="call"/>
+    <text x="92" y="214" class="label">三片式全罩杯</text><text x="92" y="238" class="small">分散投影，保留自然分离</text>
+    <path d="M250 414 L150 665 L150 702" class="call"/>
+    <text x="82" y="730" class="label">内侧托片</text><text x="82" y="754" class="small">集中侧胸，避免单纯压扁</text>
+    <path d="M400 395 L400 686" class="call"/>
+    <text x="292" y="714" class="label">局部超薄遮点层</text><text x="292" y="738" class="small">保持轻薄，不做厚杯</text>
+    <path d="M578 507 L686 688" class="call"/>
+    <text x="620" y="716" class="label">柔性钢圈通道</text><text x="620" y="740" class="small">加宽软包＋端部加固</text>
+    <path d="M504 176 L596 224" class="call"/>
+    <text x="600" y="210" class="label">分杯段缓压肩带</text><text x="600" y="234" class="small">C–F 18mm；G–I 22mm</text>
+    <path d="M1226 465 L1462 330" class="call"/>
+    <text x="1300" y="300" class="label">渐进弹力Power Mesh</text><text x="1300" y="324" class="small">高侧比、宽U背、减少卷边</text>
+    <path d="M1100 550 L1100 686" class="call"/>
+    <text x="998" y="714" class="label">按杯段调整闭合</text><text x="998" y="738" class="small">大杯段3×4钩，分散底围压力</text>
+  </g>
+
+  <g transform="translate(88 820)">
+    <text x="0" y="0" class="label">COLOR PLAN / 核心肤色＋季节色</text>
+    <g transform="translate(0 26)"><circle cx="20" cy="20" r="20" fill="#D8C3AA"/><text x="50" y="26" class="small">Warm Sand</text></g>
+    <g transform="translate(180 26)"><circle cx="20" cy="20" r="20" fill="#B77A58"/><text x="50" y="26" class="small">Caramel</text></g>
+    <g transform="translate(340 26)"><circle cx="20" cy="20" r="20" fill="#7A5039"/><text x="50" y="26" class="small">Cocoa</text></g>
+    <g transform="translate(490 26)"><circle cx="20" cy="20" r="20" fill="#3C241C"/><text x="50" y="26" class="small">Espresso</text></g>
+    <g transform="translate(650 26)"><circle cx="20" cy="20" r="20" fill="#171717"/><text x="50" y="26" class="small">Black</text></g>
+    <g transform="translate(780 26)"><circle cx="20" cy="20" r="20" fill="#2E7773"/><text x="50" y="26" class="small">Transformative Teal</text></g>
+    <g transform="translate(1035 26)"><circle cx="20" cy="20" r="20" fill="#7A2338"/><text x="50" y="26" class="small">Berry Wine</text></g>
+    <g transform="translate(1215 26)"><circle cx="20" cy="20" r="20" fill="#9B6FB0"/><text x="50" y="26" class="small">Fresh Purple</text></g>
+  </g>
+  <text x="90" y="930" class="small">首发建议：34C–46I｜目标零售价 US$29.99–34.99｜1–1.5杯仅作为内部视觉验证目标，验证通过后再用于营销。</text>
+</svg>

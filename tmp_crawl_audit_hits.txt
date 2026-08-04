@@ -1,0 +1,790 @@
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\__init__.py:1: from .crawler import (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\cli.py:9: from .crawler import (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\cli.py:34: capture.add_argument("--output", default="", help="Output JSON path; defaults under .cache/marketscope.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\cli.py:53: help="Keep crawler-created Chrome tabs open for troubleshooting.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:13: from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:112: raise ValueError("Only MarketScope /brand/ page URLs may be opened by this crawler.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:460: return Path.cwd() / ".cache" / "marketscope" / f"capture_{timestamp}.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:467: temporary.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:682: client.delete_network_cache(session)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:684: warnings.append("Could not delete the temporary OpenCLI network cache for this run.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\crawler.py:695: "No JSON responses under /wormhole/ were captured. The page may be cached, unavailable, or missing account permission."
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:227: def network_cache_path(session: str) -> Path:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:229: configured = os.getenv("OPENCLI_CACHE_DIR", "").strip()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:230: base = Path(configured).expanduser() if configured else Path.home() / ".opencli" / "cache"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:231: cache_root = (base / "browser-network").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:232: target = (cache_root / f"{normalized_session}.json").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:233: if target.parent != cache_root:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:234: raise OpenCLIError("Resolved OpenCLI cache path escaped the browser-network directory.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:237: def delete_network_cache(self, session: str) -> bool:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:238: target = self.network_cache_path(session)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\marketscope\opencli_client.py:242: raise OpenCLIError(f"Could not remove temporary OpenCLI network cache: {exc}") from exc
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\agent_reach.py:54: codex_deps = os.path.join(home, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\agent_reach.py:157: with open(config_path, encoding="utf-8") as handle:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\agent_reach.py:222: process = subprocess.Popen(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\amazon_opencli.py:72: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\amazon_opencli.py:104: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\amazon_opencli.py:105: warnings.append("Bypassed local cache for Amazon collection.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:9: import urllib.parse
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:57: parsed = urllib.parse.urlparse(url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:63: return urllib.parse.urlunparse((parsed.scheme or "https", parsed.netloc, path, "", "", ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:162: subprocess.Popen(args, **popen_kwargs)  # noqa: S603
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:194: def playwright_available() -> bool:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:195: return importlib.util.find_spec("playwright") is not None
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:201: return f"https://www.tiktok.com/tag/{urllib.parse.quote(stripped[1:])}"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:202: return f"https://www.tiktok.com/search?q={urllib.parse.quote(stripped)}"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:273: "TikTok search returned no readable video links. Log in in the opened browser, solve any challenge, then rerun with bypass cache."
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:364: def fetch_tiktok_playwright(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:370: if not playwright_available():
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:374: "Playwright is not installed. Install project dependencies, then run `python -m playwright install chromium` before TikTok collection.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:379: from playwright.sync_api import (  # type: ignore[import-not-found]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:380: TimeoutError as PlaywrightTimeoutError,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:382: from playwright.sync_api import sync_playwright
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:393: with sync_playwright() as playwright:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:402: context = playwright.chromium.launch_persistent_context(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:431: return TikTokResult(videos, warnings, "tiktok_playwright")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:432: except PlaywrightTimeoutError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:434: return TikTokResult([], [f"TikTok browser collection timed out: {exc}"], "tiktok_playwright")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:437: return TikTokResult([], [f"TikTok browser collection failed: {exc}"], "tiktok_playwright")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\ingestion\tiktok_browser.py:443: "You can also run `python -m playwright install chromium`, then rerun. "
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:108: "bypass_cache": ("bypassCache", "fresh", "force_refresh"),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:383: mapped["bypassCache"] = bool(canonical.get("bypass_cache") or payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:400: bypass_cache = bool(canonical.get("bypass_cache") or payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:413: "bypassCache": bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:423: "bypassCache": bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:455: "bypassCache": bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:468: "bypassCache": bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:477: "bypassCache": bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_params.py:712: return {"category": tool_category, "bypassCache": bypass_cache}
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:207: write_text: Callable[[str, str, str], str]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:229: cache_dir: Callable[[], Path]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:686: if pipeline.get("status") == "scheduled":
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:925: "status": "scheduled",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:1429: self.deps.cache_dir()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:1679: report_file_path = self.deps.write_text(state["run_id"], "report.html", html_content)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2102: evidence_requests = [
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2105: red_team.get("evidence_requests")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2106: if isinstance(red_team.get("evidence_requests"), list)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2111: requests_evidence = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2113: and bool(evidence_requests)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2119: not requests_evidence
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2127: "request_evidence" if requests_evidence else "approve" if approved else "revise"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2129: red_team["evidence_requests"] = evidence_requests if requests_evidence else []
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2134: if requests_evidence
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2217: evidence_requests = [
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2220: red_team.get("evidence_requests")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2221: if isinstance(red_team.get("evidence_requests"), list)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2228: and evidence_requests
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2233: state["red_team_pending_tool_calls"] = evidence_requests
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2244: f"第 {review_round} 轮红队请求 {len(evidence_requests)} 个有界证据调用；"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2257: "evidence_request_count": len(evidence_requests),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2462: requests = [
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2496: for index, request in enumerate(requests, start=1):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2572: "requested_count": len(requests),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2593: f"红队补证完成：{accepted_count}/{len(requests)} 个调用产生新增有效证据。"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2599: "request_count": len(requests),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:2868: version_file_path = self.deps.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:3127: skill_file_path = self.deps.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:3222: skill_file_path = self.deps.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:3284: (self.deps.cache_dir() / "agent-runs" / state["run_id"] / "run.json").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:3409: (self.deps.cache_dir() / "agent-runs" / state["run_id"] / "run.json").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:3675: "shop_product_analysis product-list requests must be seller-only; "
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:4587: report_file_path = self.deps.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:4629: report_file_path = self.deps.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:4872: (self.deps.cache_dir() / "agent-runs" / state["run_id"] / "run.json").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:4936: (self.deps.cache_dir() / "agent-runs" / state["run_id"] / "run.json").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_runtime.py:5489: "bypassCache": {"type": "boolean"},
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_tool_recovery.py:440: "Retry with a broader category and bypassCache=true.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\agent_tool_recovery.py:448: reason=f"Trend crawler accessed {accessed}/{required} required platforms.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:3: import asyncio
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:10: from concurrent.futures import ThreadPoolExecutor
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:991: svg_path.write_text(svg, encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:1025: asyncio.get_running_loop()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:1027: return asyncio.run(coroutine)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:1028: with ThreadPoolExecutor(max_workers=1, thread_name_prefix="flint-mcp") as executor:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:1029: return executor.submit(asyncio.run, coroutine).result()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\flint_chart_mcp.py:1073: asyncio.wait_for(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:7: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:8: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:35: if isinstance(exc, urllib.error.URLError):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:406: request = urllib.request.Request(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:415: with urllib.request.urlopen(request, timeout=int(settings["timeout_seconds"])) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\llm.py:418: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:9: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:10: import urllib.parse
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:11: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:30: IMAGE_FINGERPRINT_CACHE = PROJECT_ROOT / ".cache" / "product-image-fingerprints"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:95: cache_hits: int = 0
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:369: parsed = urllib.parse.urlsplit(url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:375: path = urllib.parse.unquote(parsed.path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:386: class _AmazonImageRedirectHandler(urllib.request.HTTPRedirectHandler):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:389: request: urllib.request.Request,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:395: ) -> urllib.request.Request | None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:396: parsed = urllib.parse.urlsplit(new_url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:398: raise urllib.error.HTTPError(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:408: def _open_amazon_image(request: urllib.request.Request) -> Any:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:409: opener = urllib.request.build_opener(_AmazonImageRedirectHandler())
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:410: return opener.open(request, timeout=8)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:414: normalized_url = urllib.parse.urlunsplit((*urllib.parse.urlsplit(url)[:3], "", ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:416: budget.cache_hits += 1
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:418: cache_key = hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:419: cache_path = IMAGE_FINGERPRINT_CACHE / f"{cache_key}.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:420: if cache_path.exists():
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:422: payload = json.loads(cache_path.read_text(encoding="utf-8"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:425: budget.cache_hits += 1
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:434: parsed = urllib.parse.urlsplit(normalized_url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:441: request = urllib.request.Request(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:447: final_url = urllib.parse.urlsplit(response.geturl())
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:458: with Image.open(io.BytesIO(raw)) as image:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:471: IMAGE_FINGERPRINT_CACHE.mkdir(parents=True, exist_ok=True)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:472: cache_path.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:891: "image_cache_hits": 0,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\market_product_identity.py:1164: "image_cache_hits": budget.cache_hits,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:8: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:9: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:10: from functools import lru_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:12: from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:15: from .mcp_result_cache import execute_with_mcp_result_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:193: def _http_error(exc: urllib.error.HTTPError) -> FastMossMcpError:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:222: request = urllib.request.Request(fastmoss_mcp_url(), data=body, headers=headers, method="POST")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:224: with urllib.request.urlopen(request, timeout=timeout) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:232: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:234: except urllib.error.URLError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:254: request = urllib.request.Request(fastmoss_mcp_url(), data=body, headers=headers, method="POST")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:256: with urllib.request.urlopen(request, timeout=10) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:258: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:337: @lru_cache(maxsize=4)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:413: def _prompt_requests_explicit_historical_period(payload: dict[str, Any]) -> bool:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:429: if _prompt_requests_explicit_historical_period(payload):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:645: def _execute_fastmoss_agent_tool_uncached(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:703: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:705: result = execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:709: lambda: _execute_fastmoss_agent_tool_uncached(agent_tool_name, input_payload),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:710: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_fastmoss.py:718: "MCP cache hit. " if (result.get("cache") or {}).get("hit") else ""
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:17: DEFAULT_MCP_RESULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:18: MCP_RESULT_CACHE_SCHEMA_VERSION = "mcp_result_cache.v1"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:19: CACHEABLE_MCP_STATUSES = {"ok", "partial_ok"}
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:26: class McpCacheEntry:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:31: def mcp_result_cache_ttl_seconds() -> int:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:32: raw = os.getenv("MCP_RESULT_CACHE_TTL_SECONDS", "").strip()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:34: return DEFAULT_MCP_RESULT_CACHE_TTL_SECONDS
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:38: return DEFAULT_MCP_RESULT_CACHE_TTL_SECONDS
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:41: def mcp_result_cache_root() -> Path:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:42: configured = os.getenv("MCP_RESULT_CACHE_DIR", "").strip()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:43: return Path(configured).expanduser().resolve() if configured else PROJECT_ROOT / ".cache" / "mcp-results"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:50: def mcp_result_cache_identity(provider: str, tool_name: str, params: dict[str, Any]) -> str:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:53: "schema_version": MCP_RESULT_CACHE_SCHEMA_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:67: def mcp_result_cache_path(provider: str, tool_name: str, params: dict[str, Any]) -> Path:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:68: identity = mcp_result_cache_identity(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:70: mcp_result_cache_root()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:81: def _remove_invalid_cache_file(path: Path) -> None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:88: def read_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:94: ) -> McpCacheEntry | None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:95: ttl = mcp_result_cache_ttl_seconds() if ttl_seconds is None else max(0, ttl_seconds)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:98: path = mcp_result_cache_path(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:104: _remove_invalid_cache_file(path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:106: if not isinstance(payload, dict) or payload.get("schema_version") != MCP_RESULT_CACHE_SCHEMA_VERSION:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:107: _remove_invalid_cache_file(path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:112: _remove_invalid_cache_file(path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:118: _remove_invalid_cache_file(path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:122: _remove_invalid_cache_file(path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:125: return McpCacheEntry(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:131: "key": mcp_result_cache_identity(provider, tool_name, params)[:16],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:141: def write_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:149: ttl = mcp_result_cache_ttl_seconds() if ttl_seconds is None else max(0, ttl_seconds)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:150: identity = mcp_result_cache_identity(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:151: path = mcp_result_cache_path(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:166: "schema_version": MCP_RESULT_CACHE_SCHEMA_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:169: "cache_key": identity,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:178: temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:192: def cacheable_mcp_result(result: dict[str, Any]) -> bool:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:193: return str(result.get("status") or "") in CACHEABLE_MCP_STATUSES
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:196: def with_mcp_cache_metadata(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:204: enriched["cache"] = metadata
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:207: enriched["summary"] = f"MCP cache hit. {original_summary}"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:211: def execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:217: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:220: identity = mcp_result_cache_identity(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:221: path = mcp_result_cache_path(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:222: with mcp_result_cache_lock(provider, tool_name, params):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:223: if not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:224: cached = read_mcp_result_cache(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:225: if cached is not None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:226: return with_mcp_cache_metadata(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:227: cached.result,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:228: cached.metadata,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:232: if cacheable_mcp_result(result):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:233: metadata = write_mcp_result_cache(provider, tool_name, params, result)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:241: "ttl_seconds": mcp_result_cache_ttl_seconds(),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:243: "reason": "result_status_not_cacheable",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:245: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:248: return with_mcp_cache_metadata(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:256: def mcp_result_cache_lock(provider: str, tool_name: str, params: dict[str, Any]) -> Iterator[None]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_result_cache.py:257: identity = mcp_result_cache_identity(provider, tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:9: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:10: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:11: from functools import lru_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:14: from .mcp_result_cache import (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:15: cacheable_mcp_result,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:16: execute_with_mcp_result_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:17: mcp_result_cache_lock,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:18: read_mcp_result_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:19: with_mcp_cache_metadata,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:20: write_mcp_result_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:34: SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL = "sellersprite_review_by_asin_v1"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:136: def _sellersprite_cache_params(input_payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:143: if insight_context.get("cache_time_range"):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:149: def _sellersprite_review_asin_cache_params(input_payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:157: def _cached_exhaustive_review_satisfies(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:177: cached_target = _bounded_int(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:188: if cached_target < requested_target:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:281: request = urllib.request.Request(SELLERSPRITE_MCP_URL, data=body, headers=headers, method="POST")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:283: with urllib.request.urlopen(request, timeout=timeout) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:287: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:307: request = urllib.request.Request(SELLERSPRITE_MCP_URL, data=body, headers=headers, method="POST")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:308: with urllib.request.urlopen(request, timeout=10) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:377: @lru_cache(maxsize=4)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:913: review_context["cache_time_range"] = str(time_range)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1690: def _execute_sellersprite_agent_tool_uncached(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1987: def _execute_exhaustive_review_with_asin_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1990: bypass_cache: bool,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1993: cache_params = _sellersprite_review_asin_cache_params(input_payload)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1994: with mcp_result_cache_lock("sellersprite", SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL, cache_params):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1995: if not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1996: cached = read_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1998: SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:1999: cache_params,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2001: if cached is not None and _cached_exhaustive_review_satisfies(cached.result, input_payload):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2002: cached_result = dict(cached.result)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2003: cached_result["input"] = _sellersprite_mcp_arguments(input_payload)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2005: **cached.metadata,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2006: "cache_tool": SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2010: return with_mcp_cache_metadata(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2011: cached_result,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2016: result = _execute_sellersprite_agent_tool_uncached("sellersprite_review", input_payload)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2017: if cacheable_mcp_result(result):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2018: metadata = write_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2020: SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2021: cache_params,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2030: "cache_tool": SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2032: "reason": "result_status_not_cacheable",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2036: "cache_tool": SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2040: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2043: return with_mcp_cache_metadata(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2054: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2060: return _execute_exhaustive_review_with_asin_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2062: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2064: cache_params = _sellersprite_cache_params(input_payload)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2065: return execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2068: cache_params,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2069: lambda: _execute_sellersprite_agent_tool_uncached(agent_tool_name, input_payload),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sellersprite.py:2070: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:7: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:8: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:9: from functools import lru_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:12: from .mcp_result_cache import execute_with_mcp_result_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:66: request = urllib.request.Request(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:71: with urllib.request.urlopen(request, timeout=timeout) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:75: @lru_cache(maxsize=1)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:109: @lru_cache(maxsize=1)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:254: request = urllib.request.Request(SIF_MCP_URL, data=body, headers=headers, method="POST")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:256: with urllib.request.urlopen(request, timeout=60) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:260: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:339: def _execute_sif_agent_tool_uncached(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:383: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:385: return execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:389: lambda: _execute_sif_agent_tool_uncached(agent_tool_name, input_payload),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\mcp_sif.py:390: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:454: def _recovery_svg_open(chart: dict[str, Any], width: int, height: int) -> list[str]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:479: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:520: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:590: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:642: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:720: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:800: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:854: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:906: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\report_charts.py:948: svg = _recovery_svg_open(chart, width, height)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16: import urllib.error
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:17: import urllib.parse
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:18: import urllib.request
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:53: from .ingestion.agent_reach import (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:65: from .ingestion.amazon_opencli import (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:72: from .ingestion.tiktok_browser import fetch_tiktok_playwright
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:73: from .ingestion.youtube_ytdlp import fetch_youtube_ytdlp
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:157: CACHE_DIR = PROJECT_ROOT / ".cache"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:158: HISTORY_PATH = CACHE_DIR / "research-history.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:162: CACHE_VERSION = "v4"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:163: ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:535: request = urllib.request.Request(url, headers=final_headers)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:536: with urllib.request.urlopen(request, timeout=timeout) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:553: request = urllib.request.Request(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:559: with urllib.request.urlopen(request, timeout=timeout) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:563: def cache_key(parts: list[str]) -> Path:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:565: return CACHE_DIR / f"{digest}.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:568: def read_cache(path: Path, ttl_seconds: int = 60 * 60 * 6) -> Any | None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:581: def write_cache(path: Path, data: Any) -> None:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:582: CACHE_DIR.mkdir(exist_ok=True)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:583: path.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:636: CACHE_DIR.mkdir(exist_ok=True)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:637: HISTORY_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:884: body = urllib.parse.urlencode({"grant_type": "client_credentials"}).encode("utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:885: request = urllib.request.Request(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:896: with urllib.request.urlopen(request, timeout=20) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:909: params = urllib.parse.urlencode(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:987: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:989: params = urllib.parse.urlencode(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:998: cache_path = cache_key([CACHE_VERSION, "rss", query, time_range])
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:999: cached = None if bypass_cache else read_cache(cache_path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1000: if cached:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1001: return cached[:limit], ["Loaded Reddit RSS results from local cache."]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1006: write_cache(cache_path, posts)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1008: except urllib.error.HTTPError as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1065: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1086: detail_cache_part = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1091: comments_cache_part = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1096: cache_path = cache_key(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1098: CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1104: detail_cache_part,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1105: comments_cache_part,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1109: cached = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1110: None if bypass_cache else read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1112: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1113: warnings.append("Bypassed local cache for this run.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1114: if cached:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1115: cached_posts = cached["posts"]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1116: cached_mode = cached["mode"]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1118: cached_missing_comment_bodies = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1119: cached_mode == "agent_reach"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1120: and bool(cached_posts)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1121: and sum(len(post_comment_items(post)) for post in cached_posts) == 0
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1124: cached_missing_comment_bodies
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1129: "Skipped cached Agent Reach results because they had posts but no comment bodies."
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1132: return cached_posts, ["Loaded analyzed input from local cache."], cached_mode
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1142: write_cache(cache_path, {"posts": posts[:limit], "mode": source_mode})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1169: query, provider_limit, provider_time_range, bypass_cache=bypass_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1191: write_cache(cache_path, {"posts": posts, "mode": source_mode})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1550: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1552: cache_path = cache_key(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1554: CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1564: cached = read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1565: if cached and not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1567: cached["products"],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1568: ["Loaded Amazon input from local cache."],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1569: cached["mode"],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1570: cached.get("queries") or [category],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1571: cached.get("per_query_counts") or {},
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1575: category, limit, keyword_limit=keyword_limit, bypass_cache=bypass_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1581: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1582: warnings.append("Bypassed local cache for Amazon analysis.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1583: write_cache(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1584: cache_path,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1940: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1946: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:1996: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2002: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2048: else "Check OpenCLI Amazon access, broaden keywords, or rerun with bypass cache.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2601: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2607: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2746: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2749: cache_path = cache_key([CACHE_VERSION, "competitor-amazon-product", target, str(review_limit)])
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2750: cached = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2751: None if bypass_cache else read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2753: if isinstance(cached, dict) and isinstance(cached.get("product"), dict):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2754: return cached["product"], ["Loaded competitor Amazon product/reviews from local cache."]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2778: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2779: warnings.append("Bypassed local cache for competitor Amazon detail/reviews.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2780: write_cache(cache_path, {"product": enriched})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2942: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2956: query, 5, bypass_cache=bypass_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:2959: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3003: markdown = fetch_article_markdown(str(candidate["url"]), bypass_cache=bypass_cache)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3009: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3432: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3485: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3494: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3515: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3701: parsed = urllib.parse.urlparse(url.strip())
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3704: return urllib.parse.urlunparse(parsed._replace(query="", fragment=""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3938: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3952: cache_path = cache_key(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3954: CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3964: if not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3965: cached = read_cache(cache_path, ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3966: if isinstance(cached, dict) and isinstance(cached.get("results"), list):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3967: return provider, cached["results"], []
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:3982: params = urllib.parse.urlencode(brave_params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4050: params = urllib.parse.urlencode(google_params)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4068: write_cache(cache_path, {"results": results})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4127: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4141: query, results_per_query, bypass_cache=bypass_cache
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4144: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4236: parsed = urllib.parse.urlparse(url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4257: parsed = urllib.parse.urlparse(url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4261: normalized = urllib.parse.urlunparse(parsed._replace(fragment=""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4268: def fetch_article_markdown(url: str, bypass_cache: bool = False) -> str:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4269: cache_path = cache_key([CACHE_VERSION, "agent-reach-web-article", url])
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4270: if not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4271: cached = read_cache(cache_path, ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4272: if isinstance(cached, dict) and isinstance(cached.get("body"), str):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4273: return cached["body"]
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4281: write_cache(cache_path, {"body": body, "reader_url": reader_url})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4776: absolute = urllib.parse.urljoin(page_url, value)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4777: parsed = urllib.parse.urlsplit(absolute)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4809: lowered_path = urllib.parse.unquote(parsed.path).lower()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4814: return urllib.parse.urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4818: parsed = urllib.parse.urlsplit(url)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4820: query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=False)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4826: return urllib.parse.urlunsplit(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:4831: urllib.parse.urlencode(stable_query),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5001: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5004: cache_path = cache_key([CACHE_VERSION, "public-trend-page-v2", category, url])
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5005: if not bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5006: cached = read_cache(cache_path, ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5007: if isinstance(cached, dict) and cached.get("url"):
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5008: return cached
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5018: request = urllib.request.Request(url, headers=headers)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5019: with urllib.request.urlopen(request, timeout=max(5, min(timeout, 30))) as response:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5082: write_cache(cache_path, page)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5090: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5094: return fetch_public_trend_page(url, category, bypass_cache=bypass_cache)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5095: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5104: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5589: query = urllib.parse.urlencode({"q": f"{category} color fabric silhouette style trend"})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5597: parsed = urllib.parse.urlsplit(normalized)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5606: for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=False)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5610: return urllib.parse.urlunsplit(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5615: urllib.parse.urlencode(sorted(stable_query)),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5622: parsed = urllib.parse.urlsplit(str(url or ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5630: parsed = urllib.parse.urlsplit(str(url or ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5685: parsed = urllib.parse.urlsplit(str(url or ""))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5759: path = urllib.parse.urlsplit(str(item.get("url") or "")).path or "/"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5829: path = urllib.parse.urlsplit(str(page.get("final_url") or page.get("url") or "")).path or "/"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:5993: def crawl_one_trend_platform(target: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6003: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6019: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6032: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6078: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6125: with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(batch))) as executor:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6131: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6146: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6250: def crawl_trend_platforms(payload: dict[str, Any]) -> dict[str, Any]:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6258: with concurrent.futures.ThreadPoolExecutor(max_workers=len(editorial_targets)) as executor:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6260: executor.submit(crawl_one_trend_platform, target, payload): target
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6283: collected["pinterest"] = crawl_one_trend_platform(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6367: "source_mode": "agent_reach_search_plus_public_page_crawler",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6414: "The crawler does not authenticate, bypass paywalls, or expose gated report content.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6598: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6608: markdown = fetch_article_markdown(url, bypass_cache=bypass_cache)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6610: except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6697: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6703: cache_path = cache_key(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6705: CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6714: cached = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6715: None if bypass_cache else read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6717: if cached:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6719: cached.get("videos") or [],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6720: ["Loaded YouTube input from local cache."],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6721: str(cached.get("mode") or "youtube_ytdlp"),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6737: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6738: warnings.append("Bypassed local cache for YouTube analysis.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6739: write_cache(cache_path, {"videos": videos, "mode": result.source_mode})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6911: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6922: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6941: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6947: cache_path = cache_key(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6949: CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6956: cached = (
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6957: None if bypass_cache else read_cache(cache_path, ttl_seconds=ANALYSIS_CACHE_TTL_SECONDS)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6959: if cached:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6961: cached.get("videos") or [],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6962: ["Loaded TikTok input from local cache."],
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6963: str(cached.get("mode") or "tiktok_playwright"),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6967: result = fetch_tiktok_playwright(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6977: if bypass_cache:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6978: warnings.append("Bypassed local cache for TikTok analysis.")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:6979: write_cache(cache_path, {"videos": videos, "mode": result.source_mode})
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7083: "source_name": "TikTok Browser / Playwright",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7092: else "Install Playwright Chromium, log in to TikTok in the opened browser, solve any challenge, then rerun with bypass cache.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7143: "This source uses a local Playwright Chromium browser profile to search TikTok and open every collected video detail page.",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7163: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7170: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7388: return f"https://www.amazon.com/gp/customer-reviews/{urllib.parse.quote(review_id)}"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7680: "label": "WGSN / 蝶讯 / Pinterest trend crawler",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7685: "source": "agent_reach_crawler",
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:7699: "bypassCache": {"type": "boolean"},
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8265: bypass_cache=bool(payload.get("bypassCache")),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8269: tool_name, tool_input, bypass_cache=bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8275: bypass_cache=bool(payload.get("bypassCache")),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8298: "bypassCache": bool(tool_input.get("bypassCache")),
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8318: raw = crawl_trend_platforms(tool_input)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:8392: executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:12241: evidence_requests: list[dict[str, Any]] = []
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:12266: evidence_requests.append(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:12273: if evidence_requests:
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:12284: "evidence_requests": evidence_requests,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16162: run_dir = CACHE_DIR / "agent-runs" / run_id
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16166: temporary.write_text(
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16174: run_dir = CACHE_DIR / "agent-runs" / run_id
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16177: path.write_text(content, encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16185: allowed_root = (CACHE_DIR / "agent-runs").resolve()
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16234: path = CACHE_DIR / "agent-runs" / run_id / "run.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16260: path = CACHE_DIR / "agent-runs" / run_id / "progress.json"
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16369: bypass_cache = bool(payload.get("bypassCache"))
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16378: bypass_cache=bypass_cache,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16405: "Reconnect the OpenCLI Chrome extension or rdt-cli login, then rerun without using the cached result."
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16444: write_text=write_agent_run_text,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16457: cache_dir=lambda: CACHE_DIR,
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16483: parsed = urllib.parse.urlparse(self.path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16506: query = urllib.parse.parse_qs(parsed.query)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16524: parsed = urllib.parse.urlparse(self.path)
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\server.py:16594: self.send_header("Cache-Control", "no-cache")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\settings.py:198: ENV_PATH.write_text("# Created by Insight Agent settings.\n", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\settings.py:221: ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\src\insight_agent\settings.py:588: from .ingestion.agent_reach import agent_reach_health
+C:\Users\HSIA\Documents\Insight Agent\tests\conftest.py:7: def isolate_mcp_result_cache(monkeypatch, tmp_path) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\conftest.py:8: monkeypatch.setenv("MCP_RESULT_CACHE_DIR", str(tmp_path / "mcp-results"))
+C:\Users\HSIA\Documents\Insight Agent\tests\conftest.py:9: monkeypatch.delenv("MCP_RESULT_CACHE_TTL_SECONDS", raising=False)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_agent_params.py:43: payload = {"prompt": "market task", "bypassCache": False}
+C:\Users\HSIA\Documents\Insight Agent\tests\test_agent_params.py:60: "bypass_cache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_agent_params.py:75: assert mapped["bypassCache"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:14: from insight_agent.ingestion import agent_reach as agent_reach_module
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:15: from insight_agent.ingestion import tiktok_browser as tiktok_browser_module
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:16: from insight_agent.ingestion import youtube_ytdlp as youtube_module
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:17: from insight_agent.ingestion.agent_reach import normalize_opencli_read_items
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:18: from insight_agent.ingestion.amazon_opencli import (
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:23: from insight_agent.ingestion.schema import EvidenceItem, ProviderResult
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:139: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:200: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:206: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:234: ["Bypassed local cache for Amazon collection."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:245: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:260: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:266: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:342: ["Bypassed local cache for Amazon collection."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:355: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:378: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:384: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:421: ["Bypassed local cache for Amazon collection."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:453: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:458: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:492: ["Bypassed local cache for TikTok analysis."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:493: "tiktok_playwright",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:536: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:550: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:607: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:635: ["Bypassed local cache for this run."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:643: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:700: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:727: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:753: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:770: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:803: ["Bypassed local cache for YouTube analysis."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:819: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:893: bypass_cache: bool = False,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:925: ["Bypassed local cache for TikTok analysis."] if bypass_cache else [],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:926: "tiktok_playwright",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:940: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:944: assert result["source_mode"] == "tiktok_playwright"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:979: chrome_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:1458: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:3593: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:3793: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:3948: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:3982: "evidence_requests": [
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:4784: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:4853: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:4907: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:4930: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5104: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5211: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5215: (run_dir / "run.json").write_text(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5293: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5297: (run_dir / "run.json").write_text(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5383: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5426: (run_dir / "run.json").write_text(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5659: def test_bypass_cache_forces_fresh_collection(monkeypatch, tmp_path) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5660: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5662: cache_path = server_module.cache_key(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5664: server_module.CACHE_VERSION,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5674: server_module.write_cache(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5675: cache_path,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5679: "id": "cached",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5680: "title": "Cached post",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5681: "excerpt": "cached text",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5683: "url": "https://www.reddit.com/r/ABraThatFits/comments/cached/post/",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5687: "comment_items": [{"text": "cached comment"}],
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5717: cached = analyze_category(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5732: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5737: assert cached["posts"][0]["title"] == "Cached post"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5739: assert "Bypassed local cache" in " ".join(fresh["warnings"])
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5777: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5794: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5879: env_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5880: example_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5949: env_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5950: example_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5974: env_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:5975: example_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:6046: env_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:6047: example_path.write_text("", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:6098: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:6100: def fake_web_search(query: str, count: int, bypass_cache: bool = False) -> tuple[str, list[dict[str, str]], list[str]]:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_analysis.py:6139: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_bra_attributes.py:155: def test_weekly_market_skill_requests_large_category_candidate_pool() -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:138: monkeypatch.setattr(server_module, "write_cache", lambda *_args, **_kwargs: None)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:155: bypass_cache=True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:160: brave_params = server_module.urllib.parse.parse_qs(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:161: server_module.urllib.parse.urlsplit(brave_urls[-1]).query
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:197: google_params = server_module.urllib.parse.parse_qs(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:198: server_module.urllib.parse.urlsplit(google_urls[-1]).query
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:205: monkeypatch.setattr(server_module, "write_cache", lambda *_args, **_kwargs: None)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:220: bypass_cache=True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:310: def test_trend_platform_crawler_keeps_three_platforms_separate(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:313: def fake_search(query: str, count: int, bypass_cache: bool = False):  # noqa: ARG001
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:354: def fake_fetch(url: str, category: str, *, bypass_cache: bool = False):  # noqa: ARG001
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:371: result = server_module.crawl_trend_platforms(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:441: monkeypatch.setattr(server_module, "crawl_one_trend_platform", fake_platform)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:442: result = server_module.crawl_trend_platforms(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:495: monkeypatch.setattr(server_module.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fashion_trend_report_skill.py:500: bypass_cache=True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_fastmoss_competitor_shop_report.py:796: monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_flint_chart_mcp.py:446: def test_replace_compiled_chart_figures_injects_cached_svg(tmp_path: Path) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_flint_chart_mcp.py:448: svg_path.write_text(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_llm.py:40: def fake_urlopen(_request, timeout):
+C:\Users\HSIA\Documents\Insight Agent\tests\test_llm.py:46: monkeypatch.setattr(llm_module.urllib.request, "urlopen", fake_urlopen)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:390: def test_dhash_download_cache_failure_and_budget_audit(monkeypatch, tmp_path) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:400: monkeypatch.setattr(identity_module, "IMAGE_FINGERPRINT_CACHE", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:402: url = "https://m.media-amazon.com/images/I/cache-test.png"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:406: cached_budget = _ImageBudget(limit=20)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:407: cached_hash = _image_dhash(url, cached_budget)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:415: assert first_hash and first_hash == cached_hash
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:417: assert cached_budget.cache_hits == 1
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:418: assert cached_budget.downloads == 0
+C:\Users\HSIA\Documents\Insight Agent\tests\test_market_product_identity.py:429: monkeypatch.setattr(identity_module, "IMAGE_FINGERPRINT_CACHE", tmp_path)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:10: from insight_agent.ingestion.marketscope.crawler import (
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:22: from insight_agent.ingestion.marketscope.opencli_client import (
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:60: return {"url": TARGET_URL, "page": "tab-created-by-crawler"}
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:190: def delete_network_cache(self, session: str) -> bool:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:191: self.calls.append((session, ("delete-network-cache",)))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:363: assert any(call[1] == ("delete-network-cache",) for call in client.calls)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:367: def test_read_only_probe_script_contains_only_audited_get_requests() -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_marketscope_crawler.py:407: shim.write_text("@echo off\n", encoding="utf-8")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:5: from insight_agent import mcp_fastmoss, mcp_result_cache, mcp_sellersprite, mcp_sif, server
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:8: def test_mcp_cache_key_is_stable_across_dict_order() -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:9: first = mcp_result_cache.mcp_result_cache_identity(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:14: second = mcp_result_cache.mcp_result_cache_identity(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:21: assert mcp_result_cache.mcp_result_cache_ttl_seconds() == 7 * 24 * 60 * 60
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:24: def test_sellersprite_review_cache_uses_logical_time_range_for_derived_timestamps() -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:30: mcp_sellersprite.INSIGHT_CONTEXT_KEY: {"balanced_review": True, "cache_time_range": "180d"},
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:34: first_key = mcp_result_cache.mcp_result_cache_identity(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:37: mcp_sellersprite._sellersprite_cache_params(first),
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:39: second_key = mcp_result_cache.mcp_result_cache_identity(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:42: mcp_sellersprite._sellersprite_cache_params(second),
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:48: def test_mcp_cache_expires_after_ttl(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:50: monkeypatch.setattr(mcp_result_cache.time, "time", lambda: now[0])
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:54: mcp_result_cache.write_mcp_result_cache("sif", "tool", params, result, ttl_seconds=60)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:55: assert mcp_result_cache.read_mcp_result_cache("sif", "tool", params, ttl_seconds=60) is not None
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:57: path = mcp_result_cache.mcp_result_cache_path("sif", "tool", params)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:60: assert mcp_result_cache.read_mcp_result_cache("sif", "tool", params, ttl_seconds=60) is None
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:64: def test_empty_mcp_result_is_not_cached() -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:71: first = mcp_result_cache.execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:74: second = mcp_result_cache.execute_with_mcp_result_cache(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:79: assert first["cache"]["stored"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:80: assert second["cache"]["hit"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:83: def test_sif_reuses_cached_result_and_bypass_refreshes(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:106: cached = mcp_sif.execute_sif_agent_tool(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:110: refreshed = mcp_sif.execute_sif_agent_tool(agent_tool_name, params, bypass_cache=True)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:111: cached_refresh = mcp_sif.execute_sif_agent_tool(agent_tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:114: assert first["cache"]["stored"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:115: assert cached["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:116: assert refreshed["cache"]["bypassed"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:117: assert refreshed["cache"]["refreshed"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:118: assert cached_refresh["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:119: assert cached_refresh["data"]["keywords"][0]["volume"] == 2
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:122: def test_fastmoss_reuses_cached_result_and_bypass_refreshes(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:156: cached = mcp_fastmoss.execute_fastmoss_agent_tool(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:160: refreshed = mcp_fastmoss.execute_fastmoss_agent_tool(agent_tool_name, params, bypass_cache=True)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:161: cached_refresh = mcp_fastmoss.execute_fastmoss_agent_tool(agent_tool_name, params)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:164: assert first["cache"]["stored"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:165: assert cached["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:166: assert refreshed["cache"]["bypassed"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:167: assert refreshed["cache"]["refreshed"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:168: assert cached_refresh["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:169: assert cached_refresh["data"]["data"]["gmv"] == 2
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:172: def test_fastmoss_plain_text_credit_exhaustion_requires_user_action_and_is_not_cached(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:211: assert first["cache"]["stored"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:212: assert second["cache"]["hit"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:338: result = mcp_fastmoss._execute_fastmoss_agent_tool_uncached(agent_tool_name, input_payload)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:378: def test_fastmoss_reclassifies_legacy_cached_empty_result(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:381: "execute_with_mcp_result_cache",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:385: "summary": "MCP cache hit. FastMoss returned 0 item(s) in `list`.",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:387: "cache": {"hit": True},
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:397: assert result["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:398: assert result["summary"].startswith("MCP cache hit.")
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:401: def test_sellersprite_reuses_cached_result(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:429: cached = mcp_sellersprite.execute_sellersprite_agent_tool(agent_tool_name, dict(reversed(list(params.items()))))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:432: assert first["cache"]["stored"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:433: assert cached["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:434: assert cached["data"]["data"]["asin"] == "B000000001"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:437: def test_competitor_review_cache_reuses_same_marketplace_asin_across_request_shapes(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:476: "content": "Cached review",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:494: cached = mcp_sellersprite.execute_sellersprite_agent_tool(
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:500: assert first["cache"]["stored"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:501: assert first["cache"]["scope"] == "marketplace_asin"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:502: assert cached["cache"]["hit"] is True
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:503: assert cached["cache"]["scope"] == "marketplace_asin"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:504: assert cached["cache"]["cache_tool"] == mcp_sellersprite.SELLERSPRITE_REVIEW_ASIN_CACHE_TOOL
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:505: assert len(cached["data"]["data"]["items"]) == 2
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:508: def test_failed_mcp_result_is_not_cached(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:529: assert first["cache"]["stored"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:530: assert second["cache"]["hit"] is False
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:533: def test_server_forwards_bypass_cache_to_mcp_adapter(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:536: def fake_execute(tool_name, tool_input, *, bypass_cache=False):
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:537: captured.update({"tool_name": tool_name, "tool_input": tool_input, "bypass_cache": bypass_cache})
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:547: {"bypassCache": True},
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:553: "bypass_cache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:557: def test_server_forwards_bypass_cache_to_fastmoss_adapter(monkeypatch) -> None:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:560: def fake_execute(tool_name, tool_input, *, bypass_cache=False):
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:561: captured.update({"tool_name": tool_name, "tool_input": tool_input, "bypass_cache": bypass_cache})
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:575: {"bypassCache": True},
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_result_cache.py:581: "bypass_cache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:373: requests: list[dict] = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:377: requests.append(request)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:378: if len(requests) == 1:
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:399: assert [request["date"] for request in requests] == ["20260704", "20260627"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:644: "cache_time_range": "180d",
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:901: bypass_cache=True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1371: requests = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1375: requests.append(dict(request))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1396: assert [request["departmentKeyword"] for request in requests] == ["minimizer bra", "minimizer"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1397: assert all(request["month"] == "202606" for request in requests)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1410: requests = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1413: requests.append(dict(arguments["request"]))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sellersprite.py:1437: assert [request["departmentKeyword"] for request in requests] == ["minimizer bra", "minimizer"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_mcp_sif.py:101: "bypassCache": True,
+C:\Users\HSIA\Documents\Insight Agent\tests\test_report_review_data.py:338: requests = [
+C:\Users\HSIA\Documents\Insight Agent\tests\test_report_review_data.py:342: report_views = [request["report_data"] for request in requests]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_report_review_data.py:345: for request in requests
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:75: review_requests: list[dict[str, Any]] = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:82: review_requests.append(payload)
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:136: assert "section ordering against the Skill Output Rules" in review_requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:137: assert "factual-consistency issue" in review_requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:138: assert "chart_layout_contract.required_chart_bindings" in review_requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:139: assert "figure must appear above insight-explanation" in review_requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:140: assert "Every required chart" in review_requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:141: assert review_requests[0]["chart_layout_contract"]["chart_insight_contract"][
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:144: assert "red-team" not in review_requests[0]["instruction"].lower()
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:149: requests: list[dict[str, Any]] = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:153: requests.append(json.loads(messages[-1]["content"]))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:204: assert requests[0]["role"] == "html_report_strategy_red_team_agent"
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:205: assert "no more than five load-bearing claims" in requests[0]["instruction"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:266: assert result["evidence_requests"] == [
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:278: requests: list[dict[str, Any]] = []
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:281: requests.append(json.loads(messages[-1]["content"]))
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:348: assert "Emit exactly one chart_insight for every ready chart_spec" in requests[0][
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:351: assert "fixed section count, insight count, or charts-per-insight limit" in requests[
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:354: assert "chart_insights" in requests[0]["output_schema"]
+C:\Users\HSIA\Documents\Insight Agent\tests\test_weekly_market_report_approval.py:355: assert "supplementary_chart_insights" not in requests[0]["output_schema"]
+C:\Users\HSIA\Documents\Insight Agent\scripts\build_market_report_charts.py:49: Path(args.output).write_text(output + "\n", encoding="utf-8")

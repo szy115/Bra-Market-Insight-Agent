@@ -1,0 +1,55 @@
+relationships:
+- name: products_shops
+  models:
+  - products
+  - shops
+  join_type: MANY_TO_ONE
+  condition: products.shop_id = shops.id
+- name: products_categories
+  models:
+  - products
+  - categories
+  join_type: MANY_TO_ONE
+  condition: products.category_scope_id = categories.id
+- name: variants_products
+  models:
+  - product_variants
+  - products
+  join_type: MANY_TO_ONE
+  condition: product_variants.family_id = products.id
+- name: offers_variants
+  models:
+  - offers
+  - product_variants
+  join_type: MANY_TO_ONE
+  condition: offers.variant_id = product_variants.id
+- name: offers_shops
+  models:
+  - offers
+  - shops
+  join_type: MANY_TO_ONE
+  condition: offers.shop_id = shops.id
+- name: product_history_products
+  models:
+  - product_daily_history
+  - products
+  join_type: MANY_TO_ONE
+  condition: product_daily_history.family_id = products.id
+- name: product_latest_products
+  models:
+  - product_daily_latest
+  - products
+  join_type: MANY_TO_ONE
+  condition: product_daily_latest.family_id = products.id
+- name: keyword_history_keywords
+  models:
+  - keyword_period_history
+  - keywords
+  join_type: MANY_TO_ONE
+  condition: keyword_period_history.keyword_id = keywords.id
+- name: keyword_latest_keywords
+  models:
+  - keyword_period_latest
+  - keywords
+  join_type: MANY_TO_ONE
+  condition: keyword_period_latest.keyword_id = keywords.id

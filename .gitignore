@@ -10,5 +10,6 @@ __pycache__/
 src/*.egg-info/
 frontend/node_modules/
 frontend/dist/
+chart-runtime/node_modules/
 Vibe-Trading/
 outputs/

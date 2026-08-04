@@ -140,7 +140,7 @@
     <nav class="section-index" aria-label="报告章节">
       <a href="#executive">结论</a><a href="#product-baseline">基础档案</a><a href="#positioning">定位</a>
       <a href="#product-system">产品系统</a><a href="#fit-voc">适配与评论</a><a href="#comparison">成功机制</a>
-      <a href="#genes">爆款基因</a><a href="#hsia-actions">Hsia 动作</a><a href="#evidence-gaps">证据</a>
+      <a href="#genes">爆款基因</a><a href="#hsia-actions">Hsia 动作</a>
     </nav>
 
     <main>
@@ -183,6 +183,7 @@
           <div class="voc-column negative"><h3>用户痛点</h3>{{NEGATIVE_VOC_BLOCKS}}</div>
         </div>
         <details class="analysis-block" open><summary>痛点根因矩阵</summary><div class="analysis-body"><div class="table-wrap"><table><thead><tr><th>痛点</th><th>频次 / 严重度</th><th>评论 SKU / 场景</th><th>可能产品根因</th><th>置信度</th><th>验证动作</th></tr></thead><tbody>{{PAIN_ROOT_CAUSE_ROWS}}</tbody></table></div></div></details>
+        <!-- INSIGHT_AGENT_REVIEW_GALLERY -->
         <details class="analysis-block" open><summary>Reddit 用户语境</summary><div class="analysis-body">{{REDDIT_VOC_BLOCKS}}<p class="source-line">{{REDDIT_VOC_SOURCES}}</p></div></details>
         <p class="source-line">{{VOC_SOURCES}}</p>
       </section>
@@ -209,11 +210,6 @@
         <p class="source-line">{{ACTION_SOURCES}}</p>
       </section>
 
-      <section class="stage" id="evidence-gaps" data-required-section="evidence-gaps">
-        <header><div><h2>8. 证据链与数据缺口</h2><p class="stage-intro">让每个关键判断可以回查，并明确哪些结论仍需实物、版型或材料测试。</p></div><span class="status {{EVIDENCE_STATUS_CLASS}}">{{EVIDENCE_STATUS}}</span></header>
-        <div class="table-wrap"><table><thead><tr><th>证据 ID</th><th>工具</th><th>ASIN / 对象</th><th>证据内容</th><th>支持结论</th><th>限制</th></tr></thead><tbody>{{EVIDENCE_ROWS}}</tbody></table></div>
-        <h3>数据缺口</h3><ul class="gap-list">{{DATA_GAP_ITEMS}}</ul>
-      </section>
     </main>
 
     <footer>本报告用于 Hsia 产品企划与研发讨论。公开平台数据和销量代理是方向性证据，不替代实物拆解、版型试穿、材料测试和财务评审。</footer>

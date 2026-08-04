@@ -29,11 +29,12 @@
 
 ### 1.1 Agent Skills
 
-当前前端提供三个独立入口：
+当前前端提供以下独立入口：
 
 | Skill | 用途 | 必填参数 | 完整运行需要 |
 | --- | --- | --- | --- |
 | `weekly_market_insight` | 每周市场洞察、关键词需求、竞争格局和 Hsia 研发机会 | `brand`、`marketplace`、`category` | LLM、Sif、SellerSprite |
+| `tiktok_us_market_insight` | TikTok Shop 美国市场结构、内容动量、入场窗口和 Hsia 机会 | `brand`、`category`；`marketplace=US` | LLM、FastMoss MCP |
 | `hot_product_pain_analysis` | 按品类抓取多个头部商品，逐 ASIN 分析评论痛点和喜欢点 | `marketplace`、`category`、`head_listing_count` | LLM、SellerSprite、Sif |
 | `competitor_product_deep_dive` | 围绕一个竞品 ASIN 做产品系统、用户、评论、Reddit 和爆款基因深拆 | `marketplace`、`asin` | LLM、SellerSprite、Sif；Reddit 完整证据还需要 Agent Reach |
 
@@ -146,7 +147,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 2. 升级 pip；
 3. 以 editable 模式安装项目和开发依赖：`pip install -e ".[dev]"`；
 4. 在不存在 `.env` 时从 `.env.example` 创建 `.env`；
-5. 在 `frontend/` 安装 pnpm 或 npm 依赖。
+5. 在 `frontend/` 安装 pnpm 或 npm 依赖；
+6. 在 `chart-runtime/` 安装固定版本的本机 Flint MCP 图表运行时。
 
 重复执行是安全的，不会覆盖已有 `.env`。
 
@@ -462,6 +464,10 @@ if (-not (Test-Path .env)) {
 Set-Location frontend
 npm install
 Set-Location ..
+
+Set-Location chart-runtime
+npm install
+Set-Location ..
 ```
 
 项目的 Python 依赖以 `pyproject.toml` 为主；`requirements.txt` 和 `requirements-dev.txt` 仅保留给兼容旧工具链使用。
@@ -527,6 +533,7 @@ Set-Location ..
 | `.venv/` | Python 虚拟环境 | 否 |
 | `frontend/node_modules/` | 前端依赖 | 否 |
 | `.cache/agent-runs/` | Agent 运行状态、工具结果和 HTML 报告 | 否 |
+| `.cache/mcp-results/` | FastMoss/SellerSprite/Sif 同参数工具结果缓存，默认保存 7 天 | 否 |
 | `.cache/research-history.json` | 旧研究流程历史数据 | 否 |
 | `.dev/` | 后台进程 PID 和开发日志 | 否 |
 | `frontend/dist/` | 前端构建产物 | 否 |
@@ -565,6 +572,9 @@ Set-Location ..
 
 | 变量 | 说明 |
 | --- | --- |
+| `FASTMOSS_MCP_URL` | FastMoss MCP 地址，默认 `https://mcp.fastmoss.com/mcp` |
+| `FASTMOSS_MCP_API_KEY` | FastMoss MCP API Key；运行时按官方格式附加为 `api_key` 查询参数 |
+| `FASTMOSS_MCP_TOOLS` | 暴露给 Agent 的 FastMoss 工具；留空使用 TK 市场洞察精选工具集，`*` 表示全部 |
 | `SELLERSPRITE_MCP_URL` | SellerSprite MCP 地址 |
 | `SELLERSPRITE_MCP_SECRET_KEY` | SellerSprite MCP 凭证 |
 | `SELLERSPRITE_MCP_TOOLS` | 暴露的 SellerSprite 工具，默认 `*` |
@@ -572,6 +582,14 @@ Set-Location ..
 | `SIF_MCP_SCHEMA_URL` | Sif schema 地址 |
 | `SIF_MCP_TOKEN` | Sif MCP Token |
 | `SIF_MCP_TOOLS` | 暴露给 Agent 的 Sif 工具列表 |
+| `MCP_RESULT_CACHE_TTL_SECONDS` | MCP 结果缓存有效期，默认 `604800` 秒（7 天）；设为 `0` 可关闭 |
+| `MCP_RESULT_CACHE_DIR` | MCP 缓存目录，默认 `.cache/mcp-results/` |
+| `FLINT_CHART_NODE_COMMAND` | 本机 Flint MCP 使用的 Node 命令，默认 `node` |
+| `FLINT_CHART_MCP_CLI` | 可选的 Flint MCP CLI 绝对路径；留空使用 `chart-runtime/` 固定依赖 |
+| `FLINT_CHART_TIMEOUT_SECONDS` | 单张图表 MCP 调用超时，默认 `20` 秒 |
+| `FLINT_CHART_TOTAL_TIMEOUT_SECONDS` | 单份报告全部图表的总超时，默认 `120` 秒 |
+
+FastMoss、SellerSprite 与 Sif 会按“数据源 + 工具名 + 规范化参数”共享本地缓存。相同参数在有效期内不会再次消耗远端调用额度；失败、鉴权失败和参数缺失结果不会写入缓存。任务参数中的 `bypassCache=true` 会跳过读取、重新调用 MCP，并用新结果覆盖旧缓存。
 
 ### 11.4 Reddit 与 Agent Reach
 
@@ -784,10 +802,12 @@ git pull
 │   ├── llm.py                        # OpenAI-compatible LLM 客户端
 │   ├── mcp_sif.py                    # Sif MCP 适配
 │   ├── mcp_sellersprite.py           # SellerSprite MCP 适配
+│   ├── mcp_fastmoss.py               # FastMoss MCP 适配与缓存接入
 │   ├── ingestion/                    # Agent Reach、OpenCLI 等采集层
 │   └── data/llm_providers.json       # LLM Provider 元数据
 ├── skills/
 │   ├── weekly_market_insight/
+│   ├── tiktok_us_market_insight/
 │   ├── hot_product_pain_analysis/
 │   ├── competitor_product_deep_dive/
 │   └── _template/                    # 新 Skill 模板

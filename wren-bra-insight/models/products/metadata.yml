@@ -1,0 +1,150 @@
+name: products
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: bra_product_family
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: platform
+  type: ENUM('amazon', 'tiktok')
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Commerce platform such as amazon or tiktok.
+- name: market
+  type: CHAR(2)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Two-letter market code; currently US.
+- name: provider
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Data provider such as fastmoss, sellersprite, or sif.
+- name: external_family_id
+  type: VARCHAR(128)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Provider parent ASIN or TikTok product_id.
+- name: parent_asin
+  type: CHAR(10)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: shop_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Shop key.
+- name: category_scope_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Validated bra category scope key.
+- name: brand
+  type: VARCHAR(255)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Brand name.
+- name: title
+  type: VARCHAR(1500)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Product title.
+- name: image_url
+  type: VARCHAR(2000)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: listed_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Product listing timestamp.
+- name: wire_structure
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Underwire or wire-free classification.
+- name: strap_presence
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Strap style classification.
+- name: closure_type
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Closure style classification.
+- name: cup_construction
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Cup padding and construction classification.
+- name: cup_coverage
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Cup coverage classification.
+- name: back_style
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Back construction classification.
+- name: band_length
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Band length classification.
+- name: pack_size
+  type: USMALLINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Number of items in the pack.
+- name: attribute_confidence
+  type: DECIMAL(5, 4)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: extra_attributes
+  type: JSON
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Provider attributes not yet normalized, stored as JSON.
+- name: first_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: last_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+primary_key: id
+cached: false
+properties:
+  description: Bra product families. One row represents a parent ASIN or TikTok product_id, excluding size and color duplication.

@@ -76,6 +76,18 @@ AGENT_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
         "每商品评论数",
     ),
     "new_product_window": ("newProductWindow", "new_product_period", "新品定义"),
+    "shop_candidate_size": (
+        "shopCandidateSize",
+        "candidate_shop_count",
+        "shop_candidate_count",
+        "候选店铺数",
+    ),
+    "shop_analysis_count": (
+        "shopAnalysisCount",
+        "analyzed_shop_count",
+        "competitor_shop_count",
+        "标准分析店铺数",
+    ),
     "category_node_id": (
         "categoryNodeId",
         "nodeIdPath",
@@ -92,7 +104,24 @@ AGENT_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
     "article_query_limit": ("articleQueryLimit", "article_query_limit"),
     "article_results_per_query": ("articleResultsPerQuery", "article_results_per_query"),
     "article_candidate_limit": ("articleCandidateLimit", "article_candidate_limit"),
+    "report_image_limit": ("reportImageLimit", "report_image_count", "报告图片数"),
     "bypass_cache": ("bypassCache", "fresh", "force_refresh"),
+    "design_goal": (
+        "designGoal",
+        "product_goal",
+        "research_goal",
+        "研发目标",
+        "设计目标",
+    ),
+    "target_user": ("targetUser", "target_customer", "目标用户", "目标人群"),
+    "brand_site_urls": (
+        "brandSiteUrls",
+        "brand_urls",
+        "reference_urls",
+        "独立站链接",
+        "品牌站链接",
+    ),
+    "trend_context": ("trendContext", "trend_notes", "趋势背景", "趋势资料"),
 }
 
 ALIAS_TO_CANONICAL = {
@@ -200,7 +229,10 @@ def category_supported_by_prompt(category: Any, prompt: Any) -> bool:
     if not category_tokens or not prompt_tokens:
         return False
     window = len(category_tokens)
-    return any(prompt_tokens[index : index + window] == category_tokens for index in range(len(prompt_tokens) - window + 1))
+    return any(
+        prompt_tokens[index : index + window] == category_tokens
+        for index in range(len(prompt_tokens) - window + 1)
+    )
 
 
 def infer_agent_params_from_prompt(prompt: Any) -> dict[str, Any]:
@@ -222,7 +254,10 @@ def infer_agent_params_from_prompt(prompt: Any) -> dict[str, Any]:
     elif "hsia" in lower_text:
         params["brand"] = "Hsia"
 
-    if any(token in lower_text for token in ("amazon us", "amazon.com", "美国站", "亚马逊美国", "亚马逊美站")):
+    if any(
+        token in lower_text
+        for token in ("amazon us", "amazon.com", "美国站", "亚马逊美国", "亚马逊美站")
+    ):
         params["marketplace"] = "Amazon US"
     elif "amazon" in lower_text and ("美国" in text or re.search(r"\bus\b", lower_text)):
         params["marketplace"] = "Amazon US"
@@ -265,10 +300,16 @@ def resolve_canonical_agent_params(
     payload_params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     prompt_params = infer_agent_params_from_prompt(payload.get("prompt"))
     extracted = normalize_agent_params(extracted_params)
-    explicit_payload_params = merge_agent_param_sources(payload_params, payload_param_source(payload))
-    if extracted.get("category") and not explicit_payload_params.get("category") and not category_supported_by_prompt(
-        extracted.get("category"),
-        payload.get("prompt"),
+    explicit_payload_params = merge_agent_param_sources(
+        payload_params, payload_param_source(payload)
+    )
+    if (
+        extracted.get("category")
+        and not explicit_payload_params.get("category")
+        and not category_supported_by_prompt(
+            extracted.get("category"),
+            payload.get("prompt"),
+        )
     ):
         extracted.pop("category", None)
     params = merge_agent_param_sources(
@@ -299,22 +340,57 @@ def agent_payload_from_params(payload: dict[str, Any], params: dict[str, Any]) -
     mapped["timeRange"] = canonical.get("time_range") or payload.get("timeRange")
     mapped["amazonLimit"] = canonical.get("listing_sample_size") or payload.get("amazonLimit")
     mapped["redditLimit"] = canonical.get("reddit_post_limit") or payload.get("redditLimit")
-    mapped["redditDetailLimit"] = canonical.get("reddit_detail_limit") or payload.get("redditDetailLimit")
-    mapped["redditCommentsPerPost"] = canonical.get("reddit_comments_per_post") or payload.get("redditCommentsPerPost")
+    mapped["redditDetailLimit"] = canonical.get("reddit_detail_limit") or payload.get(
+        "redditDetailLimit"
+    )
+    mapped["redditCommentsPerPost"] = canonical.get("reddit_comments_per_post") or payload.get(
+        "redditCommentsPerPost"
+    )
     mapped["tiktokLimit"] = canonical.get("tiktok_video_limit") or payload.get("tiktokLimit")
-    mapped["tiktokCommentsPerVideo"] = canonical.get("tiktok_comments_per_video") or payload.get("tiktokCommentsPerVideo")
-    mapped["articleQueryLimit"] = canonical.get("article_query_limit") or payload.get("articleQueryLimit")
-    mapped["articleResultsPerQuery"] = canonical.get("article_results_per_query") or payload.get("articleResultsPerQuery")
-    mapped["articleCandidateLimit"] = canonical.get("article_candidate_limit") or payload.get("articleCandidateLimit")
-    mapped["head_listing_count"] = canonical.get("head_listing_count") or payload.get("head_listing_count")
-    mapped["review_sample_size"] = canonical.get("review_sample_size") or payload.get("review_sample_size")
-    mapped["new_product_window"] = canonical.get("new_product_window") or payload.get("new_product_window")
-    mapped["category_node_id"] = canonical.get("category_node_id") or payload.get("category_node_id")
+    mapped["tiktokCommentsPerVideo"] = canonical.get("tiktok_comments_per_video") or payload.get(
+        "tiktokCommentsPerVideo"
+    )
+    mapped["articleQueryLimit"] = canonical.get("article_query_limit") or payload.get(
+        "articleQueryLimit"
+    )
+    mapped["articleResultsPerQuery"] = canonical.get("article_results_per_query") or payload.get(
+        "articleResultsPerQuery"
+    )
+    mapped["articleCandidateLimit"] = canonical.get("article_candidate_limit") or payload.get(
+        "articleCandidateLimit"
+    )
+    mapped["reportImageLimit"] = canonical.get("report_image_limit") or payload.get(
+        "reportImageLimit"
+    )
+    mapped["head_listing_count"] = canonical.get("head_listing_count") or payload.get(
+        "head_listing_count"
+    )
+    mapped["review_sample_size"] = canonical.get("review_sample_size") or payload.get(
+        "review_sample_size"
+    )
+    mapped["new_product_window"] = canonical.get("new_product_window") or payload.get(
+        "new_product_window"
+    )
+    mapped["shop_candidate_size"] = canonical.get("shop_candidate_size") or payload.get(
+        "shop_candidate_size"
+    )
+    mapped["shop_analysis_count"] = canonical.get("shop_analysis_count") or payload.get(
+        "shop_analysis_count"
+    )
+    mapped["category_node_id"] = canonical.get("category_node_id") or payload.get(
+        "category_node_id"
+    )
     mapped["bypassCache"] = bool(canonical.get("bypass_cache") or payload.get("bypassCache"))
+    mapped["designGoal"] = canonical.get("design_goal") or payload.get("designGoal")
+    mapped["targetUser"] = canonical.get("target_user") or payload.get("targetUser")
+    mapped["brandSiteUrls"] = canonical.get("brand_site_urls") or payload.get("brandSiteUrls")
+    mapped["trendContext"] = canonical.get("trend_context") or payload.get("trendContext")
     return mapped
 
 
-def adapt_agent_params_for_tool(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+def adapt_agent_params_for_tool(
+    tool_name: str, category: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     canonical = merge_agent_param_sources(
         infer_agent_params_from_prompt(payload.get("prompt")),
         payload_param_source(payload),
@@ -331,15 +407,51 @@ def adapt_agent_params_for_tool(tool_name: str, category: str, payload: dict[str
             "mode": payload.get("mode") or "auto",
             "useLlm": False,
             "redditDetailLimit": bounded_int(canonical.get("reddit_detail_limit"), 5, 0, 30),
-            "redditCommentsPerPost": bounded_int(canonical.get("reddit_comments_per_post"), 10, 0, 80),
+            "redditCommentsPerPost": bounded_int(
+                canonical.get("reddit_comments_per_post"), 10, 0, 80
+            ),
             "bypassCache": bypass_cache,
         }
     if tool_name == "amazon_shelf":
         return {
             "category": tool_category,
             "limit": bounded_int(canonical.get("listing_sample_size"), 30, 5, 80),
-            "amazonKeywordLimit": bounded_int(canonical.get("amazon_keyword_limit") or payload.get("amazonKeywordLimit"), 6, 1, 12),
+            "amazonKeywordLimit": bounded_int(
+                canonical.get("amazon_keyword_limit") or payload.get("amazonKeywordLimit"), 6, 1, 12
+            ),
             "useLlm": False,
+            "bypassCache": bypass_cache,
+        }
+    if tool_name == "trend_platforms":
+        results_per_query = bounded_int(
+            canonical.get("article_results_per_query")
+            or payload.get("resultsPerQuery")
+            or payload.get("resultsPerPlatform"),
+            10,
+            1,
+            20,
+        )
+        return {
+            "category": tool_category,
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace") or "Global",
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "30d",
+            "designGoal": canonical.get("design_goal") or payload.get("designGoal"),
+            "targetUser": canonical.get("target_user") or payload.get("targetUser"),
+            "trendContext": canonical.get("trend_context") or payload.get("trendContext"),
+            "resultsPerQuery": results_per_query,
+            "resultsPerPlatform": results_per_query,
+            "pageReadLimit": bounded_int(
+                canonical.get("article_candidate_limit") or payload.get("pageReadLimit"),
+                30,
+                1,
+                50,
+            ),
+            "reportImageLimit": bounded_int(
+                canonical.get("report_image_limit") or payload.get("reportImageLimit"),
+                36,
+                1,
+                36,
+            ),
             "bypassCache": bypass_cache,
         }
     if tool_name == "media_rankings":
@@ -349,26 +461,180 @@ def adapt_agent_params_for_tool(tool_name: str, category: str, payload: dict[str
             "resultsPerQuery": bounded_int(canonical.get("article_results_per_query"), 5, 1, 10),
             "candidateLimit": bounded_int(canonical.get("article_candidate_limit"), 8, 1, 20),
             "includeIndustryReports": True,
+            "urls": canonical.get("brand_site_urls")
+            or payload.get("brandSiteUrls")
+            or payload.get("urls")
+            or [],
             "bypassCache": bypass_cache,
         }
     if tool_name == "tiktok_social":
         return {
             "category": tool_category,
             "limit": bounded_int(canonical.get("tiktok_video_limit"), 6, 1, 12),
-            "tiktokCommentsPerVideo": bounded_int(canonical.get("tiktok_comments_per_video"), 4, 1, 20),
+            "tiktokCommentsPerVideo": bounded_int(
+                canonical.get("tiktok_comments_per_video"), 4, 1, 20
+            ),
             "bypassCache": bypass_cache,
         }
     if tool_name == "build_market_report_data":
         return {
+            "skillId": payload.get("skillId"),
             "category": tool_category,
             "brand": canonical.get("brand") or payload.get("brand"),
             "marketplace": canonical.get("marketplace") or payload.get("marketplace"),
+            "categoryNodeId": canonical.get("category_node_id")
+            or payload.get("categoryNodeId")
+            or payload.get("category_node_id"),
             "timeRange": canonical.get("time_range") or payload.get("timeRange") or "90d",
+            "listingSampleSize": bounded_int(canonical.get("listing_sample_size"), 20, 5, 100),
+            "headListingCount": bounded_int(canonical.get("head_listing_count"), 5, 1, 30),
+            "reviewSampleSize": bounded_int(canonical.get("review_sample_size"), 30, 1, 100),
             "prompt": payload.get("prompt"),
             "mode": payload.get("agentMode") or payload.get("mode") or "market",
             "generatedAt": payload.get("generatedAt"),
-            "toolResults": payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else [],
-            "evidenceGaps": payload.get("evidenceGaps") if isinstance(payload.get("evidenceGaps"), list) else [],
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+        }
+    if tool_name == "build_tiktok_new_product_report_data":
+        return {
+            "skillId": payload.get("skillId"),
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand") or "Hsia",
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace") or "US",
+            "categoryNodeId": canonical.get("category_node_id")
+            or payload.get("categoryNodeId")
+            or payload.get("category_node_id"),
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "28d",
+            "newProductWindow": canonical.get("new_product_window")
+            or payload.get("newProductWindow")
+            or payload.get("new_product_window")
+            or "30d",
+            "listingSampleSize": bounded_int(canonical.get("listing_sample_size"), 20, 1, 100),
+            "headListingCount": bounded_int(canonical.get("head_listing_count"), 5, 1, 30),
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "market",
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+        }
+    if tool_name == "build_tiktok_bra_competitor_shop_report_data":
+        return {
+            "skillId": payload.get("skillId"),
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand") or "Hsia",
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace") or "US",
+            "categoryNodeId": canonical.get("category_node_id")
+            or payload.get("categoryNodeId")
+            or payload.get("category_node_id"),
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "28d",
+            "newProductWindow": canonical.get("new_product_window")
+            or payload.get("newProductWindow")
+            or payload.get("new_product_window")
+            or "30d",
+            "shopCandidateSize": bounded_int(
+                canonical.get("shop_candidate_size"), 50, 10, 100
+            ),
+            "shopAnalysisCount": bounded_int(
+                canonical.get("shop_analysis_count"), 10, 1, 30
+            ),
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "competitor",
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+        }
+    if tool_name == "build_trend_report_data":
+        return {
+            "category": tool_category,
+            "marketplace": canonical.get("marketplace") or payload.get("marketplace") or "Global",
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "30d",
+            "designGoal": canonical.get("design_goal") or payload.get("designGoal"),
+            "targetUser": canonical.get("target_user") or payload.get("targetUser"),
+            "reportImageLimit": bounded_int(
+                canonical.get("report_image_limit") or payload.get("reportImageLimit"),
+                36,
+                1,
+                36,
+            ),
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "market",
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+        }
+    if tool_name in {
+        "build_competitor_product_report_data",
+        "build_hot_product_pain_report_data",
+    }:
+        return {
+            "skillId": payload.get("skillId"),
+            "category": tool_category,
+            "asin": canonical.get("asin") or payload.get("asin"),
+            "brand": canonical.get("brand") or payload.get("brand") or "Hsia / 遐",
+            "marketplace": canonical.get("marketplace")
+            or payload.get("marketplace")
+            or "Amazon US",
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "180d",
+            "headListingCount": bounded_int(canonical.get("head_listing_count"), 10, 1, 30),
+            "reportImageLimit": bounded_int(
+                canonical.get("report_image_limit") or payload.get("reportImageLimit"),
+                60,
+                1,
+                120,
+            ),
+            "prompt": payload.get("prompt"),
+            "mode": payload.get("agentMode") or payload.get("mode") or "competitor",
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+        }
+    if tool_name == "build_product_design_brief_data":
+        return {
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand") or "Hsia / 遐",
+            "marketplace": canonical.get("marketplace")
+            or payload.get("marketplace")
+            or "Amazon US",
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "180d",
+            "designGoal": canonical.get("design_goal") or payload.get("designGoal"),
+            "targetUser": canonical.get("target_user") or payload.get("targetUser"),
+            "brandSiteUrls": canonical.get("brand_site_urls") or payload.get("brandSiteUrls") or [],
+            "trendContext": canonical.get("trend_context") or payload.get("trendContext"),
+            "listingSampleSize": bounded_int(canonical.get("listing_sample_size"), 100, 10, 200),
+            "headListingCount": bounded_int(canonical.get("head_listing_count"), 10, 5, 30),
+            "reviewSampleSize": bounded_int(canonical.get("review_sample_size"), 60, 10, 100),
+            "tiktokVideoLimit": bounded_int(canonical.get("tiktok_video_limit"), 12, 1, 12),
+            "tiktokCommentsPerVideo": bounded_int(
+                canonical.get("tiktok_comments_per_video"), 20, 1, 20
+            ),
+            "prompt": payload.get("prompt"),
+            "generatedAt": payload.get("generatedAt"),
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
         }
     if tool_name == "render_html_report":
         return {
@@ -379,12 +645,69 @@ def adapt_agent_params_for_tool(tool_name: str, category: str, payload: dict[str
             "prompt": payload.get("prompt"),
             "mode": payload.get("agentMode") or payload.get("mode") or "market",
             "generatedAt": payload.get("generatedAt"),
-            "marketReportData": payload.get("marketReportData") if isinstance(payload.get("marketReportData"), dict) else {},
-            "toolResults": payload.get("toolResults") if isinstance(payload.get("toolResults"), list) else [],
-            "evidenceGaps": payload.get("evidenceGaps") if isinstance(payload.get("evidenceGaps"), list) else [],
+            "marketReportData": payload.get("marketReportData")
+            if isinstance(payload.get("marketReportData"), dict)
+            else {},
+            "tiktokNewProductReportData": (
+                payload.get("tiktokNewProductReportData")
+                if isinstance(payload.get("tiktokNewProductReportData"), dict)
+                else {}
+            ),
+            "tiktokCompetitorShopReportData": (
+                payload.get("tiktokCompetitorShopReportData")
+                if isinstance(payload.get("tiktokCompetitorShopReportData"), dict)
+                else {}
+            ),
+            "trendReportData": payload.get("trendReportData")
+            if isinstance(payload.get("trendReportData"), dict)
+            else {},
+            "competitorProductReportData": payload.get("competitorProductReportData")
+            if isinstance(payload.get("competitorProductReportData"), dict)
+            else {},
+            "hotProductPainReportData": payload.get("hotProductPainReportData")
+            if isinstance(payload.get("hotProductPainReportData"), dict)
+            else {},
+            "chartRenderBundle": payload.get("chartRenderBundle")
+            if isinstance(payload.get("chartRenderBundle"), dict)
+            else {},
+            "toolResults": payload.get("toolResults")
+            if isinstance(payload.get("toolResults"), list)
+            else [],
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
             "useLlm": bool(payload.get("useLlm")),
             "skillId": payload.get("skillId"),
             "skillMarkdown": payload.get("skillMarkdown"),
             "skillHtmlTemplate": payload.get("skillHtmlTemplate"),
+            "reportImageLimit": bounded_int(
+                canonical.get("report_image_limit") or payload.get("reportImageLimit"),
+                60,
+                1,
+                120,
+            ),
+        }
+    if tool_name == "render_markdown_report":
+        return {
+            "category": tool_category,
+            "brand": canonical.get("brand") or payload.get("brand") or "Hsia / 遐",
+            "marketplace": canonical.get("marketplace")
+            or payload.get("marketplace")
+            or "Amazon US",
+            "timeRange": canonical.get("time_range") or payload.get("timeRange") or "180d",
+            "designGoal": canonical.get("design_goal") or payload.get("designGoal"),
+            "prompt": payload.get("prompt"),
+            "generatedAt": payload.get("generatedAt"),
+            "productDesignBriefData": (
+                payload.get("productDesignBriefData")
+                if isinstance(payload.get("productDesignBriefData"), dict)
+                else {}
+            ),
+            "evidenceGaps": payload.get("evidenceGaps")
+            if isinstance(payload.get("evidenceGaps"), list)
+            else [],
+            "useLlm": bool(payload.get("useLlm")),
+            "skillId": payload.get("skillId"),
+            "skillMarkdown": payload.get("skillMarkdown"),
         }
     return {"category": tool_category, "bypassCache": bypass_cache}

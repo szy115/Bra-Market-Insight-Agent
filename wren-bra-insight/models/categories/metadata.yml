@@ -1,0 +1,81 @@
+name: categories
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: bra_category_scope
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: platform
+  type: ENUM('amazon', 'tiktok')
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Commerce platform such as amazon or tiktok.
+- name: market
+  type: CHAR(2)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Two-letter market code; currently US.
+- name: provider
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Data provider such as fastmoss, sellersprite, or sif.
+- name: external_category_id
+  type: VARCHAR(128)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: category_level
+  type: UTINYINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: category_name
+  type: VARCHAR(512)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: category_path
+  type: VARCHAR(1500)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: is_bra_leaf
+  type: TINYINT(1)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: enabled
+  type: TINYINT(1)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: source_call_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Ingestion call that produced the record.
+- name: first_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: last_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+primary_key: id
+cached: false
+properties:
+  description: Validated bra category scope and standard leaf category identifiers.

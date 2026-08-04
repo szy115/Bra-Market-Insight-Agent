@@ -1110,6 +1110,7 @@ export interface AgentRunRequest {
   bypassCache?: boolean;
   agentToolTimeoutSeconds?: number;
   continueRunId?: string;
+  contextRunId?: string;
   skillId?: string;
   params?: Record<string, unknown>;
 }
@@ -1157,8 +1158,9 @@ export interface AgentRunEvent {
 
 export interface AgentRunResponse {
   run_id: string;
+  context_source_run_id?: string;
   generated_at: string;
-  status?: "ok" | "needs_input";
+  status?: "ok" | "needs_input" | "error";
   response_type?: "artifact" | "message" | "needs_input";
   mode: "market" | "competitor";
   category: string;
@@ -1227,6 +1229,12 @@ export interface AgentRunResponse {
       suggestions?: string[];
     }>;
     message?: string;
+    reason_type?: "external_action" | "retryable_tool_failure" | string;
+    resume_supported?: boolean;
+    blocked_tool?: string;
+    blocked_tool_input?: Record<string, unknown>;
+    completed_tool_count?: number;
+    recorded_tool_count?: number;
   };
 }
 

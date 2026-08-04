@@ -1,0 +1,146 @@
+name: keyword_period_history
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: bra_keyword_period
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: provider
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Data provider such as fastmoss, sellersprite, or sif.
+- name: market
+  type: CHAR(2)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Two-letter market code; currently US.
+- name: keyword_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Keyword key.
+- name: period_type
+  type: ENUM('day', 'week', 'month', 'latest')
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: period_start
+  type: DATE
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Business period start date.
+- name: period_end
+  type: DATE
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Business period end date.
+- name: search_volume
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Keyword search volume.
+- name: purchase_volume
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Keyword purchase volume.
+- name: purchase_rate
+  type: DECIMAL(12, 8)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Purchase volume divided by search volume.
+- name: search_growth
+  type: DECIMAL(14, 8)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Provider-defined search growth metric.
+- name: product_count
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Products associated with the keyword.
+- name: supply_demand_ratio
+  type: DECIMAL(20, 8)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Provider-defined supply-demand ratio.
+- name: click_concentration
+  type: DECIMAL(12, 8)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Top-result click concentration.
+- name: title_density
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: spr
+  type: DECIMAL(20, 8)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: ppc_bid_low
+  type: DECIMAL(18, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Low PPC bid estimate.
+- name: ppc_bid_high
+  type: DECIMAL(18, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: High PPC bid estimate.
+- name: avg_price
+  type: DECIMAL(18, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Average keyword-market price.
+- name: source_call_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Ingestion call that produced the record.
+- name: observed_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Actual collection or write timestamp.
+- name: version
+  type: UINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Incrementing observation version within the same business grain.
+- name: extra_metrics
+  type: JSON
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Provider metrics not yet normalized, stored as JSON.
+primary_key: id
+cached: false
+properties:
+  description: Append-only version history of keyword period metrics.

@@ -174,7 +174,7 @@ def _error_assessment(summary: str) -> ToolAssessment:
             reason=summary or "Tool timed out.",
             suggested_next_actions=["Retry once with the same inputs.", "If it times out again, reduce sample size or continue with other evidence."],
         )
-    if any(token in text for token in ("login", "captcha", "verification", "verify", "not authenticated", "authentication", "authorization", "unauthorized", "forbidden", "unsafe", "登录", "验证码", "验证", "鉴权", "授权", "未授权", "无权限", "权限")):
+    if any(token in text for token in ("login", "captcha", "verification", "verify", "not authenticated", "authentication", "authorization", "unauthorized", "forbidden", "unsafe", "credits exhausted", "credit balance", "insufficient credit", "out of credits", "recharge", "quota exhausted", "登录", "验证码", "验证", "鉴权", "授权", "未授权", "无权限", "权限", "余额", "额度", "积分不足", "充值")):
         return ToolAssessment(
             status="needs_user_action",
             outcome="needs_user_action",
@@ -182,7 +182,7 @@ def _error_assessment(summary: str) -> ToolAssessment:
             reason=summary or "Tool needs user action before it can run.",
             suggested_next_actions=["Ask the user to refresh login state or resolve verification.", "Do not blindly retry this tool."],
         )
-    if any(token in text for token in ("required", "invalid", "unknown agent tool", "not found", "missing", "parameter", "argument", "schema", "bad request", "unsupported", "参数", "缺少", "必填", "无效", "格式错误", "不支持", "不存在")):
+    if any(token in text for token in ("required", "requires", "invalid", "unknown agent tool", "not found", "missing", "parameter", "argument", "schema", "bad request", "unsupported", "参数", "缺少", "必填", "无效", "格式错误", "不支持", "不存在")):
         return ToolAssessment(
             status="fatal_error",
             outcome="fatal_error",
@@ -319,12 +319,50 @@ def _empty_sif_assessment(tool_name: str, data: dict[str, Any]) -> ToolAssessmen
     return None
 
 
+def _completed_html_renderer_assessment(
+    tool_name: str,
+    result: dict[str, Any],
+) -> ToolAssessment | None:
+    if tool_name != "render_html_report" or str(result.get("status") or "") not in SUCCESS_TOOL_STATUSES:
+        return None
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    html_analysis = data.get("html_analysis") if isinstance(data.get("html_analysis"), dict) else {}
+    html = str(data.get("html") or "").strip()
+    if (
+        str(html_analysis.get("status") or "") == "ok"
+        and html.casefold().startswith("<!doctype html")
+        and html.casefold().endswith("</html>")
+    ):
+        return ToolAssessment(
+            status="ok",
+            outcome="ok_with_data",
+            retryable=False,
+            reason=str(result.get("summary") or "HTML report renderer returned a complete document."),
+            suggested_next_actions=[],
+        )
+    return None
+
+
 def assess_agent_tool_result(tool_name: str, result: dict[str, Any]) -> ToolAssessment:
     status = str(result.get("status") or "")
     summary = str(result.get("summary") or "")
+    completed_renderer = _completed_html_renderer_assessment(tool_name, result)
+    if completed_renderer:
+        return completed_renderer
     semantic_failure = _find_semantic_failure(result.get("data"))
     if semantic_failure:
         return _semantic_failure_assessment(semantic_failure)
+    if status == "empty":
+        return ToolAssessment(
+            status="empty",
+            outcome="empty_result",
+            retryable=False,
+            reason=summary or f"{tool_name} returned no usable records.",
+            suggested_next_actions=[
+                "Adjust the completed period, category id, or query window before retrying.",
+                "Treat this as missing evidence, not proof of zero market activity.",
+            ],
+        )
     if status not in SUCCESS_TOOL_STATUSES:
         return _error_assessment(summary)
 
@@ -386,6 +424,32 @@ def assess_agent_tool_result(tool_name: str, result: dict[str, Any]) -> ToolAsse
                 retryable=False,
                 reason="Media/ranking search found no readable articles.",
                 suggested_next_actions=["Ask the model to try broader media queries.", "Proceed only if other tools provide enough evidence."],
+            )
+    elif tool_name == "trend_platforms":
+        coverage = data.get("coverage") if isinstance(data.get("coverage"), dict) else {}
+        required = _int_value(coverage.get("required_platforms")) or 3
+        accessed = _int_value(coverage.get("accessed_platforms"))
+        if accessed <= 0:
+            return ToolAssessment(
+                status="empty",
+                outcome="empty_result",
+                retryable=False,
+                reason="WGSN, 蝶讯, and Pinterest all returned no usable public or indexed evidence.",
+                suggested_next_actions=[
+                    "Check the configured Agent Reach/Exa search route and public network access.",
+                    "Retry with a broader category and bypassCache=true.",
+                ],
+            )
+        if accessed < required:
+            return ToolAssessment(
+                status="partial_ok",
+                outcome="partial_ok",
+                retryable=False,
+                reason=f"Trend crawler accessed {accessed}/{required} required platforms.",
+                suggested_next_actions=[
+                    "Use the available evidence, but name every missing platform in the report.",
+                    "Do not substitute another source for WGSN, 蝶讯, or Pinterest.",
+                ],
             )
     elif tool_name == "tiktok_social":
         metrics = data.get("metrics") if isinstance(data.get("metrics"), dict) else {}

@@ -240,14 +240,58 @@ def resolve_min_success(value: Any, params: dict[str, Any]) -> int:
 def evidence_tool_identity(tool: dict[str, Any]) -> str:
     input_payload = tool.get("input") if isinstance(tool.get("input"), dict) else {}
     request = input_payload.get("request") if isinstance(input_payload.get("request"), dict) else {}
-    for key in ("asin", "keyword", "departmentKeyword", "nodeIdPath"):
-        value = input_payload.get(key)
-        if value not in (None, ""):
-            return f"{key}:{str(value).strip().lower()}"
-        value = request.get(key)
-        if value not in (None, ""):
-            return f"request.{key}:{str(value).strip().lower()}"
+    filters = input_payload.get("filter") if isinstance(input_payload.get("filter"), dict) else {}
+    identity_containers = (
+        ("", input_payload),
+        ("request.", request),
+        ("filter.", filters),
+    )
+    for key in (
+        "product_id",
+        "seller_id",
+        "creator_id",
+        "uid",
+        "room_id",
+        "video_id",
+        "asin",
+        "keyword",
+        "departmentKeyword",
+        "nodeIdPath",
+    ):
+        for prefix, container in identity_containers:
+            value = container.get(key)
+            if value not in (None, ""):
+                return f"{prefix}{key}:{str(value).strip().lower()}"
     return json.dumps(input_payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def evidence_tool_has_usable_review_text(tool: dict[str, Any]) -> bool:
+    data = tool.get("data") if isinstance(tool.get("data"), dict) else {}
+    containers = [data]
+    for key in ("result", "data"):
+        if isinstance(data.get(key), dict):
+            containers.append(data[key])
+    for container in containers:
+        for key in ("reviews", "list", "items", "comments"):
+            rows = container.get(key)
+            if not isinstance(rows, list):
+                continue
+            return any(
+                isinstance(row, dict)
+                and bool(
+                    str(
+                        row.get("review_text")
+                        or row.get("content")
+                        or row.get("review_content")
+                        or row.get("comment")
+                        or row.get("text")
+                        or row.get("body")
+                        or ""
+                    ).strip()
+                )
+                for row in rows
+            )
+    return False
 
 
 def validate_evidence_contract(
@@ -276,6 +320,10 @@ def validate_evidence_contract(
             tool
             for tool in tools
             if str(tool.get("name") or "") == tool_name and str(tool.get("status") or "") in success_statuses
+            and (
+                tool_name != "mcp__fastmoss__product_review_list"
+                or evidence_tool_has_usable_review_text(tool)
+            )
         ]
         observed_success = (
             len({evidence_tool_identity(tool) for tool in successful_tools})

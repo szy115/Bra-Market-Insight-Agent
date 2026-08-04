@@ -1,12 +1,16 @@
 import json
 import os
+import threading
+import time
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from insight_agent import server as server_module
 from insight_agent import settings as settings_module
+from insight_agent.agent_skill_harness import validate_evidence_contract
 from insight_agent.ingestion import agent_reach as agent_reach_module
 from insight_agent.ingestion import tiktok_browser as tiktok_browser_module
 from insight_agent.ingestion import youtube_ytdlp as youtube_module
@@ -1086,11 +1090,19 @@ def test_hot_product_pain_report_uses_generic_llm_html_renderer(monkeypatch) -> 
             },
         },
     ]
+    report_data = server_module.build_hot_product_pain_report_data(
+        {
+            "category": "minimizer bra",
+            "marketplace": "Amazon US",
+            "toolResults": tool_results,
+        }
+    )
 
     def fake_call_openai_compatible(messages):
         payload = json.loads(messages[-1]["content"])
-        serialized = json.dumps(payload["tool_results"], ensure_ascii=False)
+        serialized = json.dumps(payload["hot_product_pain_report_data"], ensure_ascii=False)
         assert "market_report_data" not in payload
+        assert "tool_results" not in payload
         assert "B000TEST1" in serialized
         assert "https://m.media-amazon.com/images/I/product._SY200.jpg" in serialized
         assert "https://m.media-amazon.com/images/I/review._SY200.jpg" in serialized
@@ -1153,15 +1165,18 @@ aside{position:sticky;top:16px;align-self:start;border-left:3px solid #2563eb;pa
     monkeypatch.setattr(
         server_module,
         "call_openai_compatible_chat",
-        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+        lambda messages, **_kwargs: html_chat_response_from_result(
+            fake_call_openai_compatible(messages)
+        ),
     )
 
     rendered = server_module.execute_agent_tool_with_timeout(
         "render_html_report",
         "minimizer bra",
         {
-            "prompt": "使用 hot_product_pain_analysis Skill 做爆款痛点分析。参数：head_listing_count=1。",
-            "toolResults": tool_results,
+                "prompt": "使用 hot_product_pain_analysis Skill 做爆款痛点分析。参数：head_listing_count=1。",
+                "hotProductPainReportData": report_data,
+                "toolResults": [],
             "useLlm": True,
             "skillId": "hot_product_pain_analysis",
             "skillMarkdown": "### HTML Report Style Reference\n\n必须输出逐商品卡片和横向痛点矩阵。",
@@ -1193,10 +1208,376 @@ def test_competitor_product_deep_dive_skill_loads_product_report_template() -> N
         "comparison",
         "genes",
         "hsia-actions",
-        "evidence-gaps",
     ]
     assert "Listing SEO" in skill["markdown"]
     assert "不应照搬" in skill["markdown"]
+
+
+def test_product_design_research_skill_registers_markdown_contract() -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["product_design_research"]
+    policy = {row["tool"]: row["policy"] for row in skill["tool_policy"]}
+    evidence = {row["evidence_id"]: row for row in skill["evidence_contract"]}
+
+    assert skill["input_schema"]["required"] == ["category", "design_goal"]
+    assert skill["input_schema"]["defaults"]["listing_sample_size"] == 100
+    assert skill["input_schema"]["defaults"]["review_sample_size"] == 60
+    assert policy["build_product_design_brief_data"] == "required"
+    assert policy["render_markdown_report"] == "required"
+    assert policy["render_html_report"] == "disallowed"
+    assert evidence["review_minimum"]["min_success"] == 5
+    assert evidence["review_minimum"]["severity"] == "block"
+    assert evidence["review_target"]["min_success"] == "param:head_listing_count"
+    assert evidence["review_target"]["severity"] == "warn"
+
+
+def test_product_design_brief_data_tracks_collection_ai_volume_and_review_layers() -> None:
+    def ok(name: str, data: dict[str, Any], tool_input: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "name": name,
+            "label": name,
+            "status": "ok",
+            "summary": f"{name} completed",
+            "input": tool_input or {"category": "strapless bra"},
+            "data": data,
+        }
+
+    tool_results = [
+        ok("sif_market_get_keyword_root_trend", {"roots": [{"keyword": "strapless"}]}),
+        ok("sif_market_get_keyword_demand", {"keywords": [{"keyword": "strapless bra", "search_volume": 1000}]}, {"keyword": "strapless bra"}),
+        ok("sif_market_get_keyword_demand", {"keywords": [{"keyword": "bra that stays up", "search_volume": 500}]}, {"keyword": "bra that stays up"}),
+        ok("sif_market_get_keyword_history", {"keywords": [{"keyword": "strapless bra", "search_volume": 1000}]}),
+        ok("sif_market_get_keyword_competition", {"items": [{"asin": "B000000001"}]}, {"keyword": "strapless bra"}),
+        ok("sif_market_get_keyword_competition", {"items": [{"asin": "B000000002"}]}, {"keyword": "bra that stays up"}),
+        ok("sellersprite_aba_research_weekly", {"data": {"items": [{"keyword": "strapless bra"}]}}),
+        ok("sellersprite_product_node", {"resolved_params": {"category_node_id": "1:2"}}),
+        ok("sellersprite_market_research", {"data": {"items": [{"asin": "B000000001"}]}}),
+        ok(
+            "sellersprite_market_product_concentration",
+            {
+                "product_selection": {
+                    "candidate_count": 3,
+                    "eligible_count": 3,
+                    "selected": [
+                        {"asin": "B000000001", "family_asin": "B000PARENT", "title": "Alpha Strapless Bra", "price": 29.99},
+                        {"asin": "B000000002", "family_asin": "B000PARENT", "title": "Alpha Strapless Bra Black", "price": 29.99},
+                        {"asin": "B000000003", "title": "Beta Strapless Bra", "price": 39.99},
+                    ],
+                }
+            },
+        ),
+        ok(
+            "sellersprite_review",
+            {
+                "data": {
+                    "items": [
+                        {"star": 1, "title": "Slips", "content": "It slides down."},
+                        {"star": 3, "title": "Mixed", "content": "Supportive but too tight."},
+                        {"star": 5, "title": "Works", "content": "It stays up all day."},
+                    ]
+                },
+                "review_sampling": {"selected_review_asin": "B000000001", "scope": "exact_asin"},
+            },
+            {"asin": "B000000001"},
+        ),
+        ok(
+            "tiktok_social",
+            {
+                "videos": [
+                    {
+                        "title": "Strapless support test",
+                        "url": "https://www.tiktok.com/@creator/video/1",
+                        "views": 1000,
+                        "comment_samples": [{"text": "Does it stay up?"}],
+                    }
+                ]
+            },
+        ),
+        ok(
+            "media_rankings",
+            {
+                "articles": [
+                    {
+                        "title": "Wacoal Best Sellers",
+                        "domain": "wacoal-america.com",
+                        "url": "https://wacoal-america.com/collections/best-sellers",
+                        "source_type": "brand_site",
+                        "authority_level": "Medium",
+                        "evidence_snippets": ["Public product positioning and feature claims."],
+                    }
+                ]
+            },
+        ),
+    ]
+
+    brief = server_module.build_product_design_brief_data(
+        {
+            "category": "strapless bra",
+            "designGoal": "开发稳定不下滑的大胸日常抹胸文胸",
+            "toolResults": tool_results,
+        }
+    )
+
+    assert brief["schema_version"] == "product_design_brief_data.v1"
+    assert [product["asin"] for product in brief["products"]] == ["B000000001", "B000000003"]
+    assert {review["group"] for review in brief["reviews"]} == {
+        "failure_1_2_star",
+        "tradeoff_3_star",
+        "purchase_driver_4_5_star",
+    }
+    assert brief["data_volume"]["planned"]["reviews"] == 600
+    assert brief["data_volume"]["actual"]["reviews"] == 3
+    assert brief["data_volume"]["included_in_llm"]["reviews"] == 3
+    assert brief["data_volume"]["actual"]["unique_products"] == 2
+    assert any(item["id"].startswith("R") for item in brief["evidence_map"])
+    assert any("FastMoss" in gap for gap in brief["data_gaps"])
+
+
+def test_markdown_report_renderer_requires_sections_and_known_evidence(monkeypatch) -> None:
+    evidence_ids = ["K01", "K02", "M01", "P01", "P02", "R01", "R02", "T01", "W01"]
+    brief = {
+        "schema_version": "product_design_brief_data.v1",
+        "title": "Hsia Strapless Bra 产品研发调研任务书",
+        "research_scope": {"category": "strapless bra", "design_goal": "stay up"},
+        "data_volume": {
+            "planned": {"reviews": 600},
+            "actual": {"reviews": 300},
+            "included_in_llm": {"reviews": 120},
+        },
+        "keyword_evidence": [],
+        "market_evidence": [],
+        "products": [],
+        "reviews": [],
+        "tiktok_evidence": [],
+        "web_evidence": [],
+        "reddit_evidence": [],
+        "evidence_map": [
+            {"id": evidence_id, "source": "test", "kind": "test", "title": evidence_id}
+            for evidence_id in evidence_ids
+        ],
+        "data_gaps": ["TikTok Shop reviews unavailable."],
+        "report_contract": {"required_sections": server_module.PRODUCT_DESIGN_REPORT_SECTIONS},
+        "artifact": {"title": "Hsia Strapless Bra 产品研发调研任务书"},
+    }
+    markdown = product_design_test_markdown()
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_chat(messages):
+        captured_payloads.append(json.loads(messages[-1]["content"]))
+        return native_chat_response(content=markdown)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_markdown_report",
+        "strapless bra",
+        {
+            "productDesignBriefData": brief,
+            "useLlm": True,
+            "skillId": "product_design_research",
+            "skillMarkdown": "# 产品研发调研",
+            "agentToolRetryDelayMs": 0,
+        },
+    )
+
+    assert rendered["status"] == "ok"
+    assert rendered["data"]["format"] == "markdown"
+    assert rendered["data"]["renderer"] == "llm-markdown"
+    assert rendered["data"]["markdown"] == markdown.strip()
+    assert captured_payloads[0]["output_contract"]["required_sections"][0] == "## 1. 研发课题与研究范围"
+    assert "tool_results" not in captured_payloads[0]
+
+
+def test_media_rankings_prioritizes_user_urls_before_discovery(monkeypatch) -> None:
+    captured_urls: list[str] = []
+    provided = "https://wacoal-america.com/collections/best-sellers"
+    discovered = "https://example.com/strapless-bra-guide"
+
+    monkeypatch.setattr(
+        server_module,
+        "discover_article_urls",
+        lambda _payload: {
+            "candidates": [{"url": provided}, {"url": discovered}],
+            "warnings": [],
+        },
+    )
+
+    def fake_analyze_articles(payload):
+        captured_urls.extend(payload["urls"])
+        return {
+            "summary": {},
+            "data_volume": {"collected_articles": len(payload["urls"])},
+            "articles": [
+                {
+                    "title": url,
+                    "url": url,
+                    "domain": "example.com",
+                    "source_type": "brand_site",
+                    "authority_level": "Medium",
+                }
+                for url in payload["urls"]
+            ],
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(server_module, "analyze_articles", fake_analyze_articles)
+    result = server_module.execute_agent_tool(
+        "media_rankings",
+        "strapless bra",
+        {
+            "params": {"brand_site_urls": [provided]},
+            "articleCandidateLimit": 8,
+        },
+    )
+
+    assert result["status"] == "ok"
+    assert captured_urls == [provided, discovered]
+    assert result["data"]["data_volume"]["collected_articles"] == 2
+
+
+def test_product_design_agent_publishes_persistent_markdown_report(monkeypatch, tmp_path) -> None:
+    sif_tools = [
+        "sif_market_get_keyword_root_trend",
+        "sif_market_get_keyword_demand",
+        "sif_market_get_keyword_history",
+        "sif_market_get_keyword_competition",
+    ]
+    seller_tools = [
+        "sellersprite_aba_research_weekly",
+        "sellersprite_product_node",
+        "sellersprite_market_research",
+        "sellersprite_market_product_concentration",
+        "sellersprite_review",
+    ]
+    monkeypatch.setattr(
+        server_module,
+        "get_sif_tool_catalog",
+        lambda: {name: {"label": name, "description": name, "source": "sif_mcp"} for name in sif_tools},
+    )
+    monkeypatch.setattr(
+        server_module,
+        "get_sellersprite_tool_catalog",
+        lambda: {name: {"label": name, "description": name, "source": "sellersprite_mcp"} for name in seller_tools},
+    )
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        server_module,
+        "agent_tool_input_payload",
+        lambda _name, category, payload: {"category": category, **payload},
+    )
+
+    asins = [f"B00000000{index}" for index in range(1, 6)]
+    data_tool_calls = [
+        ("sif_market_get_keyword_root_trend", {}),
+        ("sif_market_get_keyword_demand", {"keyword": "strapless bra"}),
+        ("sif_market_get_keyword_demand", {"keyword": "bra that stays up"}),
+        ("sif_market_get_keyword_history", {"keyword": "strapless bra"}),
+        ("sif_market_get_keyword_competition", {"keyword": "strapless bra"}),
+        ("sif_market_get_keyword_competition", {"keyword": "bra that stays up"}),
+        ("sellersprite_aba_research_weekly", {}),
+        ("sellersprite_product_node", {}),
+        ("sellersprite_market_research", {}),
+        ("sellersprite_market_product_concentration", {}),
+        *[("sellersprite_review", {"asin": asin}) for asin in asins],
+        ("tiktok_social", {}),
+        ("media_rankings", {}),
+        ("build_product_design_brief_data", {}),
+        ("render_markdown_report", {}),
+    ]
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "product_design_research",
+                        "extracted_params": {
+                            "category": "strapless bra",
+                            "design_goal": "开发稳定不下滑的大胸日常抹胸文胸",
+                        },
+                    },
+                )
+            ]
+        ),
+        *[
+            native_chat_response([native_tool_call(f"call-{index}", name, args)])
+            for index, (name, args) in enumerate(data_tool_calls, start=1)
+        ],
+        native_chat_response(content=""),
+    ]
+
+    def fake_chat(_messages, tools=None, tool_choice=None):
+        return chat_responses.pop(0)
+
+    def fake_execute(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        if tool_name == "sellersprite_product_node":
+            data = {"resolved_params": {"category_node_id": "1:2"}}
+        elif tool_name == "sellersprite_market_product_concentration":
+            data = {
+                "resolved_params": {
+                    "selected_product_asins": asins,
+                    "candidate_product_asins": asins,
+                }
+            }
+        elif tool_name == "sellersprite_review":
+            data = {"data": {"items": [{"star": 3, "content": "Supportive with a fit tradeoff."}]}}
+        elif tool_name == "build_product_design_brief_data":
+            data = {
+                "schema_version": "product_design_brief_data.v1",
+                "title": "Hsia Strapless Bra 产品研发调研任务书",
+                "evidence_map": [{"id": f"K{index:02d}"} for index in range(1, 9)],
+                "artifact": {"title": "Hsia Strapless Bra 产品研发调研任务书"},
+            }
+        elif tool_name == "render_markdown_report":
+            data = {
+                "format": "markdown",
+                "title": "Hsia Strapless Bra 产品研发调研任务书",
+                "markdown": product_design_test_markdown(),
+                "artifact": {
+                    "title": "Hsia Strapless Bra 产品研发调研任务书",
+                    "executive_summary": "优先验证防下滑支撑系统。",
+                    "key_findings": [],
+                    "risks": [],
+                    "next_steps": [],
+                },
+                "renderer": "llm-markdown",
+                "markdown_analysis": {
+                    "status": "ok",
+                    "provider": "test",
+                    "model": "markdown-model",
+                },
+            }
+        return {
+            "name": tool_name,
+            "label": tool_name,
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "duration_ms": 1,
+            "input": {"category": category, **payload},
+            "data": data,
+        }
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_execute)
+
+    result = server_module.run_agent(
+        {
+            "prompt": "调研美国 strapless bra，研发目标是开发稳定不下滑的大胸日常抹胸文胸。",
+            "category": "strapless bra",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["skill_id"] == "product_design_research"
+    assert result["llm_analysis"]["renderer"] == "llm-markdown"
+    assert result["llm_analysis"]["markdown_generation_status"] == "ok"
+    assert result["output_files"][0]["label"] == "Markdown report"
+    assert result["output_files"][0]["name"] == "report.md"
+    restored = server_module.read_agent_output_file(result["output_files"][0]["path"])
+    assert restored["format"] == "markdown"
+    assert "## 13. 验证动作、证据链和数据缺口" in restored["content"]
 
 
 def test_hot_product_pain_and_competitor_deep_dive_remain_separate_skills() -> None:
@@ -1223,9 +1604,11 @@ def test_hot_product_pain_skill_requires_complete_review_and_sif_evidence() -> N
     assert policy["sellersprite_review"] == "required"
     assert policy["sif_ops_get_asin_sales_list"] == "required"
     assert policy["sif_market_get_keyword_competition"] == "required"
+    assert policy["build_hot_product_pain_report_data"] == "required"
     assert evidence["sellersprite_review_samples"]["min_success"] == "param:head_listing_count"
     assert evidence["sellersprite_review_samples"]["severity"] == "block"
     assert evidence["sif_sales_proxy"]["severity"] == "block"
+    assert evidence["hot_product_pain_report_data"]["severity"] == "block"
 
 
 def test_competitor_product_deep_dive_skill_registers_single_asin_and_reddit_contract() -> None:
@@ -1234,14 +1617,166 @@ def test_competitor_product_deep_dive_skill_registers_single_asin_and_reddit_con
     evidence = {row["evidence_id"]: row for row in skill["evidence_contract"]}
 
     assert skill["input_schema"]["required"] == ["marketplace", "asin"]
+    assert skill["input_schema"]["defaults"]["review_sample_size"] == 500
+    assert skill["input_schema"]["defaults"]["report_image_limit"] == 60
     assert policy["sellersprite_asin_detail"] == "required"
     assert policy["sellersprite_review"] == "required"
     assert policy["reddit_voc"] == "required"
+    assert policy["build_competitor_product_report_data"] == "required"
     assert policy["sellersprite_market_research"] == "disallowed"
     assert evidence["product_identity"]["severity"] == "block"
+    assert evidence["review_base"]["min_success"] == 1
+    assert evidence["review_base"]["severity"] == "block"
     assert evidence["reddit_user_voc"]["severity"] == "warn"
+    assert evidence["competitor_product_report_data"]["severity"] == "block"
+    assert "collected_unique_count" in skill["markdown"]
+    assert "只调用一次 `sellersprite_review`" in skill["markdown"]
+    assert "不得只取前 12 条" in skill["markdown"]
+    assert "评论区买家返图" in skill["markdown"]
     for expected in ("这个款为什么卖", "核心用户是谁", "Hsia 能学什么", "不应该照搬什么"):
         assert expected in skill["markdown"]
+
+
+def test_competitor_combined_review_result_satisfies_review_evidence_gate() -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    review_contract = [
+        row
+        for row in skill["evidence_contract"]
+        if row["tool"] == "sellersprite_review"
+    ]
+    gate = validate_evidence_contract(
+        {"evidence_contract": review_contract},
+        prompt="深拆 B0012M839K",
+        params={"asin": "B0012M839K"},
+        tools=[
+            {
+                "name": "sellersprite_review",
+                "status": "partial_ok",
+                "input": {"asin": "B0012M839K"},
+                "data": {
+                    "review_sampling": {
+                        "mode": "exhaustive_balanced_pagination",
+                        "buckets": {
+                            "low_star": {"collected_unique_count": 356, "complete": True},
+                            "high_star": {"collected_unique_count": 242, "complete": False},
+                        },
+                    }
+                },
+            }
+        ],
+        success_statuses={"ok", "partial_ok"},
+    )
+
+    assert gate["status"] == "pass"
+    assert gate["block_gaps"] == []
+
+
+def test_html_report_review_context_keeps_every_collected_review() -> None:
+    compacted = server_module.html_report_compact_tool_results(
+        [
+            {
+                "name": "sellersprite_review",
+                "status": "ok",
+                "data": {
+                    "data": {
+                        "page": 1,
+                        "total": 30,
+                        "items": [
+                            {
+                                "id": f"R{index:03d}",
+                                "star": 5,
+                                "title": f"Review {index}",
+                                "content": f"Complete review body {index}",
+                            }
+                            for index in range(30)
+                        ],
+                    },
+                    "review_sampling": {
+                        "source_total": 30,
+                        "collected_unique_count": 30,
+                        "complete": True,
+                    },
+                },
+            }
+        ]
+    )
+
+    review_data = compacted[0]["data"]["data"]
+    assert review_data["report_input_review_count"] == 30
+    assert len(review_data["items"]) == 30
+    assert review_data["items"][-1]["content"] == "Complete review body 29"
+
+
+def test_html_report_fastmoss_context_keeps_late_cross_market_evidence() -> None:
+    tool_results = [
+        {
+            "name": f"mcp__fastmoss__tool_{index:02d}",
+            "status": "ok",
+            "input": {"filter": {"region": "US" if index < 25 else "MX"}},
+            "data": {"value": index},
+        }
+        for index in range(1, 35)
+    ]
+
+    compacted = server_module.html_report_compact_tool_results(tool_results)
+
+    assert len(compacted) == 34
+    assert compacted[-1]["name"] == "mcp__fastmoss__tool_34"
+    assert "MX" in compacted[-1]["input"]["filter"]
+
+
+def test_legacy_html_workflows_now_build_versioned_bounded_report_data() -> None:
+    tool_results = [
+        {
+            "name": "sellersprite_asin_detail",
+            "label": "ASIN detail",
+            "status": "ok",
+            "input": {"asin": "B000TEST1"},
+            "data": {"asin": "B000TEST1", "title": "Test minimizer bra"},
+        },
+        {
+            "name": "sellersprite_review",
+            "label": "Reviews",
+            "status": "ok",
+            "input": {"asin": "B000TEST1"},
+            "data": {
+                "data": {
+                    "items": [
+                        {
+                            "star": 2,
+                            "title": "Strap slips",
+                            "content": "The strap slips after washing.",
+                            "images": ["https://example.com/review.jpg"],
+                        }
+                    ]
+                }
+            },
+        },
+    ]
+
+    competitor = server_module.build_competitor_product_report_data(
+        {
+            "asin": "B000TEST1",
+            "marketplace": "Amazon US",
+            "toolResults": tool_results,
+            "reportImageLimit": 10,
+        }
+    )
+    hot_product = server_module.build_hot_product_pain_report_data(
+        {
+            "category": "minimizer bra",
+            "marketplace": "Amazon US",
+            "toolResults": tool_results,
+        }
+    )
+
+    assert competitor["schema_version"] == "competitor_product_report_data.v1"
+    assert hot_product["schema_version"] == "hot_product_pain_report_data.v1"
+    assert competitor["output_contract"]["raw_tool_results_forbidden"] is True
+    assert hot_product["output_contract"]["raw_tool_results_forbidden"] is True
+    assert competitor["bounds"]["max_source_results"] == 48
+    assert competitor["review_image_evidence"][0]["image_url"] == "https://example.com/review.jpg"
+    assert all("file_path" not in source for source in competitor["evidence_sources"])
 
 
 def test_product_report_template_is_sent_to_llm_and_enforced(monkeypatch) -> None:
@@ -1276,14 +1811,27 @@ def test_product_report_template_is_sent_to_llm_and_enforced(monkeypatch) -> Non
     monkeypatch.setattr(
         server_module,
         "call_openai_compatible_chat",
-        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+        lambda messages, **_kwargs: html_chat_response_from_result(
+            fake_call_openai_compatible(messages)
+        ),
     )
 
     html_content, _, analysis = server_module.compose_html_report_with_llm(
         {
             "prompt": "从产品研发角度深拆 Amazon US ASIN B000TEST1。",
             "category": "minimizer bra",
-            "toolResults": [{"name": "sellersprite_asin_detail", "status": "ok", "data": {"asin": "B000TEST1"}}],
+            "competitorProductReportData": server_module.build_competitor_product_report_data(
+                {
+                    "asin": "B000TEST1",
+                    "toolResults": [
+                        {
+                            "name": "sellersprite_asin_detail",
+                            "status": "ok",
+                            "data": {"asin": "B000TEST1"},
+                        }
+                    ],
+                }
+            ),
             "skillId": "competitor_product_deep_dive",
             "skillMarkdown": skill["markdown"],
             "skillHtmlTemplate": skill["html_template"],
@@ -1294,6 +1842,156 @@ def test_product_report_template_is_sent_to_llm_and_enforced(monkeypatch) -> Non
     assert captured["required_template_sections"] == required_sections
     assert "data-required-section=\"executive\"" in captured["skill_html_template"]
     assert all(f'data-required-section="{section_id}"' in html_content for section_id in required_sections)
+
+
+def test_competitor_review_gallery_renders_every_selected_buyer_image(monkeypatch) -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    required_sections = server_module.html_template_required_sections(skill["html_template"])
+    captured: dict[str, Any] = {}
+    image_urls = [
+        "https://m.media-amazon.com/images/I/review-a-1._SY200.jpg",
+        "https://m.media-amazon.com/images/I/review-a-2._SY200.jpg",
+        "https://m.media-amazon.com/images/I/review-b-1._SY200.jpg",
+    ]
+
+    def fake_call(messages, **_kwargs):
+        captured.update(json.loads(messages[-1]["content"]))
+        sections = "".join(
+            f'<section data-required-section="{section_id}"><h2>{section_id}</h2></section>'
+            for section_id in required_sections
+        )
+        return native_chat_response(
+            content=(
+                "<!doctype html><html lang=\"zh-CN\"><head><style>"
+                "body{font-family:sans-serif;color:#222}section{padding:16px}"
+                "</style></head><body>"
+                f"{sections}<p>{'产品证据与研发验证。' * 80}</p></body></html>"
+            )
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call)
+    html_content, _, analysis = server_module.compose_html_report_with_llm(
+        {
+            "prompt": "深拆目标 ASIN 并展示买家返图。",
+            "skillId": "competitor_product_deep_dive",
+            "skillMarkdown": skill["markdown"],
+            "skillHtmlTemplate": skill["html_template"],
+            "reportImageLimit": 3,
+            "competitorProductReportData": server_module.build_competitor_product_report_data(
+                {
+                    "reportImageLimit": 3,
+                    "toolResults": [
+                        {
+                            "name": "sellersprite_review",
+                            "status": "ok",
+                            "input": {"asin": "B000TEST1"},
+                            "data": {
+                                "data": {
+                                    "items": [
+                                        {
+                                            "star": 1,
+                                            "title": "Poor stitching",
+                                            "content": "The seam opened after one wear.",
+                                            "skus": ["Size: 36DD", "Color: Black"],
+                                            "images": f"{image_urls[0]},{image_urls[1]}",
+                                        },
+                                        {
+                                            "star": 4,
+                                            "title": "Useful fit photo",
+                                            "content": "The cup shape is visible in the photo.",
+                                            "skus": ["Size: 38D"],
+                                            "images": [image_urls[2]],
+                                        },
+                                    ]
+                                }
+                            },
+                        }
+                    ],
+                }
+            ),
+        }
+    )
+
+    assert analysis["status"] == "ok"
+    assert analysis["server_rendered_review_image_count"] == 3
+    assert analysis["available_review_image_count"] == 3
+    assert captured["review_image_coverage"]["selected_image_count"] == 3
+    assert captured["required_review_image_urls"] == [image_urls[0], image_urls[2], image_urls[1]]
+    assert 'data-review-gallery="seller-review-images"' in html_content
+    assert "INSIGHT_AGENT_REVIEW_GALLERY" not in html_content
+    assert html_content.count("评论区买家返图") == 1
+    assert "已展示 3 / 3 张去重返图" in html_content
+    assert "Size: 36DD" in html_content
+    assert all(url in html_content for url in image_urls)
+
+
+def test_competitor_review_gallery_retries_model_generated_duplicate(monkeypatch) -> None:
+    skill = server_module.AGENT_SKILL_REGISTRY["competitor_product_deep_dive"]
+    required_sections = server_module.html_template_required_sections(skill["html_template"])
+    image_url = "https://m.media-amazon.com/images/I/review-duplicate._SY200.jpg"
+    call_count = 0
+
+    def fake_call(_messages, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        sections = []
+        for section_id in required_sections:
+            extra = ""
+            if section_id == "fit-voc":
+                extra = "<!-- INSIGHT_AGENT_REVIEW_GALLERY -->"
+                if call_count == 1:
+                    extra += f'<div><h3>评论区买家返图</h3><img src="{image_url}"></div>'
+            sections.append(
+                f'<section data-required-section="{section_id}"><h2>{section_id}</h2>{extra}</section>'
+            )
+        return native_chat_response(
+            content=(
+                "<!doctype html><html lang=\"zh-CN\"><head><style>"
+                "body{font-family:sans-serif;color:#222}section{padding:16px}"
+                "</style></head><body>"
+                f"{''.join(sections)}<p>{'产品证据与研发验证。' * 80}</p></body></html>"
+            )
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call)
+    html_content, _, analysis = server_module.compose_html_report_with_llm(
+        {
+            "prompt": "深拆目标 ASIN 并展示买家返图。",
+            "skillId": "competitor_product_deep_dive",
+            "skillMarkdown": skill["markdown"],
+            "skillHtmlTemplate": skill["html_template"],
+            "reportImageLimit": 1,
+            "competitorProductReportData": server_module.build_competitor_product_report_data(
+                {
+                    "reportImageLimit": 1,
+                    "toolResults": [
+                        {
+                            "name": "sellersprite_review",
+                            "status": "ok",
+                            "input": {"asin": "B000TEST1"},
+                            "data": {
+                                "data": {
+                                    "items": [
+                                        {
+                                            "star": 5,
+                                            "title": "Useful fit photo",
+                                            "content": "The fit is visible.",
+                                            "images": [image_url],
+                                        }
+                                    ]
+                                }
+                            },
+                        }
+                    ],
+                }
+            ),
+        }
+    )
+
+    assert analysis["status"] == "ok"
+    assert call_count == 2
+    assert html_content.count("评论区买家返图") == 1
+    assert html_content.count(image_url) == 1
 
 
 def test_html_validator_rejects_missing_product_report_section() -> None:
@@ -1348,8 +2046,8 @@ def test_html_validator_rejects_javascript_chart_rendering() -> None:
         html_content,
         required_chart_ids=["price_band_distribution"],
     ) == (
-        "LLM HTML must render in the sandboxed preview without JavaScript; "
-        "use static HTML, CSS, and populated inline SVG charts."
+        "Final HTML must render in the sandboxed preview without JavaScript; "
+        "analytical charts must use server-injected static inline SVG."
     )
 
 
@@ -1364,9 +2062,58 @@ def test_html_validator_rejects_empty_required_chart_svg() -> None:
         html_content,
         required_chart_ids=["price_band_distribution"],
     ) == (
-        "Required business chart price_band_distribution contains an empty SVG. "
-        "Write visible path, rect, circle, line, polyline, or polygon data marks directly into the HTML."
+        "Required business chart price_band_distribution still contains an empty SVG after server chart injection."
     )
+
+
+def test_html_validator_rejects_duplicate_chart_with_populated_and_empty_copies() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="market_capacity">'
+        '<svg viewBox="0 0 100 100"><rect width="80" height="40"></rect></svg>'
+        "</figure>"
+        '<figure data-chart-id="market_capacity"><svg viewBox="0 0 100 100"></svg></figure>'
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["market_capacity"],
+    ) == "Required business chart market_capacity must appear exactly once; found 2 figures."
+
+
+def test_html_validator_rejects_two_populated_copies_of_same_chart() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="market_capacity">'
+        '<svg viewBox="0 0 100 100"><rect width="80" height="40"></rect></svg>'
+        "</figure>"
+        '<figure data-chart-id="market_capacity">'
+        '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="20"></circle></svg>'
+        "</figure>"
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["market_capacity"],
+    ) == "Required business chart market_capacity must appear exactly once; found 2 figures."
+
+
+def test_html_validator_rejects_multiple_svgs_inside_required_chart() -> None:
+    html_content = (
+        "<!doctype html><html><head><style>body{color:#222}</style></head><body>"
+        '<figure data-chart-id="market_capacity">'
+        '<svg viewBox="0 0 100 100"><rect width="80" height="40"></rect></svg>'
+        '<svg viewBox="0 0 100 100"></svg>'
+        "</figure>"
+        f"<p>{'完整市场报告。' * 80}</p></body></html>"
+    )
+
+    assert server_module.validate_llm_html_document(
+        html_content,
+        required_chart_ids=["market_capacity"],
+    ) == "Required business chart market_capacity must contain exactly one inline SVG; found 2."
 
 
 def test_html_validator_accepts_static_required_chart_svg() -> None:
@@ -1509,7 +2256,175 @@ def html_chat_response_from_result(response: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def test_core_chart_overview_is_forced_to_single_column_without_changing_atlas() -> None:
+    html_content = """<!doctype html>
+<html lang="zh-CN"><head><style>
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.chart-card svg{max-width:100%;height:auto}
+</style></head><body><main>
+<section class="content-section"><h2>数据完整性与未完成任务</h2><p>完整性说明。</p></section>
+<section class="content-section"><h2>核心图表速览</h2><div class="chart-grid">
+<figure class="chart-card" data-chart-id="market_capacity"><svg viewBox="0 0 100 100"><rect x="5" y="5" width="90" height="40"></rect></svg></figure>
+<figure class="chart-card" data-chart-id="category_demand_trend"><svg viewBox="0 0 100 100"><polyline points="0,90 50,20 100,60"></polyline><text x="98" y="70">末值</text></svg></figure>
+</div></section>
+<section class="content-section"><h2>市场任务图谱</h2><div class="chart-grid">
+<figure class="chart-card" data-chart-id="keyword_boundary"><svg viewBox="0 0 100 100"><rect x="5" y="5" width="80" height="30"></rect><text x="98" y="70">末值</text></svg></figure>
+</div></section>
+</main></body></html>"""
+
+    updated = server_module.enforce_summary_chart_single_column(html_content)
+
+    assert "insight-agent-summary-chart-single-column" in updated
+    assert '<section class="content-section summary-charts-single-column"><h2>核心图表速览</h2>' in updated
+    assert '<div class="chart-grid summary-chart-layout">' in updated
+    assert '<section class="content-section"><h2>数据完整性与未完成任务</h2>' in updated
+    assert '<section class="content-section"><h2>市场任务图谱</h2>' in updated
+    assert "grid-template-columns: minmax(0, 1fr) !important" in updated
+    assert '<text x="96" y="70" text-anchor="end">末值</text>' in updated
+    assert updated.count('text-anchor="end"') == 1
+    assert '<text x="98" y="70">末值</text>' in updated
+    assert server_module.enforce_summary_chart_single_column(updated) == updated
+
+
+def product_design_test_markdown() -> str:
+    detail = (
+        "本段严格区分工具观察、分析判断与设计师下一步验证，不把公开代理信号解释为真实销量或完整市场。"
+        "所有产品机制都需要通过样衣、版型、面料和尺码测试继续确认。"
+    )
+    sections = [
+        "研究对象为美国站 strapless bra，目标是提升大胸用户的稳定性、支撑和日常舒适度。",
+        "优先验证防下滑支撑系统，同时控制压迫与勒痕风险。[P01] [R01]",
+        "原始品类词需要与防下滑、无肩带场景和大胸支撑需求词共同界定市场。[K01] [K02]",
+        "公开网页只提供方向性趋势证据；未接入付费趋势报告时不做确定性流行预测。[W01]",
+        "头部商品显示价格、结构和评论门槛存在差异，不能用单一 ASIN 代表市场。[P01] [P02]",
+        "低星评论用于识别失败机制，3 星用于识别权衡，高星用于识别已验证购买理由。[R01] [R02]",
+        "达人内容可用于识别演示语言和穿着场景，播放量不能替代销量。[T01]",
+        "品牌站用于核验产品定位、结构卖点和公开信息，动态评价仍是缺口。[W01]",
+        "- 防滑不足 → 穿着中下移 → 验证侧翼、底围与杯体协同支撑。[R01] [P01]",
+        "- 必须解决：稳定性与压迫的平衡。[R01]\n- 值得探索：可拆肩带与侧翼支撑组合。[P02]\n- 不建议照搬：仅增加硅胶面积而不验证皮肤舒适度。[R02]",
+        "- 结构：优先做底围、侧翼和杯体协同验证。[P01] [R01]\n- 面料与颜色：只依据现有产品和公开网页做候选，不宣称趋势结论。[P02] [W01]\n- 尺码与价格：以工具样本为边界，进入打样前复核。[K02] [P02]",
+        "- 概念 A：日常稳定型，强调防下滑与低压迫。[R01] [P01]\n- 概念 B：大胸支撑型，强化侧翼和杯体包容。[R02] [P02]",
+        "计划采集、实际采集、进入 LLM 三个口径必须分开展示。证据链包括关键词 [K01]、商品 [P01]、评论 [R01]、视频 [T01] 和网页 [W01]。数据缺口包括 TikTok Shop 买家评价、付费趋势报告、品牌站动态评论和 Pinterest 视觉研究。",
+    ]
+    body = ["# Hsia Strapless Bra 产品研发调研任务书"]
+    for index, (title, content) in enumerate(
+        zip(server_module.PRODUCT_DESIGN_REPORT_SECTIONS, sections, strict=True),
+        start=1,
+    ):
+        body.extend([f"## {index}. {title}", "", content, "", detail, ""])
+    return "\n".join(body)
+
+
 def install_weekly_market_test_catalog(monkeypatch) -> None:
+    monkeypatch.setattr(
+        server_module,
+        "synthesize_report_insights_node",
+        lambda payload: {
+            "schema_version": "report_insight_narrative.v1",
+            "skill_id": str(payload.get("skillId") or ""),
+            "status": "completed",
+            "section_count": 1,
+            "insight_count": 1,
+            "sections": [
+                {
+                    "section_id": "market_signal",
+                    "title": "市场信号",
+                    "insights": [
+                        {
+                            "conclusion": "需求锚点形成可验证方向",
+                            "observation": "当前结构化样本给出需求锚点。",
+                            "interpretation": "该信号适合进入产品验证。",
+                            "business_implication": "优先做小样而非直接放量。",
+                            "action": "启动小样验证。",
+                            "evidence_ids": ["E01"],
+                            "chart_ids": ["keyword-demand"],
+                            "confidence": "medium",
+                        }
+                    ],
+                }
+            ],
+            "internal_audit": {"unsupported_dimensions_visible": False},
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "review_html_report_node",
+        lambda payload: {
+            "round": int(payload.get("reviewRound") or 1),
+            "status": "ok",
+            "decision": "approve",
+            "approved": True,
+            "summary": "事实审批通过。",
+            "issues": [],
+            "duration_ms": 1,
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "red_team_html_report_node",
+        lambda payload: {
+            "schema_version": "report_red_team_review.v1",
+            "round": int(payload.get("reviewRound") or 1),
+            "status": "ok",
+            "decision": "approve",
+            "approved": True,
+            "summary": "红队审查通过。",
+            "reviewed_claim_count": 1,
+            "findings": [],
+            "issues": [],
+            "duration_ms": 1,
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "render_report_charts_via_flint",
+        lambda payload: {
+            "schema_version": "chart_render_bundle.v1",
+            "renderer": "flint-mcp",
+            "native_tool": "render_chart",
+            "status": "partial_ok",
+            "summary": {
+                "chart_spec_count": len(
+                    (payload.get("reportData") or {}).get("chart_specs") or []
+                ),
+                "requested_count": 0,
+                "rendered_count": 0,
+                "failed_count": 0,
+                "skipped_count": len(
+                    (payload.get("reportData") or {}).get("chart_specs") or []
+                ),
+            },
+            "charts": [],
+            "skipped_charts": [],
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "review_html_report_node",
+        lambda payload: {
+            "round": int(payload.get("reviewRound") or 1),
+            "status": "ok",
+            "decision": "approve",
+            "approved": True,
+            "summary": "测试审批通过。",
+            "issues": [],
+            "duration_ms": 1,
+        },
+    )
+    monkeypatch.setattr(
+        server_module,
+        "revise_html_report_node",
+        lambda payload: {
+            "html": str(payload.get("html") or ""),
+            "revision": {
+                "round": int(payload.get("revisionRound") or 1),
+                "status": "ok",
+                "applied": True,
+                "message": "",
+                "duration_ms": 1,
+            },
+        },
+    )
     monkeypatch.setattr(
         server_module,
         "get_sif_tool_catalog",
@@ -1549,7 +2464,22 @@ def install_weekly_market_test_catalog(monkeypatch) -> None:
                 "label": "SellerSprite ABA weekly",
                 "description": "Mock SellerSprite weekly ABA keyword tool.",
                 "source": "sellersprite_mcp",
-            }
+            },
+            "sellersprite_keyword_research": {
+                "label": "SellerSprite keyword research",
+                "description": "Mock keyword demand, competition, purchase, and cost methodology.",
+                "source": "sellersprite_mcp",
+            },
+            "sellersprite_keyword_research_trends": {
+                "label": "SellerSprite keyword research trends",
+                "description": "Mock keyword search and purchase trend methodology.",
+                "source": "sellersprite_mcp",
+            },
+            "sellersprite_google_trend": {
+                "label": "SellerSprite Google trend",
+                "description": "Mock Google relative search-interest trend methodology.",
+                "source": "sellersprite_mcp",
+            },
         },
     )
 
@@ -1561,6 +2491,9 @@ WEEKLY_MARKET_BASELINE_TOOLS = [
     "sif_market_get_keyword_competition",
     "sellersprite_market_research",
     "sellersprite_aba_research_weekly",
+    "sellersprite_keyword_research",
+    "sellersprite_keyword_research_trends",
+    "sellersprite_google_trend",
 ]
 
 
@@ -1573,15 +2506,21 @@ def weekly_market_baseline_tool_responses() -> list[dict[str, Any]]:
 
 WEEKLY_MARKET_REPORT_TOOLS = [
     "build_market_report_data",
+    "analyze_market_report",
+    "synthesize_report_insights",
+    "render_report_charts",
     "render_html_report",
+]
+
+HTML_REPORT_APPROVAL_TOOLS = [
+    "review_html_report",
+    "red_team_html_report",
+    "join_report_approval",
 ]
 
 
 def weekly_market_report_tool_responses() -> list[dict[str, Any]]:
-    return [
-        native_chat_response([native_tool_call(f"call-{tool_name}", tool_name, {})])
-        for tool_name in WEEKLY_MARKET_REPORT_TOOLS
-    ]
+    return [native_chat_response(content="")]
 
 
 def fake_agent_tool_result(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1603,6 +2542,22 @@ def fake_agent_tool_result(tool_name: str, category: str, payload: dict[str, Any
             ],
             "artifact": {"title": f"Hsia Amazon US市场 {category} 洞察报告"},
         }
+    elif tool_name == "build_tiktok_new_product_report_data":
+        data = {
+            "schema_version": "tiktok_new_product_report_data.v1",
+            "title": "TikTok Shop 美国女士文胸新品洞察",
+            "category": category,
+            "summary": {
+                "candidate_count": 20,
+                "head_product_count": 5,
+                "detail_success_count": 5,
+                "trend_success_count": 5,
+            },
+            "candidate_products": [],
+            "head_products": [],
+            "data_gaps": [],
+            "artifact": {"title": "TikTok Shop 美国女士文胸新品洞察"},
+        }
     elif tool_name == "render_html_report":
         data = {
             "format": "html",
@@ -1618,6 +2573,11 @@ def fake_agent_tool_result(tool_name: str, category: str, payload: dict[str, Any
             },
             "renderer": "llm-html",
             "html_analysis": {"enabled": True, "status": "ok", "provider": "test", "model": "html"},
+            "market_report_data": (
+                payload.get("marketReportData")
+                if isinstance(payload.get("marketReportData"), dict)
+                else {}
+            ),
         }
     return {
         "name": tool_name,
@@ -1658,6 +2618,24 @@ def test_market_report_data_tools_compile_and_render_llm_authored_report(monkeyp
                 "price_distribution": [{"priceRange": "$25-$35", "sales": 72000}],
             },
         },
+        {
+            "name": "sellersprite_review",
+            "label": "SellerSprite reviews",
+            "status": "ok",
+            "summary": "SellerSprite returned a balanced review sample.",
+            "data": {
+                "data": {
+                    "items": [
+                        {
+                            "asin": "B00000001",
+                            "star": 2,
+                            "content": "The straps dig in and the band rolls up.",
+                            "date": "2026-06-01",
+                        }
+                    ]
+                }
+            },
+        },
     ]
 
     compiled = server_module.execute_agent_tool_with_timeout(
@@ -1681,11 +2659,21 @@ def test_market_report_data_tools_compile_and_render_llm_authored_report(monkeyp
     assert compiled["data"]["swot"]
     assert compiled["data"]["decision_matrix"]
     assert compiled["data"]["chart_specs"]
-    assert len(compiled["data"]["chart_specs"]) <= 5
+    assert len(compiled["data"]["chart_manifest"]) == 19
+    assert len(compiled["data"]["dimension_results"]) == 19
+    assert len(compiled["data"]["summary_chart_ids"]) <= 5
     assert all(chart["quality_status"] == "ready" for chart in compiled["data"]["chart_specs"])
     assert all(chart["type"] != "line" for chart in compiled["data"]["chart_specs"])
     assert compiled["data"]["opportunity_pool"]
     assert compiled["data"]["evidence_map"][0]["tool"] == "sif_market_get_keyword_history"
+    assert compiled["data"]["analysis_coverage"]["summary"]["p0_total"] == 17
+    assert compiled["data"]["tool_methodology"]
+    assert all(item["role"] == "methodology_only" for item in compiled["data"]["tool_methodology"])
+    assert compiled["data"]["deduplication"]["applied"] is False
+    assert compiled["data"]["deduplication"]["implementation"] == "passthrough_v0"
+    assert compiled["data"]["deduplication"]["datasets"]
+    assert compiled["data"]["review_pain_points"][0]["review_group"] == "low_star"
+    assert compiled["data"]["review_pain_points"][0]["asin"] == "B00000001"
 
     assert "evidence_sources" not in {chart["id"] for chart in compiled["data"]["chart_specs"]}
     assert "data_readiness" not in {chart["id"] for chart in compiled["data"]["chart_specs"]}
@@ -1694,9 +2682,16 @@ def test_market_report_data_tools_compile_and_render_llm_authored_report(monkeyp
         payload = json.loads(messages[-1]["content"])
         assert payload["market_report_data"]["chart_specs"]
         assert payload["market_report_data"]["market_kpis"]
+        assert "analysis_coverage" not in payload["market_report_data"]
+        assert "chart_manifest" not in payload["market_report_data"]
+        assert "dimension_results" not in payload["market_report_data"]
+        assert payload["market_report_data"]["deduplication"]["applied"] is False
+        assert payload["market_report_data"]["tool_methodology"]
+        assert payload["market_report_data"]["review_pain_points"][0]["review_group"] == "low_star"
         assert "tool_results" not in payload
         assert payload["output_contract"]["javascript_forbidden"] is True
-        assert payload["output_contract"]["static_inline_svg_charts_required"] is True
+        assert payload["output_contract"]["chart_placeholders_required"] is True
+        assert payload["output_contract"]["server_managed_svg_injection"] is True
         chart_figures = "".join(
             f'<figure class="chart-card" data-chart-id="{chart_id}">'
             f'<figcaption>{chart_id}</figcaption>'
@@ -1750,7 +2745,9 @@ body{margin:0;background:#fff;color:#172033;font-family:-apple-system,BlinkMacSy
     monkeypatch.setattr(
         server_module,
         "call_openai_compatible_chat",
-        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+        lambda messages, **_kwargs: html_chat_response_from_result(
+            fake_call_openai_compatible(messages)
+        ),
     )
 
     rendered = server_module.execute_agent_tool_with_timeout(
@@ -1771,6 +2768,66 @@ body{margin:0;background:#fff;color:#172033;font-family:-apple-system,BlinkMacSy
     assert "MarketReportData 和 chart_specs" in rendered["data"]["html"]
     assert "mr-shell" not in rendered["data"]["html"]
     assert rendered["data"]["artifact"]["title"] == compiled["data"]["title"]
+
+
+def test_market_report_data_hides_recovered_failures_and_keeps_listing_date_evidence() -> None:
+    report = server_module.build_market_report_data(
+        {
+            "category": "sports bra",
+            "brand": "Hsia",
+            "marketplace": "Amazon US",
+            "toolResults": [
+                {
+                    "name": "sellersprite_aba_research_weekly",
+                    "label": "SellerSprite ABA weekly",
+                    "status": "fatal_error",
+                    "summary": "日期参数错误，只能查询上一周的数据",
+                    "data": {"code": "ERROR_PARAM"},
+                },
+                {
+                    "name": "sellersprite_market_listing_date_distribution",
+                    "label": "SellerSprite listing date distribution",
+                    "status": "ok",
+                    "summary": "SellerSprite returned listing-date evidence.",
+                    "data": {"data": {"items": [{"label": "1年内", "unitsRatio": 0.2}]}},
+                },
+                {
+                    "name": "sellersprite_aba_research_weekly",
+                    "label": "SellerSprite ABA weekly",
+                    "status": "ok",
+                    "summary": "SellerSprite returned ABA evidence.",
+                    "data": {"data": {"items": [{"keyword": "sports bra", "searches": 12000}]}},
+                },
+                {
+                    "name": "sif_market_get_keyword_history",
+                    "label": "Sif keyword history",
+                    "status": "ok",
+                    "summary": "Sif returned keyword history.",
+                    "data": {"keywords": [{"keyword": "sports bra", "search_volume": 26000}]},
+                },
+                {
+                    "name": "sellersprite_market_research",
+                    "label": "SellerSprite market research",
+                    "status": "ok",
+                    "summary": "SellerSprite returned market evidence.",
+                    "data": {"data": {"items": [{"departmentName": "Sports Bras"}]}},
+                },
+            ],
+        }
+    )
+
+    assert all(item["status"] == "ok" for item in report["evidence_map"])
+    assert not any(item["id"] == "E01" for item in report["evidence_map"])
+    assert any(
+        item["tool"] == "sellersprite_market_listing_date_distribution"
+        for item in report["evidence_map"]
+    )
+    assert not any("ABA weekly" in gap for gap in report["data_gaps"])
+    llm_context = server_module.market_report_llm_context(report)
+    assert any(
+        item["tool"] == "sellersprite_market_listing_date_distribution"
+        for item in llm_context["evidence_map"]
+    )
 
 
 def test_market_report_data_preserves_requested_sports_bra_category() -> None:
@@ -1811,7 +2868,8 @@ def test_market_report_data_preserves_requested_sports_bra_category() -> None:
     assert "sports bra" in report_data["title"]
     assert "minimizer bra" not in json.dumps(report_data, ensure_ascii=False).lower()
     assert all(chart["quality_status"] == "ready" for chart in charts["chart_specs"])
-    assert len(charts["chart_specs"]) <= 5
+    assert len(charts["chart_manifest"]) == 19
+    assert len(charts["summary_chart_ids"]) <= 5
 
     with pytest.raises(ValueError, match="category is required"):
         server_module.build_market_report_data({"brand": "Hsia", "toolResults": tool_results})
@@ -1920,13 +2978,23 @@ def test_market_report_data_maps_node_tools_to_semantic_chart_specs() -> None:
     assert report_data["demand_trend"][0]["date"] == "2026-03-01"
     assert all(row["keyword"] != "airpods" for row in report_data["keyword_trends"])
     charts = {chart["id"]: chart for chart in report_data["chart_specs"]}
-    assert set(charts) == {
+    assert {
+        "market_capacity",
+        "keyword_boundary",
         "category_demand_trend",
-        "keyword_demand",
+        "node_demand_quality",
         "price_band_distribution",
         "brand_competition",
         "top_product_signal",
+    } <= set(charts)
+    assert "market_boundary_map" not in charts
+    assert "product_universe_coverage" not in charts
+    non_chart = {
+        item["dimension_id"]: item
+        for item in report_data["non_chart_presentations"]
     }
+    assert non_chart["M01"]["presentation_type"] == "scope_summary"
+    assert "keyword_demand" not in charts
     assert [point["value"] for point in charts["price_band_distribution"]["data"]] == [60.0, 40.0]
     assert charts["brand_competition"]["type"] == "donut"
     assert charts["category_demand_trend"]["type"] == "line"
@@ -1952,6 +3020,110 @@ def test_market_report_llm_context_keeps_full_annual_chart_series() -> None:
     context = server_module.market_report_llm_context(report_data)
 
     assert len(context["chart_specs"][0]["data"]) == 13
+
+
+def test_market_report_llm_context_keeps_all_task_charts() -> None:
+    report_data = {
+        "chart_specs": [
+            {
+                "id": f"task_chart_{index}",
+                "dimension_id": f"M{index:02d}",
+                "title": f"Task {index}",
+                "type": "bar",
+                "quality_status": "ready",
+                "data": [{"label": "sample", "value": index}],
+            }
+            for index in range(1, 20)
+        ]
+    }
+
+    context = server_module.market_report_llm_context(report_data)
+
+    assert len(context["chart_specs"]) == 19
+
+
+def test_empty_llm_svg_is_recovered_before_a_second_llm_attempt(monkeypatch) -> None:
+    chart = {
+        "id": "market_capacity",
+        "title": "市场容量与成熟度",
+        "type": "metric_group",
+        "quality_status": "ready",
+        "source": "SellerSprite MCP · E06",
+        "data": [
+            {
+                "label": "月销量",
+                "value": 146474,
+                "value_format": "compact_integer",
+                "unit": "units",
+                "evidence_id": "E06",
+            }
+        ],
+    }
+    report_data = {
+        "schema_version": "market_report_data.v1",
+        "title": "Hsia 市场报告",
+        "category": "minimizer bra",
+        "chart_specs": [chart],
+        "summary_chart_ids": ["market_capacity"],
+        "data_gaps": [],
+        "artifact": {"title": "Hsia 市场报告", "executive_summary": "测试摘要"},
+    }
+    llm_calls: list[list[dict[str, Any]]] = []
+    empty_chart_html = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Hsia 市场报告</title>
+<style>body{font-family:sans-serif;color:#111827}.chart-card{border:1px solid #e5e7eb}</style></head>
+<body><main><h1>Hsia 市场报告</h1><p>正文和证据链已经生成，只有业务图表的 SVG 为空。</p>
+<figure class="chart-card" data-chart-id="market_capacity"><svg viewBox="0 0 100 100"></svg></figure>
+<p>该错误应由 chart_specs 自动恢复，不应再次请求模型重写整份报告。</p></main></body></html>"""
+
+    def fake_call(messages, **_kwargs):
+        llm_calls.append(messages)
+        return native_chat_response(content=empty_chart_html)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call)
+
+    html_content, artifact, analysis = server_module.compose_html_report_with_llm(
+        {
+            "marketReportData": report_data,
+            "useLlm": True,
+            "prompt": "生成市场报告",
+        }
+    )
+
+    assert len(llm_calls) == 1
+    assert analysis["status"] == "ok"
+    assert analysis["attempt_count"] == 1
+    assert analysis["recovered_chart_ids"] == ["market_capacity"]
+    render_prompt = llm_calls[0][0]["content"]
+    assert "empty inline svg placeholder" in render_prompt
+    assert "placement.section_hint" in render_prompt
+    assert "Never duplicate the same data-chart-id" in render_prompt
+    assert "chart_layout_contract.required_chart_bindings" in render_prompt
+    assert "insight-chart-layout" in render_prompt
+    assert "multi-chart analysis section is allowed" in render_prompt
+    assert "one column at every viewport" in render_prompt
+    assert ".compiled-chart-svg svg{display:block;width:100%;height:auto}" in render_prompt
+    assert "Do not add a visible list of omitted" in render_prompt
+    assert "populated inline SVG only" not in render_prompt
+    assert "write all visible paths, bars, lines, points, labels, and axes" not in render_prompt
+    render_payload = json.loads(llm_calls[0][-1]["content"])
+    assert render_payload["output_contract"]["chart_placeholders_required"] is True
+    assert render_payload["output_contract"]["server_managed_svg_injection"] is True
+    assert render_payload["output_contract"]["insight_chart_interleaving_required"] is True
+    assert render_payload["chart_layout_contract"]["chart_only_atlas_forbidden"] is True
+    assert render_payload["chart_layout_contract"]["chart_insight_contract"] == {
+        "one_per_ready_chart": True,
+        "required_fields": ["observation", "interpretation"],
+        "optional_fields": ["conclusion", "business_implication", "action"],
+        "count_limits": None,
+    }
+    assert (
+        render_payload["chart_layout_contract"]["side_by_side_chart_explanation_forbidden"]
+        is True
+    )
+    assert 'data-chart-renderer="server-recovery"' in html_content
+    assert "146.5K" in html_content
+    assert artifact["title"] == "Hsia 市场报告"
 
 
 def test_market_report_html_can_be_authored_by_llm_from_skill_style(monkeypatch) -> None:
@@ -1982,6 +3154,10 @@ def test_market_report_html_can_be_authored_by_llm_from_skill_style(monkeypatch)
         assert "HTML Report Style Reference" not in payload["style_reference_from_skill"]
         assert payload["market_report_data"]["category"] == "minimizer bra"
         assert payload["output_contract"]["format"] == "raw_html_only"
+        chart_figures = "".join(
+            f'<figure data-chart-id="{chart_id}"><svg viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="50"></rect></svg></figure>'
+            for chart_id in payload["required_chart_ids"]
+        )
         return {
             "provider": "test-provider",
             "model": "html-model",
@@ -2021,15 +3197,16 @@ aside{position:sticky;top:16px;align-self:start;border-left:3px solid #4f46e5;pa
 <p>这一段由 LLM 直接组织最终 HTML，不再经过固定中间蓝图渲染层。判断依赖 minimizer bra 的搜索量字段，来源为 E01。</p>
 <p class="source">数据源：Sif MCP · 证据：E01 · 周期：90d</p>
 </section>
-<section class="content-section">
-<h2>数据缺口</h2>
-<p>没有节点级价格分布和品牌集中度时，报告只能给方向性判断，不能断言类目垄断程度。</p>
-</section>
+    <section class="content-section">
+    <h2>数据缺口</h2>
+    <p>没有节点级价格分布和品牌集中度时，报告只能给方向性判断，不能断言类目垄断程度。</p>
+    </section>
+    <section class="content-section">{chart_figures}</section>
 </main>
 <aside><strong>目录</strong><a href="#llm-authored">LLM 自定义洞察章节</a></aside>
 </div>
 </body>
-</html>""",
+    </html>""".replace("{chart_figures}", chart_figures),
                 "artifact": {
                     "title": "LLM 主导市场洞察报告",
                     "executive_summary": "LLM 直接基于证据写最终 HTML。",
@@ -2045,7 +3222,9 @@ aside{position:sticky;top:16px;align-self:start;border-left:3px solid #4f46e5;pa
     monkeypatch.setattr(
         server_module,
         "call_openai_compatible_chat",
-        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+        lambda messages, **_kwargs: html_chat_response_from_result(
+            fake_call_openai_compatible(messages)
+        ),
     )
 
     rendered = server_module.execute_agent_tool_with_timeout(
@@ -2067,6 +3246,63 @@ aside{position:sticky;top:16px;align-self:start;border-left:3px solid #4f46e5;pa
     assert "LLM 自定义洞察章节" in rendered["data"]["html"]
     assert 'id="llm-authored"' in rendered["data"]["html"]
     assert rendered["data"]["artifact"]["executive_summary"] == report_data["executive_summary"]
+
+
+def test_hot_product_required_images_ignore_superseded_candidate_pool() -> None:
+    tool_results = [
+        {
+            "name": "sellersprite_market_product_concentration",
+            "status": "partial_ok",
+            "data": {
+                "product_selection": {
+                    "selected": [
+                        {
+                            "asin": "BROAD00001",
+                            "imageUrl": "https://images.example.com/broad.jpg",
+                        }
+                    ]
+                }
+            },
+        },
+        {
+            "name": "sellersprite_market_product_concentration",
+            "status": "ok",
+            "data": {
+                "product_selection": {
+                    "selected": [
+                        {
+                            "asin": "FINAL00001",
+                            "imageUrl": "https://images.example.com/final-1.jpg",
+                        },
+                        {
+                            "asin": "FINAL00002",
+                            "imageUrl": "https://images.example.com/final-2.jpg",
+                        },
+                    ]
+                }
+            },
+        },
+        {
+            "name": "sellersprite_review",
+            "status": "ok",
+            "input": {"asin": "FINAL00001"},
+            "data": {"data": {"items": []}},
+        },
+        {
+            "name": "sellersprite_review",
+            "status": "ok",
+            "input": {"asin": "FINAL00002"},
+            "data": {"data": {"items": []}},
+        },
+    ]
+
+    product_urls, review_urls = server_module.hot_product_required_image_urls(tool_results)
+
+    assert product_urls == [
+        "https://images.example.com/final-1.jpg",
+        "https://images.example.com/final-2.jpg",
+    ]
+    assert review_urls == []
 
 
 def test_market_report_html_fails_closed_when_llm_html_is_invalid(monkeypatch) -> None:
@@ -2101,7 +3337,9 @@ def test_market_report_html_fails_closed_when_llm_html_is_invalid(monkeypatch) -
     monkeypatch.setattr(
         server_module,
         "call_openai_compatible_chat",
-        lambda messages: html_chat_response_from_result(fake_call_openai_compatible(messages)),
+        lambda messages, **_kwargs: html_chat_response_from_result(
+            fake_call_openai_compatible(messages)
+        ),
     )
 
     rendered = server_module.execute_agent_tool_with_timeout(
@@ -2126,6 +3364,96 @@ def test_market_report_html_fails_closed_when_llm_html_is_invalid(monkeypatch) -
     assert "mr-shell" not in rendered["summary"]
 
 
+def test_weekly_market_renderer_hides_internal_gaps_when_one_chart_is_missing(monkeypatch) -> None:
+    report_data = {
+        "schema_version": "market_report_data.v1",
+        "title": "Hsia Amazon US市场 minimizer bra 洞察报告",
+        "brand": "Hsia",
+        "marketplace": "Amazon US",
+        "category": "minimizer bra",
+        "time_range": "90d",
+        "analysis_coverage": {
+            "summary": {"p0_total": 1, "p0_covered": 1},
+            "dimensions": [
+                {
+                    "dimension_id": "M04",
+                    "name": "搜索需求规模 VoS",
+                    "market_question": "搜索量、购买量和购买率处于什么水平？",
+                    "priority": "P0",
+                    "status": "covered",
+                    "evidence_ids": ["E01"],
+                }
+            ],
+        },
+        "chart_specs": [],
+        "chart_manifest": [
+            {
+                "dimension_id": "M04",
+                "name": "搜索需求规模 VoS",
+                "priority": "P0",
+                "analysis_status": "covered",
+                "chart_id": "keyword_demand",
+                "chart_status": "missing_data",
+                "reason": "No semantically valid numeric chart data was compiled.",
+                "evidence_ids": ["E01"],
+            }
+        ],
+        "evidence_map": [{"id": "E01", "tool": "sellersprite_keyword_research", "status": "ok"}],
+        "data_gaps": [],
+    }
+    captured_payloads: list[dict[str, Any]] = []
+    html = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><style>
+body{font-family:sans-serif;color:#172033}.section{border-bottom:1px solid #e5e7eb;padding:16px}
+</style><title>市场洞察报告</title></head><body><main>
+<h1>市场洞察报告</h1>
+<section class="section"><h2>可用市场信号</h2>
+<p>本轮结构化证据显示目标关键词仍能形成明确的需求入口，后续产品企划应围绕同一市场、周期和样本口径展开比较。</p>
+<p>报告只保留当前证据能够支持的观察、解释和业务动作，不使用估算值、评论数或模型猜测代替结构化指标。</p></section>
+<section class="section"><h2>产品动作</h2><p>优先把已有需求锚点转成小样验证任务，并以同口径结果决定是否扩大资源投入。</p></section>
+</main></body></html>"""
+
+    def fake_chat(messages, **_kwargs):
+        payload = json.loads(messages[-1]["content"])
+        captured_payloads.append(payload)
+        return html_chat_response_from_result(
+            {
+                "provider": "test",
+                "model": "html-model",
+                "result": {"html": html},
+            }
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+
+    rendered = server_module.execute_agent_tool_with_timeout(
+        "render_html_report",
+        "minimizer bra",
+        {
+            "marketReportData": report_data,
+            "skillId": "weekly_market_insight",
+            "useLlm": True,
+            "agentToolRetryAttempts": 0,
+            "agentToolRetryDelayMs": 0,
+        },
+    )
+
+    assert rendered["status"] == "ok"
+    assert rendered["data"]["report_quality"]["status"] == "degraded"
+    assert rendered["data"]["report_quality"]["publishable"] is True
+    assert rendered["data"]["market_report_data"]["report_quality"]["unavailable_dimensions"][0]["dimension_id"] == "M04"
+    assert any("M04" in gap for gap in rendered["data"]["market_report_data"]["data_gaps"])
+    assert "report_quality" not in captured_payloads[0]["market_report_data"]
+    assert "data_gaps" not in captured_payloads[0]["market_report_data"]
+    assert "chart_manifest" not in captured_payloads[0]["market_report_data"]
+    assert "数据完整性与未完成任务" not in rendered["data"]["html"]
+    assert "数据缺口" not in rendered["data"]["html"]
+    assert (
+        rendered["data"]["html_analysis"]["approval"]["status"]
+        == "pending_langgraph_review"
+    )
+
+
 def test_breakout_competitor_discovery_skill_is_not_registered() -> None:
     assert "breakout_competitor_discovery" not in server_module.AGENT_SKILL_REGISTRY
     assert all(
@@ -2135,7 +3463,7 @@ def test_breakout_competitor_discovery_skill_is_not_registered() -> None:
     assert "competitor_discovery" not in server_module.AGENT_TOOL_CATALOG
 
 
-def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_disclosure(monkeypatch) -> None:
+def test_run_agent_evidence_contract_blocks_early_report_handoff_and_then_allows_gap_disclosure(monkeypatch) -> None:
     install_weekly_market_test_catalog(monkeypatch)
     chat_responses = [
         native_chat_response(
@@ -2155,10 +3483,9 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
                 )
             ]
         ),
-        native_chat_response([native_tool_call("call-synth-too-early", "synthesize_artifact", {})]),
+        native_chat_response(content=""),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
     synth_tool_results: list[list[dict[str, Any]]] = []
 
@@ -2196,8 +3523,12 @@ def test_run_agent_evidence_contract_blocks_early_synthesis_and_then_allows_gap_
     )
 
     assert result["status"] == "ok"
-    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
-    assert any(event["title"] == "Evidence Contract 阻止生成 Artifact" for event in result["events"])
+    assert [tool["name"] for tool in result["tools"]] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *WEEKLY_MARKET_REPORT_TOOLS,
+        *HTML_REPORT_APPROVAL_TOOLS,
+    ]
+    assert any(event["title"] == "Evidence Contract 阻止 reportData Builder" for event in result["events"])
     assert result["evidence_gaps"] == []
     assert result["artifact"]["title"] == "Fake LLM-authored market report"
     assert result["llm_analysis"]["renderer"] == "llm-html"
@@ -2226,7 +3557,6 @@ def test_weekly_market_agent_does_not_fallback_to_generic_html_when_render_file_
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -2252,13 +3582,16 @@ def test_weekly_market_agent_does_not_fallback_to_generic_html_when_render_file_
     )
 
     assert result["response_type"] == "message"
+    assert result["status"] == "error"
     assert "artifact" not in result
     assert not any(item.get("type") == "report" for item in result.get("output_files", []))
     assert any(event["type"] == "artifact" and event["status"] == "error" for event in result["events"])
+    assert result["events"][-1]["type"] == "message"
+    assert result["events"][-1]["status"] == "error"
     assert "不会再改用固定模板" in result["message"]["content"]
 
 
-def test_weekly_market_agent_blocks_html_render_when_node_evidence_is_missing(monkeypatch) -> None:
+def test_weekly_market_agent_generates_degraded_html_when_node_evidence_is_missing(monkeypatch) -> None:
     install_weekly_market_test_catalog(monkeypatch)
     chat_responses = [
         native_chat_response(
@@ -2280,17 +3613,7 @@ def test_weekly_market_agent_blocks_html_render_when_node_evidence_is_missing(mo
             ]
         ),
         *weekly_market_baseline_tool_responses(),
-        native_chat_response([native_tool_call("call-build", "build_market_report_data", {})]),
-        native_chat_response([native_tool_call("call-render", "render_html_report", {})]),
-        native_chat_response(
-            [
-                native_tool_call(
-                    "call-respond",
-                    "respond_to_user",
-                    {"message": "节点级必需证据未成功，因此未生成报告。"},
-                )
-            ]
-        ),
+        native_chat_response(content=""),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -2308,20 +3631,493 @@ def test_weekly_market_agent_blocks_html_render_when_node_evidence_is_missing(mo
         }
     )
 
-    assert all(tool["name"] != "render_html_report" for tool in result["tools"])
-    assert "artifact" not in result
-    assert not any(item.get("type") == "report" for item in result.get("output_files", []))
-    blocked_event = next(event for event in result["events"] if event["title"] == "Evidence Contract 阻止 HTML renderer")
-    missing = blocked_event["output"]["recommended_tool_calls"]
+    assert result["status"] == "ok"
+    assert any(tool["name"] == "render_html_report" for tool in result["tools"])
+    assert result["artifact"]["title"] == "Fake LLM-authored market report"
+    assert any(item.get("type") == "report" for item in result.get("output_files", []))
+    degraded_event = next(
+        event for event in result["events"] if event["title"] == "Evidence Contract 降级生成 HTML 报告"
+    )
+    missing = degraded_event["output"]["recommended_tool_calls"]
     assert "sellersprite_market_product_demand_trend" in missing
     assert "sellersprite_market_price_distribution" in missing
     assert "sellersprite_market_ratings_count_distribution" in missing
     assert "sellersprite_market_listing_date_distribution" in missing
+    assert {gap["tool"] for gap in result["evidence_gaps"]} >= set(missing)
+
+
+def test_generic_report_approval_nodes_are_visible_and_publish_v3_after_two_rejections(
+    monkeypatch, tmp_path
+) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    review_rounds: list[int] = []
+    red_team_rounds: list[int] = []
+    revision_rounds: list[int] = []
+    approval_barrier = threading.Barrier(2)
+    approval_threads: dict[int, set[int]] = {}
+
+    def reject_review(payload: dict[str, Any]) -> dict[str, Any]:
+        review_round = int(payload.get("reviewRound") or 1)
+        review_rounds.append(review_round)
+        approval_threads.setdefault(review_round, set()).add(threading.get_ident())
+        approval_barrier.wait(timeout=3)
+        return {
+            "round": review_round,
+            "status": "ok",
+            "decision": "revise",
+            "approved": False,
+            "summary": f"第 {review_round} 轮审批未通过。",
+            "issues": [{"repair_instruction": f"执行第 {review_round} 轮修订。"}],
+            "duration_ms": 1,
+        }
+
+    def approve_red_team(payload: dict[str, Any]) -> dict[str, Any]:
+        review_round = int(payload.get("reviewRound") or 1)
+        red_team_rounds.append(review_round)
+        approval_threads.setdefault(review_round, set()).add(threading.get_ident())
+        approval_barrier.wait(timeout=3)
+        return {
+            "schema_version": "report_red_team_review.v1",
+            "round": review_round,
+            "status": "ok",
+            "decision": "approve",
+            "approved": True,
+            "summary": f"第 {review_round} 轮红队通过。",
+            "findings": [],
+            "issues": [],
+            "duration_ms": 1,
+        }
+
+    def revise_report(payload: dict[str, Any]) -> dict[str, Any]:
+        revision_round = int(payload.get("revisionRound") or 1)
+        revision_rounds.append(revision_round)
+        version = revision_round + 1
+        return {
+            "html": (
+                "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+                f"<title>V{version}</title></head><body><main><h1>V{version}</h1>"
+                "<p>审批意见已应用到这个市场洞察版本。</p></main></body></html>"
+            ),
+            "revision": {
+                "round": revision_round,
+                "status": "ok",
+                "applied": True,
+                "message": "",
+                "duration_ms": 1,
+            },
+        }
+
+    monkeypatch.setattr(server_module, "review_html_report_node", reject_review)
+    monkeypatch.setattr(server_module, "red_team_html_report_node", approve_red_team)
+    monkeypatch.setattr(server_module, "revise_html_report_node", revise_report)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
+    ]
+
+    def fake_call_chat(messages, tools=None, tool_choice=None):  # noqa: ARG001
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_call_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "runId": "def456def456",
+            "prompt": "生成 Hsia 美国 minimizer bra 最近90天市场洞察报告。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    approval_chain = [
+        tool["name"]
+        for tool in result["tools"]
+        if tool["name"]
+        in {
+            "render_html_report",
+            "review_html_report",
+            "revise_html_report",
+        }
+    ]
+    assert approval_chain == [
+        "render_html_report",
+        "review_html_report",
+        "revise_html_report",
+        "review_html_report",
+        "revise_html_report",
+    ]
+    report_tool_labels = [
+        tool["label"]
+        for tool in result["tools"]
+        if tool["name"] in {"render_html_report", "review_html_report", "revise_html_report"}
+    ]
+    assert report_tool_labels == [
+        "HTML 渲染 Agent",
+        "报告事实审批 Agent",
+        "HTML 渲染 Agent",
+        "报告事实审批 Agent",
+        "HTML 渲染 Agent",
+    ]
+    assert review_rounds == [1, 2]
+    assert red_team_rounds == [1, 2]
+    assert all(len(approval_threads[review_round]) == 2 for review_round in (1, 2))
+    assert revision_rounds == [1, 2]
+    node_events = [
+        event
+        for event in result["events"]
+        if event.get("tool") in {"review_html_report", "revise_html_report"}
+    ]
+    assert [event["tool"] for event in node_events] == approval_chain[1:]
+    assert all(event["data"]["langgraph_node"] is True for event in node_events)
+    assert [event["data"]["graph_node"] for event in node_events] == [
+        "report_review",
+        "html_revision",
+        "report_review",
+        "html_revision",
+    ]
+    node_tools = [
+        tool
+        for tool in result["tools"]
+        if tool["name"] in {"review_html_report", "revise_html_report"}
+    ]
+    assert all(tool["runtime"]["timeout_scope"] == "independent_node" for tool in node_tools)
+    approval = result["llm_analysis"]["approval"]
+    assert approval["orchestrator"] == "langgraph_nodes"
+    assert approval["status"] == "published_after_round_2_rejection"
+    assert approval["approved"] is False
+    assert approval["published_without_approval"] is True
+    assert approval["review_count"] == 2
+    assert approval["red_team_count"] == 2
+    assert approval["revision_count"] == 2
+    assert approval["render_version_count"] == 3
+    assert result["response_type"] == "artifact"
+    assert len(chat_responses) == 0
+    assert result["planner"]["synthesize_artifact"]["status"] == "published"
+    publish_event = next(
+        event
+        for event in result["events"]
+        if event["title"] == "调用工具：生成 Artifact"
+        and event["status"] == "ok"
+    )
+    assert publish_event["data"]["graph_node"] == "synthesize_artifact"
+    report_file = next(item for item in result["output_files"] if item["type"] == "report")
+    assert report_file["name"] == "report.html"
+    report_link_events = [
+        event
+        for event in result["events"]
+        if event.get("file_path") == report_file["path"]
+    ]
+    assert [event.get("tool") for event in report_link_events] == ["synthesize_artifact"]
+    join_events = [
+        event for event in result["events"] if event.get("tool") == "join_report_approval"
+    ]
+    assert len(join_events) == 2
+    assert all(event["data"]["graph_node"] == "approval_join" for event in join_events)
+    assert len({event["seq"] for event in result["events"]}) == len(result["events"])
+    assert not any(
+        event["type"] == "artifact"
+        and event["status"] == "ok"
+        and event["title"] == "生成 Artifact"
+        for event in result["events"]
+    )
+    assert "<h1>V3</h1>" in Path(report_file["path"]).read_text(encoding="utf-8")
+    saved_run = json.loads(
+        (tmp_path / "agent-runs" / result["run_id"] / "run.json").read_text(encoding="utf-8")
+    )
+    assert saved_run["response_type"] == "artifact"
+    assert saved_run["output_files"][0]["name"] == "report.html"
+
+
+def test_red_team_rejection_uses_same_two_round_revision_budget(monkeypatch, tmp_path) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    red_team_rounds: list[int] = []
+    revision_rounds: list[int] = []
+
+    def reject_red_team(payload: dict[str, Any]) -> dict[str, Any]:
+        review_round = int(payload.get("reviewRound") or 1)
+        red_team_rounds.append(review_round)
+        return {
+            "schema_version": "report_red_team_review.v1",
+            "round": review_round,
+            "status": "ok",
+            "decision": "revise",
+            "approved": False,
+            "summary": f"第 {review_round} 轮红队要求收窄关键结论。",
+            "findings": [
+                {
+                    "severity": "major",
+                    "repair_instruction": "收窄关键结论。",
+                }
+            ],
+            "issues": [
+                {
+                    "severity": "major",
+                    "repair_instruction": "收窄关键结论。",
+                }
+            ],
+            "duration_ms": 1,
+        }
+
+    def revise_report(payload: dict[str, Any]) -> dict[str, Any]:
+        revision_round = int(payload.get("revisionRound") or 1)
+        revision_rounds.append(revision_round)
+        version = revision_round + 1
+        return {
+            "html": (
+                "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+                f"<title>V{version}</title></head><body><main><h1>V{version}</h1>"
+                "<p>关键结论已经按红队意见收窄。</p></main></body></html>"
+            ),
+            "revision": {
+                "round": revision_round,
+                "status": "ok",
+                "applied": True,
+                "duration_ms": 1,
+            },
+        }
+
+    monkeypatch.setattr(server_module, "red_team_html_report_node", reject_red_team)
+    monkeypatch.setattr(server_module, "revise_html_report_node", revise_report)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
+    ]
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages, tools=None, tool_choice=None: chat_responses.pop(0),
+    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "runId": "redteam123456",
+            "prompt": "生成 Hsia 美国 minimizer bra 最近90天市场洞察报告。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    approval_chain = [
+        tool["name"]
+        for tool in result["tools"]
+        if tool["name"]
+        in {
+            "render_html_report",
+            "review_html_report",
+            "red_team_html_report",
+            "revise_html_report",
+        }
+    ]
+    assert approval_chain == [
+        "render_html_report",
+        "review_html_report",
+        "red_team_html_report",
+        "revise_html_report",
+        "review_html_report",
+        "red_team_html_report",
+        "revise_html_report",
+    ]
+    assert red_team_rounds == [1, 2]
+    assert revision_rounds == [1, 2]
+    approval = result["llm_analysis"]["approval"]
+    assert approval["status"] == "published_after_round_2_rejection"
+    assert approval["review_count"] == 2
+    assert approval["red_team_count"] == 2
+    assert approval["revision_count"] == 2
+    assert approval["published_without_approval"] is True
+
+
+def test_legacy_red_team_evidence_request_routes_to_revision_without_data_calls(
+    monkeypatch, tmp_path
+) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    builder_calls: list[dict[str, Any]] = []
+    render_calls: list[dict[str, Any]] = []
+    demand_tool_calls: list[dict[str, Any]] = []
+    red_team_calls: list[dict[str, Any]] = []
+    review_rounds: list[int] = []
+    revision_rounds: list[int] = []
+
+    def approve_review(payload: dict[str, Any]) -> dict[str, Any]:
+        review_round = int(payload.get("reviewRound") or 1)
+        review_rounds.append(review_round)
+        return {
+            "round": review_round,
+            "status": "ok",
+            "decision": "approve",
+            "approved": True,
+            "summary": f"第 {review_round} 轮事实审批通过。",
+            "issues": [],
+            "duration_ms": 1,
+        }
+
+    def legacy_request_red_team(payload: dict[str, Any]) -> dict[str, Any]:
+        red_team_calls.append(payload)
+        review_round = int(payload.get("reviewRound") or 1)
+        return {
+            "schema_version": "report_red_team_review.v1",
+            "round": review_round,
+            "status": "needs_evidence",
+            "decision": "request_evidence",
+            "approved": False,
+            "summary": "旧式红队响应请求额外证据。",
+            "findings": [],
+            "issues": [],
+            "evidence_requests": [
+                {
+                    "id": "legacy-red-evidence-1",
+                    "name": "sif_market_get_keyword_demand",
+                    "arguments": {"keyword": "minimizer bra validation"},
+                }
+            ],
+        }
+
+    def revise_report(payload: dict[str, Any]) -> dict[str, Any]:
+        revision_round = int(payload.get("revisionRound") or 1)
+        revision_rounds.append(revision_round)
+        version = revision_round + 1
+        return {
+            "html": (
+                "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+                f"<title>V{version}</title></head><body><main><h1>V{version}</h1>"
+                "<p>关键结论已依据现有证据收窄。</p></main></body></html>"
+            ),
+            "revision": {
+                "round": revision_round,
+                "status": "ok",
+                "applied": True,
+                "duration_ms": 1,
+            },
+        }
+
+    def execute_and_count(
+        tool_name: str,
+        category: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = fake_agent_tool_result(tool_name, category, payload)
+        if tool_name == "build_market_report_data":
+            builder_calls.append(payload)
+        elif tool_name == "render_html_report":
+            render_calls.append(payload)
+        elif tool_name == "sif_market_get_keyword_demand":
+            demand_tool_calls.append(payload)
+        return result
+
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "Amazon US",
+                            "category": "minimizer bra",
+                            "time_range": "90d",
+                        },
+                    },
+                )
+            ]
+        ),
+        *weekly_market_baseline_tool_responses(),
+        *weekly_market_report_tool_responses(),
+    ]
+
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda messages, tools=None, tool_choice=None: chat_responses.pop(0),
+    )
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", execute_and_count)
+    monkeypatch.setattr(server_module, "review_html_report_node", approve_review)
+    monkeypatch.setattr(server_module, "red_team_html_report_node", legacy_request_red_team)
+    monkeypatch.setattr(server_module, "revise_html_report_node", revise_report)
+
+    result = server_module.run_agent(
+        {
+            "runId": "abcd1234ef56",
+            "prompt": "生成 Hsia 美国 minimizer bra 最近90天市场洞察报告。",
+            "agentMode": "market",
+            "category": "minimizer bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert len(builder_calls) == 1
+    assert len(render_calls) == 1
+    assert len(demand_tool_calls) == 1
+    assert review_rounds == [1, 2]
+    assert [int(item.get("reviewRound") or 1) for item in red_team_calls] == [1, 2]
+    assert all("availableTools" not in item for item in red_team_calls)
+    assert all("evidenceObservations" not in item for item in red_team_calls)
+    assert revision_rounds == [1, 2]
+    assert not any(tool["name"] == "validate_red_team_evidence" for tool in result["tools"])
+    assert not any(
+        (tool.get("runtime") or {}).get("node") == "red_team_evidence"
+        for tool in result["tools"]
+    )
+    approval = result["llm_analysis"]["approval"]
+    assert approval["policy"] == "two_parallel_review_rounds"
+    assert approval["status"] == "published_after_round_2_rejection"
+    assert approval["review_count"] == 2
+    assert approval["red_team_count"] == 2
+    assert approval["revision_count"] == 2
+    assert "red_team_enrichment_count" not in approval
+    assert "red_team_evidence_attempts" not in approval
+    assert all(item["decision"] == "revise" for item in approval["red_teams"])
+    assert all("evidence_requests" not in item for item in approval["red_teams"])
 
 
 def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch) -> None:
     install_weekly_market_test_catalog(monkeypatch)
     chat_calls: list[list[dict]] = []
+    chat_tool_names: list[list[str]] = []
     chat_responses = [
         native_chat_response(
             [
@@ -2342,11 +4138,11 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
         chat_calls.append(messages)
+        chat_tool_names.append([tool["function"]["name"] for tool in tools or []])
         return chat_responses.pop(0)
 
     def fake_call_openai_compatible(messages):
@@ -2380,15 +4176,61 @@ def test_run_agent_native_loop_can_choose_tools_after_loading_skill(monkeypatch)
     assert result["runtime"]["engine"] == "langgraph"
     assert result["runtime"]["pattern"] == "native_tool_call_loop"
     assert result["skill"]["skill_id"] == "weekly_market_insight"
-    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
-    assert result["planner"]["planned_tools"] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert [tool["name"] for tool in result["tools"]] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *WEEKLY_MARKET_REPORT_TOOLS,
+        *HTML_REPORT_APPROVAL_TOOLS,
+    ]
+    assert result["planner"]["planned_tools"] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *WEEKLY_MARKET_REPORT_TOOLS,
+        *HTML_REPORT_APPROVAL_TOOLS,
+    ]
     assert result["artifact"]["title"] == "Fake LLM-authored market report"
     assert result["llm_analysis"]["renderer"] == "llm-html"
+    analysis_tool = next(
+        tool for tool in result["tools"] if tool["name"] == "analyze_market_report"
+    )
+    chart_render_tool = next(
+        tool for tool in result["tools"] if tool["name"] == "render_report_charts"
+    )
     render_tool = next(tool for tool in result["tools"] if tool["name"] == "render_html_report")
+    builder_tool = next(tool for tool in result["tools"] if tool["name"] == "build_market_report_data")
+    assert builder_tool["runtime"]["node"] == "report_data_builder"
+    assert analysis_tool["runtime"]["node"] == "data_analysis"
+    assert chart_render_tool["runtime"]["node"] == "chart_render"
+    assert render_tool["runtime"]["node"] == "html_render"
+    report_node_events = [
+        event
+        for event in result["events"]
+        if event.get("data", {}).get("graph_node")
+        in {
+            "report_data_builder",
+            "data_analysis",
+            "insight_synthesis",
+            "chart_render",
+            "html_render",
+            "synthesize_artifact",
+        }
+        and event.get("status") == "ok"
+    ]
+    assert [event["data"]["graph_node"] for event in report_node_events] == [
+        "report_data_builder",
+        "data_analysis",
+        "insight_synthesis",
+        "chart_render",
+        "html_render",
+        "synthesize_artifact",
+    ]
+    assert all(event["data"]["langgraph_node"] is True for event in report_node_events)
     assert render_tool["input"]["marketReportData"]["schema_version"] == "market_report_data.v1"
     assert render_tool["input"]["toolResults"] == []
     assert "chartSpecs" not in render_tool["input"]
-    assert len(chat_calls) == 10
+    assert len(chat_calls) == 11
+    assert "build_market_report_data" not in chat_tool_names[1]
+    assert "render_html_report" not in chat_tool_names[1]
+    assert all("synthesize_artifact" not in tool_names for tool_names in chat_tool_names)
+    assert len(chat_responses) == 0
     assert any(message.get("role") == "tool" and message.get("name") == "load_skill" for message in chat_calls[1])
 
 
@@ -2415,7 +4257,6 @@ def test_weekly_market_agent_uses_llm_extracted_open_category(monkeypatch) -> No
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -2444,7 +4285,19 @@ def test_weekly_market_agent_uses_llm_extracted_open_category(monkeypatch) -> No
     assert "Current requested category: yoga pants." in chat_system_prompts[1]
     assert "US minimizer-bra research" not in chat_system_prompts[0]
     assert "US minimizer-bra research" not in "\n".join(chat_system_prompts)
-    assert [tool for tool, _, _ in tool_categories] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert [tool for tool, _, _ in tool_categories] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *[
+                tool
+                for tool in WEEKLY_MARKET_REPORT_TOOLS
+                if tool
+                not in {
+                    "analyze_market_report",
+                    "synthesize_report_insights",
+                    "render_report_charts",
+                }
+            ],
+        ]
     assert all(category == "yoga pants" for _, category, _ in tool_categories)
     assert all(payload_category == "yoga pants" for _, _, payload_category in tool_categories)
 
@@ -2496,6 +4349,9 @@ def test_weekly_market_agent_promotes_resolved_category_node_for_followup_tool(m
             [native_tool_call("call-node", "sellersprite_product_node", {"keyword": "Minimizers"})]
         ),
         native_chat_response(
+            [native_tool_call("call-node-again", "sellersprite_product_node", {"keyword": "minimizer"})]
+        ),
+        native_chat_response(
             [native_tool_call("call-concentration", "sellersprite_market_product_concentration", {})]
         ),
         native_chat_response(
@@ -2540,6 +4396,7 @@ def test_weekly_market_agent_promotes_resolved_category_node_for_followup_tool(m
     )
 
     assert result["skill"]["params"]["category_node_id"] == node_id_path
+    assert sum(name == "sellersprite_product_node" for name, _ in tool_payloads) == 1
     followup_payload = next(payload for name, payload in tool_payloads if name == "sellersprite_market_product_concentration")
     assert followup_payload["category_node_id"] == node_id_path
 
@@ -2884,7 +4741,6 @@ def test_run_agent_treats_workflow_as_plain_prompt(monkeypatch) -> None:
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -3003,7 +4859,61 @@ def test_run_agent_returns_needs_input_when_skill_required_params_are_missing(mo
     assert restored["result"]["run_id"] == "abcdef123456"
 
 
-def test_load_agent_run_state_recovers_progress_without_final_result(monkeypatch, tmp_path) -> None:
+def test_product_design_skill_asks_for_missing_design_goal_before_data_tools(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-load",
+                    "load_skill",
+                    {
+                        "skill_id": "product_design_research",
+                        "extracted_params": {"category": "strapless bra"},
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "call-ask",
+                    "ask_user",
+                    {
+                        "reason": "需要明确本轮产品研发目标。",
+                        "missing_params": ["design_goal"],
+                        "questions": [
+                            {
+                                "field": "design_goal",
+                                "question": "这次希望解决什么产品问题？",
+                            }
+                        ],
+                    },
+                )
+            ]
+        ),
+    ]
+    monkeypatch.setattr(
+        server_module,
+        "call_openai_compatible_chat",
+        lambda _messages, tools=None, tool_choice=None: chat_responses.pop(0),
+    )
+
+    result = server_module.run_agent(
+        {
+            "prompt": "调研美国 strapless bra 并生成研发任务书。",
+            "category": "strapless bra",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "needs_input"
+    assert result["tools"] == []
+    assert result["skill"]["skill_id"] == "product_design_research"
+    assert result["skill"]["missing_params"] == ["design_goal"]
+
+
+def test_load_agent_run_state_marks_inactive_progress_as_interrupted(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
     server_module.write_agent_run_json(
         "123456abcdef",
@@ -3019,9 +4929,66 @@ def test_load_agent_run_state_recovers_progress_without_final_result(monkeypatch
     restored = server_module.load_agent_run_state("123456abcdef")
 
     assert restored is not None
-    assert restored["status"] == "running"
+    assert restored["status"] == "error"
+    assert "interrupted" in restored["error"]
     assert "result" not in restored
     assert restored["events"][0]["run_id"] == "123456abcdef"
+
+
+def test_load_agent_run_state_keeps_active_progress_running(monkeypatch, tmp_path) -> None:
+    run_id = "123456abcdef"
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    server_module.write_agent_run_json(
+        run_id,
+        "progress.json",
+        {
+            "run_id": run_id,
+            "status": "running",
+            "updated_at": "2026-07-13T00:00:00+00:00",
+            "events": [],
+        },
+    )
+    with server_module.ACTIVE_AGENT_RUN_LOCK:
+        server_module.ACTIVE_AGENT_RUN_IDS.add(run_id)
+    try:
+        restored = server_module.load_agent_run_state(run_id)
+    finally:
+        with server_module.ACTIVE_AGENT_RUN_LOCK:
+            server_module.ACTIVE_AGENT_RUN_IDS.discard(run_id)
+
+    assert restored is not None
+    assert restored["status"] == "running"
+
+
+def test_agent_stream_sends_heartbeat_while_run_is_busy(monkeypatch) -> None:
+    sent_events: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeHandler:
+        close_connection = False
+
+        def send_response(self, _status):
+            return None
+
+        def send_header(self, _name, _value):
+            return None
+
+        def end_headers(self):
+            return None
+
+        def send_sse(self, event_name, payload):
+            sent_events.append((event_name, payload))
+
+    def slow_run(payload, emit_event=None):
+        time.sleep(0.03)
+        return {"run_id": payload["runId"], "status": "ok"}
+
+    monkeypatch.setattr(server_module, "AGENT_STREAM_HEARTBEAT_SECONDS", 0.005)
+    monkeypatch.setattr(server_module, "run_agent", slow_run)
+
+    server_module.AppHandler.send_agent_run_stream(FakeHandler(), {"runId": "123456abcdef"})
+
+    assert any(name == "heartbeat" for name, _ in sent_events)
+    assert sent_events[-1] == ("result", {"run_id": "123456abcdef", "status": "ok"})
 
 
 def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(monkeypatch) -> None:
@@ -3046,7 +5013,6 @@ def test_run_agent_normalizes_skill_param_aliases_before_missing_input_check(mon
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -3101,7 +5067,6 @@ def test_run_agent_uses_prompt_params_when_load_skill_omits_extracted_params(mon
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -3194,7 +5159,6 @@ def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeyp
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -3241,10 +5205,311 @@ def test_run_agent_can_continue_pending_skill_after_user_supplies_params(monkeyp
     assert continued["skill"]["params"]["brand"] == "Hsia"
     assert continued["skill"]["params"]["marketplace"] == "US"
     assert continued["skill"]["params"]["time_range"] == "90d"
-    assert [tool["name"] for tool in continued["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert [tool["name"] for tool in continued["tools"]] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *WEEKLY_MARKET_REPORT_TOOLS,
+        *HTML_REPORT_APPROVAL_TOOLS,
+    ]
     assert continued["events"][2]["input"]["timeRange"] == "90d"
     assert continued["artifact"]["title"] == "Fake LLM-authored market report"
     assert continued["llm_analysis"]["renderer"] == "llm-html"
+
+
+def test_context_question_answers_without_loading_skill_or_data_tools(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    source_run_id = "abc123abc123"
+    run_dir = tmp_path / "agent-runs" / source_run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": source_run_id,
+                "status": "ok",
+                "mode": "competitor",
+                "category": "女士文胸",
+                "prompt": "生成美国文胸竞品店铺分析。",
+                "skill": {
+                    "skill_id": "tiktok_us_bra_competitor_shop_analysis",
+                    "name": "TikTok Shop 美国文胸竞品店铺分析",
+                    "params": {"marketplace": "US", "category": "女士文胸"},
+                },
+                "artifact": {
+                    "title": "美国文胸竞品店铺分析",
+                    "executive_summary": "Shop A 的 28 天销售趋势最强。",
+                    "key_findings": ["Shop A 增长最快"],
+                },
+                "tools": [
+                    {
+                        "name": "build_tiktok_bra_competitor_shop_report_data",
+                        "status": "ok",
+                        "summary": "Compiled 10 shops.",
+                        "data": {
+                            "shops": [
+                                {"shop_name": "Shop A", "shop_id": "1001", "trend": "+32%"}
+                            ]
+                        },
+                    }
+                ],
+                "output_files": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    observed: dict[str, Any] = {}
+
+    def fake_chat(messages, tools=None, tool_choice=None):  # noqa: ARG001
+        observed["messages"] = messages
+        observed["tool_names"] = [tool["function"]["name"] for tool in tools or []]
+        return native_chat_response(
+            [
+                native_tool_call(
+                    "answer-follow-up",
+                    "respond_to_user",
+                    {"message": "Shop A 增长最快，报告记录的 28 天趋势为 +32%。"},
+                )
+            ]
+        )
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+
+    result = server_module.run_agent(
+        {
+            "runId": "def456def456",
+            "contextRunId": source_run_id,
+            "prompt": "为什么 Shop A 增长最快？",
+            "agentMode": "competitor",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["response_type"] == "message"
+    assert result["context_source_run_id"] == source_run_id
+    assert result["skill"]["skill_id"] is None
+    assert result["tools"] == []
+    assert "respond_to_user" in observed["tool_names"]
+    assert "load_skill" in observed["tool_names"]
+    assert "resume_previous_run" in observed["tool_names"]
+    assert "Shop A" in observed["messages"][1]["content"]
+    assert "不会限制本轮只能追问" in observed["messages"][1]["content"]
+    assert not any(event.get("type") == "skill" for event in result["events"])
+
+
+def test_context_can_start_a_new_skill_workflow(monkeypatch, tmp_path) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    source_run_id = "abc123abc123"
+    run_dir = tmp_path / "agent-runs" / source_run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": source_run_id,
+                "status": "ok",
+                "mode": "competitor",
+                "category": "sports bra",
+                "prompt": "分析 sports bra 竞品。",
+                "skill": {
+                    "skill_id": "competitor_product_deep_dive",
+                    "params": {"category": "sports bra"},
+                },
+                "tools": [],
+                "output_files": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    first_turn_tools: list[str] = []
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "load-new-research",
+                    "load_skill",
+                    {
+                        "skill_id": "weekly_market_insight",
+                        "extracted_params": {
+                            "brand": "Hsia",
+                            "marketplace": "US",
+                            "category": "minimizer bra",
+                            "time_range": "30d",
+                        },
+                    },
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "collect-new-demand",
+                    "sif_market_get_keyword_demand",
+                    {"keywords": ["minimizer bra"], "country": "US"},
+                )
+            ]
+        ),
+        native_chat_response(
+            [
+                native_tool_call(
+                    "answer-new-research-status",
+                    "respond_to_user",
+                    {"message": "已按新调研意图加载市场洞察 Skill，并开始采集 minimizer bra 数据。"},
+                )
+            ]
+        ),
+    ]
+
+    def fake_chat(messages, tools=None, tool_choice=None):  # noqa: ARG001
+        if not first_turn_tools:
+            first_turn_tools.extend(tool["function"]["name"] for tool in tools or [])
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "runId": "def456def456",
+            "contextRunId": source_run_id,
+            "prompt": "现在重新调研 Hsia 美国 minimizer bra 最近30天市场。",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["skill_id"] == "weekly_market_insight"
+    assert [tool["name"] for tool in result["tools"]] == ["sif_market_get_keyword_demand"]
+    assert "load_skill" in first_turn_tools
+    assert "resume_previous_run" in first_turn_tools
+    assert not any(event["title"].startswith("恢复任务") for event in result["events"])
+
+
+def test_failed_context_can_resume_builder_and_retry_only_renderer(monkeypatch, tmp_path) -> None:
+    install_weekly_market_test_catalog(monkeypatch)
+    monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
+    source_run_id = "abc123abc123"
+    run_dir = tmp_path / "agent-runs" / source_run_id
+    run_dir.mkdir(parents=True)
+    restored_market_report = {
+        "schema_version": "market_report_data.v1",
+        "title": "Hsia minimizer bra 市场洞察",
+        "category": "minimizer bra",
+        "market_kpis": [{"label": "需求锚点", "value": "100", "source": "E01"}],
+        "chart_specs": [],
+        "artifact": {"title": "Hsia minimizer bra 市场洞察"},
+    }
+    restored_tools = [
+        {
+            "name": tool_name,
+            "label": tool_name,
+            "status": "ok",
+            "summary": f"{tool_name} completed",
+            "input": {},
+            "data": {},
+        }
+        for tool_name in WEEKLY_MARKET_BASELINE_TOOLS
+    ]
+    restored_tools.extend(
+        [
+            {
+                "name": "build_market_report_data",
+                "label": "MarketReportData builder",
+                "status": "ok",
+                "summary": "MarketReportData compiled.",
+                "input": {},
+                "data": restored_market_report,
+            },
+            {
+                "name": "render_html_report",
+                "label": "HTML report renderer",
+                "status": "timeout",
+                "summary": "Tool timed out after 600 seconds.",
+                "input": {},
+                "data": {},
+            },
+        ]
+    )
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": source_run_id,
+                "status": "error",
+                "mode": "market",
+                "category": "minimizer bra",
+                "prompt": "生成 Hsia 美国 minimizer bra 本周洞察报告。",
+                "skill": {
+                    "skill_id": "weekly_market_insight",
+                    "name": "市场洞察 Skill",
+                    "params": {
+                        "brand": "Hsia",
+                        "marketplace": "US",
+                        "category": "minimizer bra",
+                        "time_range": "30d",
+                    },
+                },
+                "tools": restored_tools,
+                "evidence_gaps": [],
+                "message": {
+                    "role": "assistant",
+                    "content": "HTML 报告生成失败：Tool timed out after 600 seconds.",
+                },
+                "output_files": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    chat_responses = [
+        native_chat_response(
+            [
+                native_tool_call(
+                    "resume-failed-run",
+                    "resume_previous_run",
+                    {"reason": "用户要求重新渲染上一轮失败报告。"},
+                )
+            ]
+        ),
+        native_chat_response(content=""),
+    ]
+
+    def fake_chat(messages, tools=None, tool_choice=None):  # noqa: ARG001
+        return chat_responses.pop(0)
+
+    monkeypatch.setattr(server_module, "call_openai_compatible_chat", fake_chat)
+    monkeypatch.setattr(server_module, "execute_agent_tool_with_timeout", fake_agent_tool_result)
+
+    result = server_module.run_agent(
+        {
+            "runId": "def456def456",
+            "contextRunId": source_run_id,
+            "prompt": "重新渲染，继续上一轮失败任务。",
+            "agentMode": "market",
+            "useLlm": True,
+        }
+    )
+
+    assert result["status"] == "ok"
+    assert result["skill"]["skill_id"] == "weekly_market_insight"
+    assert result["resumed_from_run_id"] == source_run_id
+    assert sum(
+        tool["name"] == "build_market_report_data" for tool in result["tools"]
+    ) == 1
+    assert sum(tool["name"] == "render_html_report" for tool in result["tools"]) == 2
+    retried_render = next(
+        tool
+        for tool in reversed(result["tools"])
+        if tool["name"] == "render_html_report" and tool["status"] == "ok"
+    )
+    assert (
+        retried_render["input"]["marketReportData"]["schema_version"]
+        == "market_report_data.v1"
+    )
+    assert "用户继续指令：重新渲染" in retried_render["input"]["prompt"]
+    assert any(event["title"].startswith("恢复任务") for event in result["events"])
 
 
 def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolved(monkeypatch) -> None:
@@ -3286,7 +5551,6 @@ def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolv
         ),
         *weekly_market_baseline_tool_responses(),
         *weekly_market_report_tool_responses(),
-        native_chat_response([native_tool_call("call-synth", "synthesize_artifact", {})]),
     ]
 
     def fake_call_chat(messages, tools=None, tool_choice=None):
@@ -3323,7 +5587,11 @@ def test_run_agent_ignores_confirmation_ask_user_when_required_params_are_resolv
 
     assert result["status"] == "ok"
     assert result["skill"]["missing_params"] == []
-    assert [tool["name"] for tool in result["tools"]] == [*WEEKLY_MARKET_BASELINE_TOOLS, *WEEKLY_MARKET_REPORT_TOOLS]
+    assert [tool["name"] for tool in result["tools"]] == [
+        *WEEKLY_MARKET_BASELINE_TOOLS,
+        *WEEKLY_MARKET_REPORT_TOOLS,
+        *HTML_REPORT_APPROVAL_TOOLS,
+    ]
     assert result["artifact"]["title"] == "Fake LLM-authored market report"
     assert result["llm_analysis"]["renderer"] == "llm-html"
     ask_user_observation = [
@@ -3594,19 +5862,23 @@ def test_llm_provider_settings_are_data_driven() -> None:
     assert "api_key_configured" in settings
 
 
-def test_mcp_settings_redact_sellersprite_and_sif_credentials() -> None:
+def test_mcp_settings_redact_fastmoss_sellersprite_and_sif_credentials() -> None:
     settings = build_mcp_settings_response(
         {
+            "FASTMOSS_MCP_API_KEY": "fastmoss-secret",
             "SELLERSPRITE_MCP_SECRET_KEY": "seller-secret",
             "SIF_API_KEY": "sif-secret",
         }
     )
     sources = {source["id"]: source for source in settings["sources"]}
 
+    assert sources["fastmoss"]["configured"] is True
     assert sources["sellersprite"]["configured"] is True
     assert sources["sif"]["configured"] is True
+    assert sources["fastmoss"]["env_name"] == "FASTMOSS_MCP_API_KEY"
     assert sources["sellersprite"]["env_name"] == "SELLERSPRITE_MCP_SECRET_KEY"
     assert sources["sif"]["env_name"] == "SIF_MCP_TOKEN"
+    assert "fastmoss-secret" not in json.dumps(settings)
     assert "seller-secret" not in json.dumps(settings)
     assert "sif-secret" not in json.dumps(settings)
 
@@ -3619,6 +5891,9 @@ def test_update_mcp_settings_writes_env_and_syncs_process(monkeypatch, tmp_path)
     monkeypatch.setattr(settings_module, "ENV_PATH", env_path)
     monkeypatch.setattr(settings_module, "ENV_EXAMPLE_PATH", example_path)
     for key in (
+        "FASTMOSS_MCP_API_KEY",
+        "FASTMOSS_MCP_KEY",
+        "FASTMOSS_API_KEY",
         "SELLERSPRITE_MCP_SECRET_KEY",
         "SELLERSPRITE_SECRET_KEY",
         "SELLERSPRITE_API_KEY",
@@ -3631,6 +5906,7 @@ def test_update_mcp_settings_writes_env_and_syncs_process(monkeypatch, tmp_path)
     result = update_mcp_settings(
         {
             "credentials": {
+                "fastmoss": {"value": "fastmoss-test"},
                 "sellersprite": {"value": "seller-test"},
                 "sif": {"value": "sif-test"},
             }
@@ -3638,15 +5914,18 @@ def test_update_mcp_settings_writes_env_and_syncs_process(monkeypatch, tmp_path)
     )
 
     assert all(source["configured"] for source in result["sources"])
+    assert os.environ["FASTMOSS_MCP_API_KEY"] == "fastmoss-test"
     assert os.environ["SELLERSPRITE_MCP_SECRET_KEY"] == "seller-test"
     assert os.environ["SIF_MCP_TOKEN"] == "sif-test"
     env_text = env_path.read_text(encoding="utf-8")
+    assert "FASTMOSS_MCP_API_KEY=fastmoss-test" in env_text
     assert "SELLERSPRITE_MCP_SECRET_KEY=seller-test" in env_text
     assert "SIF_MCP_TOKEN=sif-test" in env_text
 
     cleared = update_mcp_settings(
         {
             "credentials": {
+                "fastmoss": {"clear": True},
                 "sellersprite": {"clear": True},
                 "sif": {"clear": True},
             }
@@ -3654,6 +5933,7 @@ def test_update_mcp_settings_writes_env_and_syncs_process(monkeypatch, tmp_path)
     )
 
     assert not any(source["configured"] for source in cleared["sources"])
+    assert "FASTMOSS_MCP_API_KEY" not in os.environ
     assert "SELLERSPRITE_MCP_SECRET_KEY" not in os.environ
     assert "SIF_MCP_TOKEN" not in os.environ
 

@@ -1,0 +1,6 @@
+.env
+target/
+.wren/
+.wren-mcp.pid
+wren-mcp.out.log
+wren-mcp.err.log

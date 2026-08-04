@@ -9,6 +9,8 @@ import urllib.request
 from functools import lru_cache
 from typing import Any
 
+from .mcp_result_cache import execute_with_mcp_result_cache
+
 SIF_AGENT_TOOL_PREFIX = "sif_"
 SIF_SCHEMA_URL = os.getenv("SIF_MCP_SCHEMA_URL", "https://mcp.sif.com/mcp-api/tool-schema.json")
 SIF_MCP_URL = os.getenv("SIF_MCP_URL", "https://mcp.sif.com/mcp")
@@ -334,7 +336,7 @@ def summarize_sif_data(agent_tool_name: str, data: dict[str, Any]) -> str:
     return f"Sif MCP tool {agent_tool_name} completed."
 
 
-def execute_sif_agent_tool(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
+def _execute_sif_agent_tool_uncached(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
     catalog = get_sif_tool_catalog()
     meta = catalog.get(agent_tool_name) or {}
@@ -372,3 +374,18 @@ def execute_sif_agent_tool(agent_tool_name: str, input_payload: dict[str, Any]) 
             "input": input_payload,
             "data": {},
         }
+
+
+def execute_sif_agent_tool(
+    agent_tool_name: str,
+    input_payload: dict[str, Any],
+    *,
+    bypass_cache: bool = False,
+) -> dict[str, Any]:
+    return execute_with_mcp_result_cache(
+        "sif",
+        agent_tool_name,
+        input_payload,
+        lambda: _execute_sif_agent_tool_uncached(agent_tool_name, input_payload),
+        bypass_cache=bypass_cache,
+    )

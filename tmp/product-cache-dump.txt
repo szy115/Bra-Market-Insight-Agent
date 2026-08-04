@@ -1,0 +1,271 @@
+{
+  "page": 1,
+  "pagesize": 10,
+  "orderby": [
+    {
+      "field": "day28_gmv",
+      "order": "desc"
+    }
+  ],
+  "filter": {
+    "seller_id": "7495287105357974079",
+    "category_id": 601262,
+    "time_range_days": 28
+  }
+}
+{
+  "name": "mcp__fastmoss__shop_product_analysis",
+  "label": "FastMoss: shop_product_analysis",
+  "status": "ok",
+  "summary": "FastMoss returned structured evidence in `category_distribution`.",
+  "duration_ms": 3496,
+  "input": {
+    "page": 1,
+    "pagesize": 10,
+    "orderby": [
+      {
+        "field": "day28_gmv",
+        "order": "desc"
+      }
+    ],
+    "filter": {
+      "seller_id": "7495287105357974079",
+      "category_id": 601262,
+      "time_range_days": 28
+    }
+  },
+  "data": {
+    "category_distribution": {
+      "by_gmv": {
+        "level_1": [
+          {
+            "category_id": 2,
+            "category_name": "Womenswear & Underwear",
+            "gmv": 1317886.23,
+            "gmv_share_percent": 100
+          }
+        ],
+        "level_2": [
+          {
+            "category_id": 842888,
+            "category_name": "Women's Underwear",
+            "gmv": 1317156.63,
+            "gmv_share_percent": 99.94
+          },
+          {
+            "category_id": 842248,
+            "category_name": "Women's Tops",
+            "gmv": 729.6,
+            "gmv_share_percent": 0.06
+          }
+        ]
+      },
+      "by_product_count": {
+        "level_1": [
+          {
+            "category_id": 2,
+            "category_name": "Womenswear & Underwear",
+            "product_count": 42,
+            "product_share_percent": 93.33
+          },
+          {
+            "category_id": 8,
+            "category_name": "Fashion Accessories",
+            "product_count": 1,
+            "product_share_percent": 2.22
+          },
+          {
+            "category_id": 0,
+            "category_name": "Other",
+            "product_count": 0,
+            "product_share_percent": 4.45
+          }
+        ],
+        "level_2": [
+          {
+            "category_id": 842888,
+            "category_name": "Women's Underwear",
+            "product_count": 38,
+            "product_share_percent": 84.44
+          },
+          {
+            "category_id": 842248,
+            "category_name": "Women's Tops",
+            "product_count": 4,
+            "product_share_percent": 8.89
+          },
+          {
+            "category_id": 905224,
+            "category_name": "Clothes Accessories",
+            "product_count": 1,
+            "product_share_percent": 2.22
+          },
+          {
+            "category_id": 0,
+            "category_name": "Other",
+            "product_count": 0,
+            "product_share_percent": 4.45
+          }
+        ]
+      },
+      "by_units_sold": {
+        "level_1": [
+          {
+            "category_id": 2,
+            "category_name": "Womenswear & Underwear",
+            "units_sold": 32303,
+            "units_sold_share_percent": 100
+          }
+        ],
+        "level_2": [
+          {
+            "category_id": 842888,
+            "category_name": "Women's Underwear",
+            "units_sold": 32297,
+            "units_sold_share_percent": 99.98
+          },
+          {
+            "category_id": 842248,
+            "category_name": "Women's Tops",
+            "units_sold": 6,
+            "units_sold_share_percent": 0.02
+          }
+        ]
+      }
+    },
+    "price_band_distribution": {
+      "by_gmv": [
+        {
+          "gmv": 0,
+          "gmv_share_percent": 0,
+          "max_price_boundary": 15,
+          "price_band": "0-15"
+        },
+        {
+          "gmv": 479139.4,
+          "gmv_share_percent": 36.36,
+          "max_price_boundary": 30,
+          "price_band": "15-30"
+        },
+        {
+          "gmv": 595006.38,
+          "gmv_share_percent": 45.15,
+          "max_price_boundary": 45,
+          "price_band": "30-45"
+        },
+        {
+          "gmv": 116885.59,
+          "gmv_share_percent": 8.87,
+          "max_price_boundary": 60,
+          "price_band": "45-60"
+        },
+        {
+          "gmv": 16345.8,
+          "gmv_share_percent": 1.24,
+          "max_price_boundary": 75,
+          "price_band": "60-75"
+        },
+        {
+          "gmv": 110509.06,
+          "gmv_share_percent": 8.39,
+          "max_price_boundary": 150,
+          "price_band": ">75"
+        }
+      ],
+      "by_product_count": [
+        {
+          "max_price_boundary": 15,
+          "price_band": "0-15",
+          "product_count": 0,
+          "product_share_percent": 0
+        },
+        {
+          "max_price_boundary": 30,
+          "price_band": "15-30",
+          "product_count": 12,
+          "product_share_percent": 27.91
+        },
+        {
+          "max_price_boundary": 45,
+          "price_band": "30-45",
+          "product_count": 7,
+          "product_share_percent": 16.28
+        },
+        {
+          "max_price_boundary": 60,
+          "price_band": "45-60",
+          "product_count": 11,
+          "product_share_percent": 25.58
+        },
+        {
+          "max_price_boundary": 75,
+          "price_band": "60-75",
+          "product_count": 2,
+          "product_share_percent": 4.65
+        },
+        {
+          "max_price_boundary": 150,
+          "price_band": ">75",
+          "product_count": 11,
+          "product_share_percent": 25.58
+        }
+      ],
+      "by_units_sold": [
+        {
+          "max_price_boundary": 15,
+          "price_band": "0-15",
+          "units_sold": 0,
+          "units_sold_share_percent": 0
+        },
+        {
+          "max_price_boundary": 30,
+          "price_band": "15-30",
+          "units_sold": 15302,
+          "units_sold_share_percent": 47.37
+        },
+        {
+          "max_price_boundary": 45,
+          "price_band": "30-45",
+          "units_sold": 13675,
+          "units_sold_share_percent": 42.33
+        },
+        {
+          "max_price_boundary": 60,
+          "price_band": "45-60",
+          "units_sold": 1988,
+          "units_sold_share_percent": 6.15
+        },
+        {
+          "max_price_boundary": 75,
+          "price_band": "60-75",
+          "units_sold": 207,
+          "units_sold_share_percent": 0.64
+        },
+        {
+          "max_price_boundary": 150,
+          "price_band": ">75",
+          "units_sold": 1131,
+          "units_sold_share_percent": 3.5
+        }
+      ]
+    },
+    "product_catalog_summary": {
+      "active_product_count": 18,
+      "commission_rate_max_percent": 0,
+      "commission_rate_min_percent": 0,
+      "historical_product_count": 45
+    },
+    "products": {
+      "list": [],
+      "total": 0
+    },
+    "shop": {
+      "category_id": 601262,
+      "currency_symbol": "$",
+      "listing_time_range_days": 0,
+      "region": "US",
+      "seller_id": "7495287105357974079",
+      "time_range_days": 28
+    }
+  }
+}

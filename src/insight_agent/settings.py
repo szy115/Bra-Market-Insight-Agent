@@ -88,6 +88,12 @@ WEB_SEARCH_PROVIDER_BY_NAME = {provider.name: provider for provider in WEB_SEARC
 
 MCP_DATA_SOURCE_CREDENTIALS = (
     MCPDataSourceCredential(
+        id="fastmoss",
+        label="FastMoss",
+        canonical_env="FASTMOSS_MCP_API_KEY",
+        accepted_env_names=("FASTMOSS_MCP_API_KEY", "FASTMOSS_MCP_KEY", "FASTMOSS_API_KEY"),
+    ),
+    MCPDataSourceCredential(
         id="sellersprite",
         label="SellerSprite",
         canonical_env="SELLERSPRITE_MCP_SECRET_KEY",
@@ -732,6 +738,11 @@ def sync_runtime_env(provider: LLMProvider | None = None, values: dict[str, str]
             os.environ.pop(key, None)
 
     for key in (
+        "FASTMOSS_MCP_URL",
+        "FASTMOSS_MCP_TOOLS",
+        "FASTMOSS_MCP_API_KEY",
+        "FASTMOSS_MCP_KEY",
+        "FASTMOSS_API_KEY",
         "SELLERSPRITE_MCP_SECRET_KEY",
         "SELLERSPRITE_SECRET_KEY",
         "SELLERSPRITE_API_KEY",

@@ -37,7 +37,15 @@ import { formatMessage, loadLocale, makeTranslator, saveLocale, type Locale, typ
 
 type Page = "agent" | "settings";
 type AgentArtifactTab = "market" | "draft" | "output";
-type AgentPromptTemplateId = "market_insight_weekly" | "hot_product_pain_analysis" | "competitor_product_deep_dive";
+type AgentPromptTemplateId =
+  | "market_insight_weekly"
+  | "tiktok_us_market_insight"
+  | "tiktok_us_hot_product_insight"
+  | "tiktok_us_lingerie_new_product_insight"
+  | "tiktok_us_bra_competitor_shop_analysis"
+  | "fashion_trend_report"
+  | "hot_product_pain_analysis"
+  | "competitor_product_deep_dive";
 type AgentPromptTemplate = {
   id: AgentPromptTemplateId;
   mode: "market" | "competitor";
@@ -45,7 +53,6 @@ type AgentPromptTemplate = {
   description: string;
   prompt: string;
   sources: string[];
-  skillId?: string;
 };
 type LocalizedProps = {
   locale: Locale;
@@ -155,6 +162,11 @@ export function App() {
 
 function isAgentPromptTemplateId(value: unknown): value is AgentPromptTemplateId {
   return value === "market_insight_weekly"
+    || value === "tiktok_us_market_insight"
+    || value === "tiktok_us_hot_product_insight"
+    || value === "tiktok_us_lingerie_new_product_insight"
+    || value === "tiktok_us_bra_competitor_shop_analysis"
+    || value === "fashion_trend_report"
     || value === "hot_product_pain_analysis"
     || value === "competitor_product_deep_dive";
 }
@@ -362,6 +374,13 @@ function assistantContentFromResult(result: AgentRunResponse): string {
     return `${result.artifact.title}\n\n${result.artifact.executive_summary}`;
   }
   return "任务已完成。";
+}
+
+function checkpointContinuationPrompt(result: AgentRunResponse, locale: Locale): string {
+  if (result.pending?.reason_type === "retryable_tool_failure") {
+    return locale === "zh" ? "重试报告生成，继续原任务。" : "Retry report generation and continue the original task.";
+  }
+  return locale === "zh" ? "已完成充值或认证，继续原任务。" : "The required account action is complete; continue the original task.";
 }
 
 function messagesFromRunSnapshot(snapshot: AgentSessionSnapshot): AgentChatMessage[] {
@@ -719,7 +738,46 @@ function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
       description: t("agent.template.market.description"),
       prompt: `${t("agent.template.market.task")}\n\n${t("agent.template.market.workflow")}`,
       sources: ["Sif", "SellerSprite"],
-      skillId: "weekly_market_insight",
+    },
+    {
+      id: "tiktok_us_market_insight",
+      mode: "market",
+      title: t("agent.template.tiktokUs.title"),
+      description: t("agent.template.tiktokUs.description"),
+      prompt: `${t("agent.template.tiktokUs.task")}\n\n${t("agent.template.tiktokUs.workflow")}`,
+      sources: ["FastMoss"],
+    },
+    {
+      id: "tiktok_us_hot_product_insight",
+      mode: "market",
+      title: t("agent.template.tiktokUsHotProducts.title"),
+      description: t("agent.template.tiktokUsHotProducts.description"),
+      prompt: `${t("agent.template.tiktokUsHotProducts.task")}\n\n${t("agent.template.tiktokUsHotProducts.workflow")}`,
+      sources: ["FastMoss"],
+    },
+    {
+      id: "tiktok_us_lingerie_new_product_insight",
+      mode: "market",
+      title: t("agent.template.tiktokUsNewProducts.title"),
+      description: t("agent.template.tiktokUsNewProducts.description"),
+      prompt: `${t("agent.template.tiktokUsNewProducts.task")}\n\n${t("agent.template.tiktokUsNewProducts.workflow")}`,
+      sources: ["FastMoss"],
+    },
+    {
+      id: "tiktok_us_bra_competitor_shop_analysis",
+      mode: "competitor",
+      title: t("agent.template.tiktokUsBraCompetitors.title"),
+      description: t("agent.template.tiktokUsBraCompetitors.description"),
+      prompt: `${t("agent.template.tiktokUsBraCompetitors.task")}\n\n${t("agent.template.tiktokUsBraCompetitors.workflow")}`,
+      sources: ["FastMoss"],
+    },
+    {
+      id: "fashion_trend_report",
+      mode: "market",
+      title: t("agent.template.fashionTrend.title"),
+      description: t("agent.template.fashionTrend.description"),
+      prompt: `${t("agent.template.fashionTrend.task")}\n\n${t("agent.template.fashionTrend.workflow")}`,
+      sources: ["WGSN", "蝶讯", "Pinterest"],
     },
     {
       id: "hot_product_pain_analysis",
@@ -728,7 +786,6 @@ function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
       description: t("agent.template.pain.description"),
       prompt: `${t("agent.template.pain.task")}\n\n${t("agent.template.pain.workflow")}`,
       sources: ["Amazon", "Reviews"],
-      skillId: "hot_product_pain_analysis",
     },
     {
       id: "competitor_product_deep_dive",
@@ -737,7 +794,6 @@ function buildAgentPromptTemplates(t: Translator): AgentPromptTemplate[] {
       description: t("agent.template.deep.description"),
       prompt: `${t("agent.template.deep.task")}\n\n${t("agent.template.deep.workflow")}`,
       sources: ["SellerSprite", "Sif", "Reddit"],
-      skillId: "competitor_product_deep_dive",
     },
   ];
 }
@@ -751,7 +807,19 @@ function migrateOverlappedSkillPrompt(template: AgentPromptTemplate, savedPrompt
       || savedPrompt.includes("hot-product competitor teardown")
       || savedPrompt.includes("product R&D HTML template")
     );
-  return isMistakenDeepDivePrompt ? template.prompt : savedPrompt;
+  const isLegacyFashionTrendPrompt = template.id === "fashion_trend_report"
+    && savedPrompt.includes("fashion_trend_report")
+    && (
+      (savedPrompt.includes("time_range=365d") && savedPrompt.includes("minimizer bra"))
+      || (
+        savedPrompt.includes("time_range=30d")
+        && savedPrompt.includes("将宏观趋势转译为文胸产品线方向")
+        && !savedPrompt.includes("report_image_limit")
+      )
+      || savedPrompt.includes("每站按总览、色彩、面料、廓形、细节和视觉灵感检索")
+      || savedPrompt.includes("search overview, colour, material, silhouette, detail, and visual-inspiration dimensions")
+    );
+  return isMistakenDeepDivePrompt || isLegacyFashionTrendPrompt ? template.prompt : savedPrompt;
 }
 
 function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boolean }) {
@@ -762,7 +830,14 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
   const [selectedTemplateId, setSelectedTemplateId] = useState<AgentPromptTemplateId>(
     initialSession?.selectedTemplateId || "market_insight_weekly",
   );
-  const selectedTemplate = promptTemplates.find((template) => template.id === selectedTemplateId) || promptTemplates[0]!;
+  // The template picker is a prompt generator, not a conversation/run switcher.
+  // Keep its selection separate so choosing a card during an active run cannot
+  // overwrite the run's Skill, mode, result, or event stream.
+  const [composerTemplateId, setComposerTemplateId] = useState<AgentPromptTemplateId>(
+    initialSession?.selectedTemplateId || "market_insight_weekly",
+  );
+  const [composerUsesTemplate, setComposerUsesTemplate] = useState(false);
+  const selectedTemplate = promptTemplates.find((template) => template.id === composerTemplateId) || promptTemplates[0]!;
   const [agentMode, setAgentMode] = useState<"market" | "competitor">(initialSession?.agentMode || selectedTemplate.mode);
   const [prompt, setPrompt] = useState(() => migrateOverlappedSkillPrompt(selectedTemplate, initialSession?.prompt));
   const [artifactTab, setArtifactTab] = useState<AgentArtifactTab>(initialSession?.artifactTab || "market");
@@ -779,6 +854,10 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
   const [error, setError] = useState<string | null>(null);
   const [persistenceWarning, setPersistenceWarning] = useState("");
   const streamRequestActiveRef = useRef(false);
+  const promptRef = useRef(prompt);
+  const submittedPromptRef = useRef("");
+  const activeRunTemplateIdRef = useRef(selectedTemplateId);
+  const activeRunModeRef = useRef(agentMode);
   const artifactJson = result ? JSON.stringify(result, null, 2) : "";
   const hasFinalArtifact = Boolean(
     result?.artifact && result.status === "ok" && result.response_type !== "message",
@@ -789,11 +868,13 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
     { id: "draft", label: t("agent.tab.draft") },
     { id: "output", label: t("agent.tab.output") },
   ];
-  const executionEvents = result?.events?.length
-    ? result.events
-    : streamEvents.length
-      ? streamEvents
-      : [];
+  const executionEvents = activeRunId
+    ? streamEvents
+    : result?.events?.length
+      ? result.events
+      : streamEvents.length
+        ? streamEvents
+        : [];
   const displayExecutionEvents = displayEventsForResult(result, executionEvents);
   const awaitingInput = result?.status === "needs_input";
   const repairedCurrentSession = repairAgentConversationSession({
@@ -822,6 +903,10 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
     if (messages.length || !repairedCurrentSession.messages.length) return;
     setMessages(repairedCurrentSession.messages);
   }, [messages.length, repairedCurrentSession.messages]);
+
+  useEffect(() => {
+    promptRef.current = prompt;
+  }, [prompt]);
 
   useEffect(() => {
     const handlePersistenceFailure = () => {
@@ -925,14 +1010,21 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
   }, [activeRunId]);
 
   function applyPromptTemplate(template: AgentPromptTemplate) {
-    setSelectedTemplateId(template.id);
-    setAgentMode(template.mode);
+    // Deliberately do not touch the active conversation or run state here.
+    // The card only generates text. Normal planner routing will interpret the
+    // Skill name inside that text when the user submits it.
+    setComposerTemplateId(template.id);
+    setComposerUsesTemplate(true);
+    promptRef.current = template.prompt;
     setPrompt(template.prompt);
-    setArtifactTab("draft");
   }
 
   function applyAgentRunResponse(nextResult: AgentRunResponse): AgentSessionSnapshot {
-    const nextPrompt = "";
+    // Keep any text prepared while the run was active. In particular, clicking
+    // an Agent Skills card must leave the generated next-task prompt in place.
+    const nextPrompt = promptRef.current.trim() === submittedPromptRef.current.trim()
+      ? ""
+      : promptRef.current;
     const nextSelectedOutputPath = nextResult.status === "needs_input" || nextResult.response_type === "message"
       ? ""
       : preferredAgentOutputPath(nextResult);
@@ -940,16 +1032,20 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
       ? "draft"
       : "output";
     const nextEvents = nextResult.events || [];
+    const completedTemplateId = activeRunTemplateIdRef.current;
+    const completedAgentMode = nextResult.mode || activeRunModeRef.current;
     setResult(nextResult);
     setStreamEvents(nextEvents);
     setSelectedOutputPath(nextSelectedOutputPath);
     setArtifactTab(nextArtifactTab);
+    promptRef.current = nextPrompt;
     setPrompt(nextPrompt);
     setActiveRunId("");
-    setAgentMode(nextResult.mode || agentMode);
+    setSelectedTemplateId(completedTemplateId);
+    setAgentMode(completedAgentMode);
     const snapshot = buildAgentSessionSnapshot({
-      selectedTemplateId,
-      agentMode: nextResult.mode || agentMode,
+      selectedTemplateId: completedTemplateId,
+      agentMode: completedAgentMode,
       prompt: nextPrompt,
       artifactTab: nextArtifactTab,
       result: nextResult,
@@ -1004,39 +1100,73 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
   }
 
   function restoreSessionRun(item: AgentRunHistoryItem) {
+    const isViewingDuringActiveRun = Boolean(activeRunId);
     setSelectedTemplateId(item.selectedTemplateId);
+    if (!isViewingDuringActiveRun) {
+      activeRunTemplateIdRef.current = item.selectedTemplateId;
+      activeRunModeRef.current = item.agentMode;
+    }
+    if (!isViewingDuringActiveRun) {
+      setComposerTemplateId(item.selectedTemplateId);
+      setComposerUsesTemplate(false);
+    }
     setAgentMode(item.agentMode);
     setPrompt("");
     setArtifactTab(item.artifactTab);
     setResult(item.result);
-    setStreamEvents(item.streamEvents);
-    setActiveRunId("");
+    if (!isViewingDuringActiveRun) {
+      setStreamEvents(item.streamEvents);
+    }
     setSelectedOutputPath(item.selectedOutputPath || (item.result ? preferredAgentOutputPath(item.result) : ""));
     setError(null);
-    setLoading(false);
-    saveAgentSession(item);
+    if (!isViewingDuringActiveRun) {
+      setLoading(false);
+    }
+    saveAgentSession({
+      ...item,
+      activeRunId: isViewingDuringActiveRun ? activeRunId : "",
+      streamEvents: isViewingDuringActiveRun ? streamEvents : item.streamEvents,
+    });
   }
 
   function openSessionRunFile(item: AgentRunHistoryItem, path: string) {
+    const isViewingDuringActiveRun = Boolean(activeRunId);
     setSelectedTemplateId(item.selectedTemplateId);
+    if (!isViewingDuringActiveRun) {
+      activeRunTemplateIdRef.current = item.selectedTemplateId;
+      activeRunModeRef.current = item.agentMode;
+    }
+    if (!isViewingDuringActiveRun) {
+      setComposerTemplateId(item.selectedTemplateId);
+      setComposerUsesTemplate(false);
+    }
     setAgentMode(item.agentMode);
     setPrompt("");
     setArtifactTab("output");
     setResult(item.result);
-    setStreamEvents(item.streamEvents);
-    setActiveRunId("");
+    if (!isViewingDuringActiveRun) {
+      setStreamEvents(item.streamEvents);
+    }
     setSelectedOutputPath(path);
     setError(null);
-    setLoading(false);
+    if (!isViewingDuringActiveRun) {
+      setLoading(false);
+    }
     saveAgentSession({
       ...item,
       artifactTab: "output",
       selectedOutputPath: path,
+      activeRunId: isViewingDuringActiveRun ? activeRunId : "",
+      streamEvents: isViewingDuringActiveRun ? streamEvents : item.streamEvents,
     });
   }
 
   function restoreConversationSession(session: AgentConversationSession) {
     setSelectedTemplateId(session.selectedTemplateId);
+    activeRunTemplateIdRef.current = session.selectedTemplateId;
+    activeRunModeRef.current = session.agentMode;
+    setComposerTemplateId(session.selectedTemplateId);
+    setComposerUsesTemplate(false);
     setAgentMode(session.agentMode);
     setPrompt(session.prompt);
     setArtifactTab(session.artifactTab);
@@ -1057,6 +1187,10 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
     const template = promptTemplates.find((item) => item.id === selectedTemplateId) || promptTemplates[0]!;
     setActiveConversationId(newClientId("session"));
     setSelectedTemplateId(template.id);
+    activeRunTemplateIdRef.current = template.id;
+    activeRunModeRef.current = template.mode;
+    setComposerTemplateId(template.id);
+    setComposerUsesTemplate(false);
     setAgentMode(template.mode);
     setPrompt(template.prompt);
     setArtifactTab("draft");
@@ -1086,13 +1220,25 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
     });
   }
 
-  async function runAgent(event?: FormEvent) {
+  async function runAgent(
+    event?: FormEvent,
+    promptOverride?: string,
+    pendingOverride?: AgentRunResponse | null,
+  ) {
     event?.preventDefault();
-    const cleanPrompt = prompt.trim();
+    const cleanPrompt = (promptOverride ?? prompt).trim();
     if (!cleanPrompt) return;
-    const pendingResult = result?.status === "needs_input" ? result : null;
+    const pendingCandidate = pendingOverride === undefined ? result : pendingOverride;
+    const pendingResult = pendingCandidate?.status === "needs_input" ? pendingCandidate : null;
+    const startsFreshTemplatePrompt = !pendingResult && composerUsesTemplate;
+    const requestedMode = pendingResult?.mode || agentMode;
+    const requestedTemplateId = selectedTemplateId;
     const nextRunId = newAgentRunId();
     streamRequestActiveRef.current = true;
+    submittedPromptRef.current = cleanPrompt;
+    activeRunTemplateIdRef.current = requestedTemplateId;
+    activeRunModeRef.current = requestedMode;
+    setComposerUsesTemplate(false);
     setActiveRunId(nextRunId);
     setLoading(true);
     setError(null);
@@ -1111,7 +1257,7 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
     try {
       const request: AgentRunRequest = {
         prompt: cleanPrompt,
-        agentMode: pendingResult?.mode || agentMode,
+        agentMode: requestedMode,
         runId: nextRunId,
         locale,
         useLlm: true,
@@ -1121,8 +1267,8 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
         request.continueRunId = pendingResult.pending.continue_run_id || pendingResult.run_id;
         request.skillId = pendingResult.pending.skill_id || pendingResult.skill?.skill_id || undefined;
         request.params = pendingResult.pending.resolved_params || pendingResult.skill?.params;
-      } else if (selectedTemplate.skillId) {
-        request.skillId = selectedTemplate.skillId;
+      } else if (!startsFreshTemplatePrompt && pendingCandidate?.run_id) {
+        request.contextRunId = pendingCandidate.context_source_run_id || pendingCandidate.run_id;
       }
       const response = await api.runAgentStream(request, {
         onEvent: (nextEvent) => {
@@ -1137,8 +1283,15 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
       applyAgentRunResponse(response);
       completed = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("agent.runError"));
-      setLoading(true);
+      const message = err instanceof Error ? err.message : t("agent.runError");
+      if (message === "Agent stream ended without a final result.") {
+        setError(null);
+        setLoading(true);
+      } else {
+        setError(message);
+        setActiveRunId("");
+        setLoading(false);
+      }
     } finally {
       streamRequestActiveRef.current = false;
       if (completed) setLoading(false);
@@ -1294,26 +1447,54 @@ function SimpleAgentPage({ active, locale, t }: LocalizedProps & { active: boole
           </div>
 
           <form className="agent-bottom-composer" onSubmit={runAgent}>
-            <div className="agent-template-picker" aria-label={t("agent.template.label")}>
-              <span>{t("agent.template.label")}</span>
-              {promptTemplates.map((template) => (
+            {awaitingInput && result?.pending?.resume_supported ? (
+              <div className="agent-checkpoint-continuation" data-testid="checkpoint-continuation">
+                <div>
+                  <strong>{locale === "zh" ? "继续原任务" : "Continue original task"}</strong>
+                  <span>
+                    {locale === "zh"
+                      ? `已保存 ${result.pending.completed_tool_count ?? 0} 个成功工具结果，不会重新选择 Skill 或重复调用。`
+                      : `${result.pending.completed_tool_count ?? 0} successful tool results are saved; the Skill will not be reselected or repeated.`}
+                  </span>
+                </div>
                 <button
-                  aria-pressed={selectedTemplateId === template.id}
-                  className={selectedTemplateId === template.id ? "active" : ""}
-                  data-skill-id={template.skillId}
-                  key={template.id}
                   type="button"
-                  onClick={() => applyPromptTemplate(template)}
+                  disabled={loading}
+                  onClick={() => void runAgent(
+                    undefined,
+                    checkpointContinuationPrompt(result, locale),
+                    result,
+                  )}
                 >
-                  {template.title}
+                  {result.pending.reason_type === "retryable_tool_failure"
+                    ? (locale === "zh" ? "重试报告生成" : "Retry report")
+                    : (locale === "zh" ? "已完成，继续执行" : "Done, continue")}
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="agent-template-picker" aria-label={t("agent.template.label")}>
+                <span>{t("agent.template.label")}</span>
+                {promptTemplates.map((template) => (
+                  <button
+                    aria-pressed={composerTemplateId === template.id}
+                    className={composerTemplateId === template.id ? "active" : ""}
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyPromptTemplate(template)}
+                  >
+                    {template.title}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="agent-input-box">
               <textarea
                 aria-label={t("agent.promptLabel")}
                 value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+                onChange={(event) => {
+                  promptRef.current = event.target.value;
+                  setPrompt(event.target.value);
+                }}
                 placeholder={awaitingInput ? t("agent.clarificationPlaceholder") : t("agent.promptPlaceholder")}
                 rows={4}
               />
@@ -1475,6 +1656,21 @@ function formatEventDetail(value: unknown): string {
   }
 }
 
+function normalizeReportToolLabel(label: string): string {
+  const normalized = label.trim();
+  const aliases: Record<string, string> = {
+    "HTML Render": "HTML 渲染 Agent",
+    html_render: "HTML 渲染 Agent",
+    html_revision: "HTML 渲染 Agent",
+    weekly_market_revision: "HTML 渲染 Agent",
+    "市场洞察渲染 Agent": "HTML 渲染 Agent",
+    report_review: "报告审批 Agent",
+    weekly_market_review: "报告审批 Agent",
+    "市场洞察审批 Agent": "报告审批 Agent",
+  };
+  return aliases[normalized] || normalized;
+}
+
 function displayAgentEvent(event: AgentRunEvent, t: Translator): { title: string; message: string } {
   if (event.type === "input") {
     return {
@@ -1482,8 +1678,18 @@ function displayAgentEvent(event: AgentRunEvent, t: Translator): { title: string
       message: t("agent.event.inputBody"),
     };
   }
+  const legacyLangGraphPrefixes = ["LangGraph 节点：", "LangGraph 节点: ", "LangGraph node: ", "LangGraph Node: "];
+  const legacyLangGraphPrefix = legacyLangGraphPrefixes.find((prefix) => event.title.startsWith(prefix));
+  const normalizedTitle = legacyLangGraphPrefix
+    ? `${t("agent.event.toolCall")}：${event.title.slice(legacyLangGraphPrefix.length)}`
+    : event.title;
+  const toolCallPrefixes = ["调用工具：", "调用工具: ", "Tool Call: ", "Tool call: "];
+  const toolCallPrefix = toolCallPrefixes.find((prefix) => normalizedTitle.startsWith(prefix));
+  const title = toolCallPrefix
+    ? `${t("agent.event.toolCall")}：${normalizeReportToolLabel(normalizedTitle.slice(toolCallPrefix.length))}`
+    : normalizedTitle;
   return {
-    title: event.title,
+    title,
     message: event.message || "",
   };
 }
@@ -1549,23 +1755,26 @@ function AgentExecutionTimeline({
     <div className="agent-execution-timeline">
       {events.map((event) => {
         const displayEvent = displayAgentEvent(event, t);
+        const isThinkingEvent = event.type === "input";
         const hasDetails = Boolean(event.input || event.output || event.file_path || event.data || typeof event.duration_ms === "number");
         const canOpenOutputFile = ["tool", "skill", "artifact"].includes(event.type) && event.file_path && event.status !== "running";
         return (
-          <article className={`agent-execution-event ${event.status}`} key={event.id}>
+          <article className={`agent-execution-event ${event.status} ${isThinkingEvent ? "thinking" : ""}`} key={event.id}>
             <div className="agent-execution-dot" aria-hidden="true" />
             <div className="agent-execution-card">
               <div className="agent-execution-head">
                 <span>{displayEvent.title}</span>
-                <b>{agentEventStatusLabel(event.status, t)}</b>
+                {!isThinkingEvent ? <b>{agentEventStatusLabel(event.status, t)}</b> : null}
               </div>
               {displayEvent.message ? <p>{displayEvent.message}</p> : null}
-              <div className="agent-execution-meta">
-                <span>{event.type}</span>
-                {event.tool ? <span>{event.tool}</span> : null}
-                {typeof event.duration_ms === "number" ? <span>{event.duration_ms}ms</span> : null}
-                {event.file_path ? <span>{t("agent.event.fileSaved")}</span> : null}
-              </div>
+              {!isThinkingEvent ? (
+                <div className="agent-execution-meta">
+                  <span>{event.type}</span>
+                  {event.tool ? <span>{event.tool}</span> : null}
+                  {typeof event.duration_ms === "number" ? <span>{event.duration_ms}ms</span> : null}
+                  {event.file_path ? <span>{t("agent.event.fileSaved")}</span> : null}
+                </div>
+              ) : null}
               {canOpenOutputFile ? (
                 <button
                   className={`agent-execution-file-button ${selectedOutputPath === event.file_path ? "active" : ""}`}
@@ -1579,7 +1788,7 @@ function AgentExecutionTimeline({
                   </span>
                 </button>
               ) : null}
-              {hasDetails ? (
+              {hasDetails && !isThinkingEvent ? (
                 <details className="agent-execution-details">
                   <summary>{t("agent.event.details")}</summary>
                   <dl className="agent-execution-detail-grid">
@@ -1715,14 +1924,32 @@ function preferredAgentOutputPath(result: AgentRunResponse): string {
 function displayEventsForResult(result: AgentRunResponse | null, fallbackEvents: AgentRunEvent[] = []): AgentRunEvent[] {
   const events = result?.events?.length ? result.events : fallbackEvents;
   if (!result || !events.length) return events;
+  const terminalPublishEvent = events.find((event) => (
+    event.tool === "synthesize_artifact"
+    && event.status === "ok"
+    && Boolean(event.file_path)
+  ));
+  if (terminalPublishEvent) {
+    return events.filter((event) => !(
+      event.type === "artifact"
+      && event.status === "ok"
+      && ["生成 Artifact", "Generate Artifact"].includes(event.title)
+      && event.file_path === terminalPublishEvent.file_path
+    ));
+  }
   const reportPath = buildAgentOutputFiles(result)
     .find((file) => file.type === "report" || file.name.toLowerCase().endsWith(".html"))
     ?.path;
   if (!reportPath) return events;
+  const legacyArtifactEvent = [...events].reverse().find((event) => (
+    event.type === "artifact"
+    && event.status === "ok"
+    && !event.file_path
+    && ["生成 Artifact", "Generate Artifact"].includes(event.title)
+  ));
+  if (!legacyArtifactEvent) return events;
   return events.map((event) => (
-    event.type === "artifact" && !event.file_path
-      ? { ...event, file_path: reportPath }
-      : event
+    event.id === legacyArtifactEvent.id ? { ...event, file_path: reportPath } : event
   ));
 }
 
@@ -1836,16 +2063,13 @@ function AgentOutputFilesView({
   const [loadingFile, setLoadingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const preferredPath = preferredAgentOutputPath(result);
-  const effectiveSelectedPath = files.some((file) => file.path === selectedPath)
-    ? selectedPath
-    : preferredPath || files[0]?.path || "";
+  const effectiveSelectedPath = selectedPath || preferredPath || files[0]?.path || "";
 
   useEffect(() => {
     if (!files.length) {
-      if (selectedPath) onSelectedPathChange("");
       return;
     }
-    if (!files.some((file) => file.path === selectedPath)) {
+    if (!selectedPath && effectiveSelectedPath) {
       onSelectedPathChange(effectiveSelectedPath);
     }
   }, [effectiveSelectedPath, files, onSelectedPathChange, selectedPath]);

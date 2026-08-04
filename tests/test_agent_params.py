@@ -168,6 +168,82 @@ def test_adapt_agent_params_for_tool_uses_canonical_params() -> None:
     assert tiktok_input["tiktokCommentsPerVideo"] == 6
 
 
+def test_market_report_builder_receives_canonical_category_node_id() -> None:
+    builder_input = adapt_agent_params_for_tool(
+        "build_market_report_data",
+        "minimizer bra",
+        {
+            "params": {
+                "category": "minimizer bra",
+                "category_node_id": "3760901:1044960",
+            },
+            "toolResults": [],
+        },
+    )
+
+    assert builder_input["categoryNodeId"] == "3760901:1044960"
+
+
+def test_tiktok_new_product_builder_receives_canonical_skill_params() -> None:
+    builder_input = adapt_agent_params_for_tool(
+        "build_tiktok_new_product_report_data",
+        "fallback",
+        {
+            "skillId": "tiktok_us_lingerie_new_product_insight",
+            "params": {
+                "brand": "Hsia",
+                "marketplace": "US",
+                "category": "女士文胸",
+                "category_node_id": "601262",
+                "time_range": "28d",
+                "new_product_window": "30d",
+                "listing_sample_size": 20,
+                "head_listing_count": 5,
+            },
+            "toolResults": [{"name": "ranking"}],
+        },
+    )
+
+    assert builder_input["skillId"] == "tiktok_us_lingerie_new_product_insight"
+    assert builder_input["category"] == "女士文胸"
+    assert builder_input["marketplace"] == "US"
+    assert builder_input["categoryNodeId"] == "601262"
+    assert builder_input["timeRange"] == "28d"
+    assert builder_input["newProductWindow"] == "30d"
+    assert builder_input["listingSampleSize"] == 20
+    assert builder_input["headListingCount"] == 5
+    assert builder_input["toolResults"] == [{"name": "ranking"}]
+
+
+def test_tiktok_competitor_shop_builder_receives_canonical_skill_params() -> None:
+    builder_input = adapt_agent_params_for_tool(
+        "build_tiktok_bra_competitor_shop_report_data",
+        "fallback",
+        {
+            "skillId": "tiktok_us_bra_competitor_shop_analysis",
+            "params": {
+                "brand": "Hsia",
+                "marketplace": "US",
+                "category": "女士文胸",
+                "category_node_id": "601262",
+                "time_range": "28d",
+                "new_product_window": "30d",
+                "shop_candidate_size": 50,
+                "shop_analysis_count": 10,
+            },
+            "toolResults": [{"name": "ranking"}],
+        },
+    )
+
+    assert builder_input["skillId"] == "tiktok_us_bra_competitor_shop_analysis"
+    assert builder_input["categoryNodeId"] == "601262"
+    assert builder_input["timeRange"] == "28d"
+    assert builder_input["newProductWindow"] == "30d"
+    assert builder_input["shopCandidateSize"] == 50
+    assert builder_input["shopAnalysisCount"] == 10
+    assert builder_input["toolResults"] == [{"name": "ranking"}]
+
+
 def test_render_html_report_preserves_skill_html_template() -> None:
     template = '<section data-required-section="executive">{{EXECUTIVE}}</section>'
 
@@ -186,3 +262,111 @@ def test_render_html_report_preserves_skill_html_template() -> None:
     assert rendered_input["skillHtmlTemplate"] == template
     assert rendered_input["skillId"] == "competitor_product_deep_dive"
     assert rendered_input["useLlm"] is True
+    assert rendered_input["reportImageLimit"] == 60
+
+
+def test_render_html_report_preserves_tiktok_new_product_report_data() -> None:
+    report_data = {"schema_version": "tiktok_new_product_report_data.v1"}
+
+    rendered_input = adapt_agent_params_for_tool(
+        "render_html_report",
+        "女士内衣",
+        {
+            "skillId": "tiktok_us_lingerie_new_product_insight",
+            "tiktokNewProductReportData": report_data,
+            "useLlm": True,
+        },
+    )
+
+    assert rendered_input["tiktokNewProductReportData"] == report_data
+
+
+def test_render_html_report_preserves_tiktok_competitor_shop_report_data() -> None:
+    report_data = {"schema_version": "tiktok_bra_competitor_shop_report_data.v1"}
+
+    rendered_input = adapt_agent_params_for_tool(
+        "render_html_report",
+        "女士文胸",
+        {
+            "skillId": "tiktok_us_bra_competitor_shop_analysis",
+            "tiktokCompetitorShopReportData": report_data,
+            "useLlm": True,
+        },
+    )
+
+    assert rendered_input["tiktokCompetitorShopReportData"] == report_data
+
+
+def test_html_builder_and_renderer_preserve_new_workflow_report_data() -> None:
+    source_results = [{"name": "sellersprite_review", "status": "ok"}]
+    builder_input = adapt_agent_params_for_tool(
+        "build_competitor_product_report_data",
+        "minimizer bra",
+        {
+            "skillId": "competitor_product_deep_dive",
+            "params": {"asin": "B000TEST1", "marketplace": "Amazon US"},
+            "toolResults": source_results,
+        },
+    )
+    competitor_data = {"schema_version": "competitor_product_report_data.v1"}
+    hot_product_data = {"schema_version": "hot_product_pain_report_data.v1"}
+    rendered_input = adapt_agent_params_for_tool(
+        "render_html_report",
+        "minimizer bra",
+        {
+            "competitorProductReportData": competitor_data,
+            "hotProductPainReportData": hot_product_data,
+            "toolResults": [],
+            "useLlm": True,
+        },
+    )
+
+    assert builder_input["asin"] == "B000TEST1"
+    assert builder_input["toolResults"] == source_results
+    assert rendered_input["competitorProductReportData"] == competitor_data
+    assert rendered_input["hotProductPainReportData"] == hot_product_data
+    assert rendered_input["toolResults"] == []
+
+
+def test_product_design_params_bridge_to_builder_markdown_and_public_urls() -> None:
+    payload = agent_payload_from_params(
+        {"prompt": "研究 strapless bra"},
+        {
+            "category": "strapless bra",
+            "design_goal": "开发稳定不下滑的大胸抹胸文胸",
+            "target_user": "US full-bust users",
+            "brand_site_urls": ["https://wacoal-america.com/collections/best-sellers"],
+            "trend_context": "Public color direction supplied by the designer.",
+        },
+    )
+
+    assert payload["designGoal"] == "开发稳定不下滑的大胸抹胸文胸"
+    assert payload["targetUser"] == "US full-bust users"
+    assert payload["brandSiteUrls"] == ["https://wacoal-america.com/collections/best-sellers"]
+
+    media_input = adapt_agent_params_for_tool("media_rankings", "strapless bra", payload)
+    assert media_input["urls"] == ["https://wacoal-america.com/collections/best-sellers"]
+
+    builder_input = adapt_agent_params_for_tool(
+        "build_product_design_brief_data",
+        "strapless bra",
+        {**payload, "toolResults": [{"name": "example"}]},
+    )
+    assert builder_input["designGoal"] == "开发稳定不下滑的大胸抹胸文胸"
+    assert builder_input["listingSampleSize"] == 100
+    assert builder_input["reviewSampleSize"] == 60
+    assert builder_input["toolResults"] == [{"name": "example"}]
+
+    markdown_input = adapt_agent_params_for_tool(
+        "render_markdown_report",
+        "strapless bra",
+        {
+            **payload,
+            "productDesignBriefData": {"schema_version": "product_design_brief_data.v1"},
+            "useLlm": True,
+        },
+    )
+    assert markdown_input["useLlm"] is True
+    assert (
+        markdown_input["productDesignBriefData"]["schema_version"] == "product_design_brief_data.v1"
+    )

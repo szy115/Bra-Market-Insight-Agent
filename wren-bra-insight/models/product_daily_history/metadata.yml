@@ -1,0 +1,203 @@
+name: product_daily_history
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: bra_product_daily
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: metric_date
+  type: DATE
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Business metric date, distinct from collection time.
+- name: provider
+  type: VARCHAR(32)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Data provider such as fastmoss, sellersprite, or sif.
+- name: platform
+  type: ENUM('amazon', 'tiktok')
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Commerce platform such as amazon or tiktok.
+- name: market
+  type: CHAR(2)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Two-letter market code; currently US.
+- name: family_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Bra product family key.
+- name: period_days
+  type: SMALLINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Metric window in days; 1 is a daily ranking period.
+- name: currency
+  type: CHAR(3)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: ISO currency code.
+- name: price
+  type: DECIMAL(18, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Observed product price.
+- name: rating
+  type: DECIMAL(6, 3)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: review_count
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: units_daily
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Units sold for the business date.
+- name: units_7d
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: units_28d
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: units_90d
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: units_total
+  type: BIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Cumulative units sold.
+- name: gmv_daily
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: GMV for the business date.
+- name: gmv_7d
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: gmv_28d
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: gmv_90d
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: gmv_total
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Cumulative GMV.
+- name: bsr_rank
+  type: INT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: category_rank
+  type: INT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: creator_count
+  type: INT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: video_count
+  type: INT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: live_count
+  type: INT
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: ad_gmv
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: organic_gmv
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: ad_spend_est
+  type: DECIMAL(20, 6)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: is_estimated
+  type: TINYINT(1)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: confidence
+  type: DECIMAL(5, 4)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: source_call_id
+  type: UBIGINT
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Ingestion call that produced the record.
+- name: observed_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Actual collection or write timestamp.
+- name: version
+  type: UINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Incrementing observation version within the same business grain.
+- name: extra_metrics
+  type: JSON
+  is_calculated: false
+  not_null: false
+  properties:
+    description: Provider metrics not yet normalized, stored as JSON.
+primary_key: id
+cached: false
+properties:
+  description: Append-only version history of product daily metrics. A business date can have multiple observation versions.

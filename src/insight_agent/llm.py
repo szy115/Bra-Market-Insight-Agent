@@ -380,6 +380,7 @@ def call_openai_compatible_chat(
     *,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | dict[str, Any] | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     values = read_settings_values()
     provider = selected_provider(values)
@@ -395,6 +396,8 @@ def call_openai_compatible_chat(
         "messages": messages,
         "temperature": settings["temperature"],
     }
+    if max_tokens is not None:
+        body["max_tokens"] = max(1, int(max_tokens))
     if tools:
         body["tools"] = tools
     if tool_choice:

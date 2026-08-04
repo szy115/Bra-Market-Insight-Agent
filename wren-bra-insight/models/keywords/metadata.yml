@@ -1,0 +1,55 @@
+name: keywords
+table_reference:
+  catalog: ''
+  schema: insight_agent_db
+  table: bra_keyword
+columns:
+- name: id
+  type: UBIGINT
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Surrogate primary key.
+  is_primary_key: true
+- name: market
+  type: CHAR(2)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Two-letter market code; currently US.
+- name: keyword
+  type: VARCHAR(512)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Source keyword text.
+- name: normalized_keyword
+  type: VARCHAR(512)
+  is_calculated: false
+  not_null: true
+  properties:
+    description: Normalized keyword text.
+- name: keyword_hash
+  type: BINARY(32)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: root_keyword
+  type: VARCHAR(255)
+  is_calculated: false
+  not_null: false
+  properties: {}
+- name: first_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+- name: last_seen_at
+  type: DATETIME(3)
+  is_calculated: false
+  not_null: true
+  properties: {}
+primary_key: id
+cached: false
+properties:
+  description: Normalized Amazon bra keywords.

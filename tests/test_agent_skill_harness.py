@@ -117,3 +117,47 @@ def test_evidence_contract_supports_param_count_and_distinct_tool_inputs() -> No
     )
 
     assert complete["status"] == "pass"
+
+
+def test_evidence_contract_does_not_count_review_pages_as_distinct_products() -> None:
+    result = validate_evidence_contract(
+        {
+            "evidence_contract": [
+                {
+                    "evidence_id": "reviews",
+                    "tool": "mcp__fastmoss__product_review_list",
+                    "required_when": "always",
+                    "min_success": "param:head_listing_count",
+                    "severity": "block",
+                    "if_missing": "continue_with_gap",
+                    "artifact_requirement": "freeze unsupported VOC",
+                }
+            ]
+        },
+        prompt="analyze",
+        params={"head_listing_count": 2},
+        tools=[
+            {
+                "name": "mcp__fastmoss__product_review_list",
+                "status": "ok",
+                "input": {"page": 1, "filter": {"product_id": "p1"}},
+                "data": {"reviews": [{"review_id": "r1", "review_text": "Soft."}]},
+            },
+            {
+                "name": "mcp__fastmoss__product_review_list",
+                "status": "ok",
+                "input": {"page": 2, "filter": {"product_id": "p1"}},
+                "data": {"reviews": [{"review_id": "r2", "review_text": "Supportive."}]},
+            },
+            {
+                "name": "mcp__fastmoss__product_review_list",
+                "status": "ok",
+                "input": {"page": 1, "filter": {"product_id": "p2"}},
+                "data": {"reviews": [{"review_id": "r3", "rating": 5, "review_text": ""}]},
+            },
+        ],
+        success_statuses={"ok", "partial_ok"},
+    )
+
+    assert result["status"] == "blocked"
+    assert result["block_gaps"][0]["observed_success"] == 1

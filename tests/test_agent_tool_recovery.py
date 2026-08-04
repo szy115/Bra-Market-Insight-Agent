@@ -78,6 +78,22 @@ def test_agent_tool_empty_result_is_structured_without_blind_retry(monkeypatch) 
     assert calls["count"] == 1
 
 
+def test_fastmoss_empty_status_is_not_promoted_to_success_or_blindly_retried() -> None:
+    assessment = assess_agent_tool_result(
+        "mcp__fastmoss__product_rank_new_listed",
+        {
+            "status": "empty",
+            "summary": "FastMoss returned no usable market records.",
+            "data": {"list": [], "total": 0},
+        },
+    )
+
+    assert assessment.status == "empty"
+    assert assessment.outcome == "empty_result"
+    assert assessment.retryable is False
+    assert "not proof of zero market activity" in assessment.suggested_next_actions[-1]
+
+
 def test_agent_tool_login_failure_needs_user_action_without_retry(monkeypatch) -> None:
     calls = {"count": 0}
 
@@ -99,6 +115,48 @@ def test_agent_tool_login_failure_needs_user_action_without_retry(monkeypatch) -
     assert result["recovery"]["attempt_count"] == 1
     assert result["recovery"]["retryable"] is False
     assert calls["count"] == 1
+
+
+def test_fastmoss_credit_balance_failure_needs_user_action_without_retry() -> None:
+    assessment = assess_agent_tool_result(
+        "mcp__fastmoss__shop_creator_analysis",
+        {
+            "status": "error",
+            "summary": "FastMoss credits exhausted; credit balance is 0. Please recharge.",
+            "data": {},
+        },
+    )
+
+    assert assessment.status == "needs_user_action"
+    assert assessment.outcome == "needs_user_action"
+    assert assessment.retryable is False
+
+
+def test_deterministic_builder_is_never_retried_with_unchanged_evidence(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def transient_builder_failure(tool_name, category, payload, timeout_seconds):  # noqa: ARG001
+        calls["count"] += 1
+        return {
+            "name": tool_name,
+            "status": "error",
+            "summary": "temporary network unavailable",
+            "input": {},
+            "data": {},
+        }
+
+    monkeypatch.setattr(
+        server_module, "execute_agent_tool_once_with_timeout", transient_builder_failure
+    )
+    result = server_module.execute_agent_tool_with_timeout(
+        "build_tiktok_bra_competitor_shop_report_data",
+        "女士文胸",
+        {"agentToolRetryAttempts": 3, "agentToolRetryDelayMs": 0},
+    )
+
+    assert calls["count"] == 1
+    assert result["recovery"]["attempt_count"] == 1
+    assert result["recovery"]["retried"] is False
 
 
 def test_agent_tool_retries_until_exhausted(monkeypatch) -> None:
@@ -162,6 +220,34 @@ def test_semantic_payload_transient_error_is_retryable() -> None:
     assert assessment.status == "retryable_error"
     assert assessment.outcome == "semantic_error"
     assert assessment.retryable is True
+
+
+def test_completed_html_renderer_ignores_failed_attempt_history() -> None:
+    assessment = assess_agent_tool_result(
+        "render_html_report",
+        {
+            "status": "ok",
+            "summary": "Rendered HTML report.",
+            "data": {
+                "html": "<!doctype html><html><head><style>body{color:#111}</style></head><body>ok</body></html>",
+                "html_analysis": {
+                    "status": "ok",
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "status": "validation_failed",
+                            "message": "LLM HTML must be a complete HTML document.",
+                        },
+                        {"attempt": 2, "status": "ok", "message": ""},
+                    ],
+                },
+            },
+        },
+    )
+
+    assert assessment.status == "ok"
+    assert assessment.outcome == "ok_with_data"
+    assert assessment.retryable is False
 
 
 def test_sellersprite_ok_empty_items_is_empty_result() -> None:

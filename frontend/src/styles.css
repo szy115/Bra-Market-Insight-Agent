@@ -1348,6 +1348,48 @@ p {
   gap: 10px;
 }
 
+.agent-checkpoint-continuation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(249, 115, 22, 0.28);
+  border-radius: 10px;
+  background: #fff7ed;
+  padding: 10px 12px;
+}
+
+.agent-checkpoint-continuation > div {
+  display: grid;
+  gap: 3px;
+}
+
+.agent-checkpoint-continuation strong {
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.agent-checkpoint-continuation span {
+  color: #7c2d12;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-checkpoint-continuation button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.agent-checkpoint-continuation button:disabled {
+  opacity: 0.55;
+}
+
 .artifact-product-card,
 .artifact-feed-card,
 .artifact-source-grid article,

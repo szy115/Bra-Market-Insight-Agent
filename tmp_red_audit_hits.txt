@@ -1,0 +1,205 @@
+AGENTS.md:10:- Any Skill that allows or requires `render_html_report` must also declare a compatible report-data builder as `required` and enforce `data tools -> builder -> data_analysis -> insight_synthesis -> chart_render -> html_render -> (report_review || report_red_team) -> approval_join -> (html_revision when rejected) -> synthesize_artifact`.
+AGENTS.md:11:- For HTML-report Skills, the Planner runs source-data tools and then stops issuing tool calls; LangGraph alone owns the builder, fixed-metric analysis, evidence-linked insight synthesis, local MCP chart renderer, HTML renderer, mandatory factual review, independent strategy red-team, any review-triggered HTML revision, and terminal `synthesize_artifact` nodes. Never instruct the Planner to call those report nodes.
+AGENTS.md:12:- Every HTML report gets at most two parallel review rounds. Each round runs factual `report_review` and strategy `report_red_team` concurrently, then `approval_join` combines both results. A first-round rejection from either branch routes through `html_revision` and reruns both branches; a second-round rejection routes through one final `html_revision` and then publishes without a third review.
+AGENTS.md:13:- In round one only, `report_red_team` may request at most three native calls to source-data tools allowed by the active Skill. LangGraph executes them through the normal policy, parameter, scope, timeout, retry, and cache adapters, then runs `validate_red_team_evidence`. Empty, failed, scope-mismatched, duplicate, or Builder-incompatible results never invalidate the current report and never rerun the report chain; the red-team must finish its decision from current evidence. At least one accepted new result invalidates the current HTML and factual approval, consumes the second review round, and routes through builder -> data_analysis -> insight_synthesis -> chart_render -> html_render before both approval branches run again. Never pass red-team raw results directly to analysis, charts, or the renderer.
+skills\_template\SKILL.md:66:LangGraph: build_<workflow>_report_data -> data_analysis -> insight_synthesis -> chart_render -> html_render ->（report_review 与 report_red_team 并行）-> approval_join -> 必要时 html_revision -> synthesize_artifact。
+skills\_template\SKILL.md:67:每份 HTML 最多并行审批两轮：每轮事实审批与红队同时执行并由 approval_join 汇合；任一分支首轮不通过时返工并并行复审，第二轮仍不通过时再返工一次并直接发布，不发起第三轮审批。
+skills\_template\SKILL.md:68:仅第一轮红队可在当前 Skill 的源数据工具白名单内请求最多 3 个有界工具调用。调用统一经过参数、范围、超时、重试、缓存与 validate_red_team_evidence 门禁；空结果、失败、范围错配、重复或 Builder 不支持的结果不改变 ReportData、图表和 HTML，红队直接依据现有证据完成判断。至少一份新增有效证据才重新执行 builder -> data_analysis -> insight_synthesis -> chart_render -> html_render，并直接进入第二轮并行审批。
+skills\_template\SKILL.md:73:Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、review、red-team、revision 或 synthesize_artifact。整理器缺证据时只补缺失源数据工具并再次停止工具调用；renderer 失败时不得绕过整理器。
+skills\weekly_market_insight\SKILL.md:107:10. `chart_render` 节点只读取 builder 的有界 `chart_specs`，固定调用本机 Flint MCP `render_chart` 生成经校验的静态 SVG；不支持或失败的单图交给确定性服务端图表降级，不阻断报告。随后 `html_render` 以 `insight_narrative` 为分析主轴，把结论放到相关图表和表格附近，不得把报告压缩成 KPI 卡片与图注。所有 HTML Skill 共享通用链路：`data_analysis → insight_synthesis → chart_render → html_render →（report_review 与 report_red_team 并行）→ approval_join → 首轮任一分支未通过则 html_revision → 两分支再次并行 → approval_join → 第二轮仍未通过则 html_revision 并直接发布`。`report_review` 只做数字、证据、周期、范围和图文一致性审批；`report_red_team` 同时独立挑战关键业务结论，`approval_join` 等待并合并两者结果。最后由 LangGraph 进入 `synthesize_artifact` 终态节点。Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、事实审批、红队、汇合、返工或 `synthesize_artifact`。
+skills\weekly_market_insight\SKILL.md:108:11. 仅第一轮 `report_red_team` 可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据保持当前 ReportData、图表、HTML 与事实审批不变，红队依据现有证据完成判断；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+docs\skill-review-checklist.md:24:- HTML execution order is explicit: data tools -> builder -> `data_analysis` -> `insight_synthesis` -> `chart_render` -> `html_render` -> parallel factual `report_review` and independent `report_red_team` -> `approval_join` -> any rejection-triggered `html_revision` -> `synthesize_artifact`.
+docs\skill-review-checklist.md:25:- HTML ownership is explicit: Planner stops after source-data tools; LangGraph alone runs builder, fixed-metric analysis, insight synthesis, local MCP chart rendering, HTML rendering, factual review, red-team, any revision, and terminal `synthesize_artifact`.
+docs\skill-review-checklist.md:26:- Review policy is explicit: at most two parallel review rounds; `approval_join` requires both branches to pass, while any rejection triggers revision; after a second rejection, run one final revision and publish without a third review.
+docs\skill-review-checklist.md:27:- Red-team enrichment is explicit: only round one may request at most three active-Skill source tools; a deterministic `validate_red_team_evidence` gate accepts only successful, non-empty, in-scope, non-duplicate, Builder-compatible results. Zero accepted results keeps the current ReportData, charts, HTML, and factual review; accepted evidence reruns the complete report chain and consumes round two.
+docs\skill-review-checklist.md:28:- The Skill never instructs the Planner to call builder, `data_analysis`, `insight_synthesis`, `chart_render`, renderer, approval/red-team nodes, or `synthesize_artifact`.
+docs\skill-review-checklist.md:59:- Generic factual `report_review`, independent `report_red_team`, `approval_join`, `red_team_evidence`, `validate_red_team_evidence`, and `html_revision` nodes are registered and exercised for the Skill; their user-visible labels contain no workflow-specific business name.
+docs\skill-authoring-standard.md:151:  -> chart_render -> html_render -> (report_review || report_red_team) -> approval_join
+docs\skill-authoring-standard.md:160:- LangGraph interprets that no-tool-call turn as the handoff and owns every report node after it: `report_data_builder`, `data_analysis`, `insight_synthesis`, `chart_render`, `html_render`, mandatory factual `report_review`, independent `report_red_team`, any review-triggered `html_revision`, and terminal `synthesize_artifact`.
+docs\skill-authoring-standard.md:162:For HTML-report Skills, the builder, renderer, and `synthesize_artifact` remain declared in `Tool Policy` and `Evidence Contract` as runtime contracts, but they are not Planner-callable tools. `data_analysis`, `insight_synthesis`, `chart_render`, `report_review`, `report_red_team`, `approval_join`, and `html_revision` are generic internal graph nodes shared by every HTML-report Skill and are also not Planner-callable. Do not tell the Planner to call any report node.
+docs\skill-authoring-standard.md:203:`report_review` and `report_red_team` are separate mandatory parallel approval nodes:
+docs\skill-authoring-standard.md:206:- `report_red_team` independently challenges up to five load-bearing business conclusions using steelman, falsifiable fails-if conditions, current evidence ids, missing comparisons, and kill criteria. It runs concurrently with factual review rather than waiting for that branch to pass.
+docs\skill-authoring-standard.md:207:- `approval_join` waits for both branches, preserves both structured results, and approves the round only when both pass. Either branch may request revision. Both belong to the same review round; the whole report still gets at most two rounds.
+docs\skill-authoring-standard.md:208:- In round one only, `report_red_team` may issue at most three native tool calls selected from source-data tools allowed by the active Skill. The graph executes those calls through the standard tool-policy, canonical-parameter, scope, timeout, retry, and cache path.
+docs\skill-authoring-standard.md:209:- `validate_red_team_evidence` accepts a result only when it is successful, non-empty, in-scope, non-duplicate, and consumable by the active Builder. If zero calls are accepted, keep the current ReportData, charts, HTML, and factual-review result, then require the red-team to decide from current evidence. If any call is accepted, the current report and approval snapshot are stale: rerun builder, `data_analysis`, `insight_synthesis`, `chart_render`, and `html_render`, then use the second parallel review round. Raw red-team observations never go directly to report analysis or rendering.
+docs\skill-authoring-standard.md:210:- After a second-round rejection, run one final `html_revision` and publish without a third factual review or red-team call.
+docs\skill-authoring-standard.md:236:- Every successful HTML render starts factual `report_review` and independent `report_red_team` concurrently, then enters `approval_join`. A first-round red-team evidence request runs through `red_team_evidence` and `validate_red_team_evidence`; only accepted new evidence reruns the complete report chain and consumes round two. With no accepted evidence, keep the current report and finish the same round. A first rejection from either branch enters `html_revision` and starts the second parallel round. A second rejection enters one final `html_revision` and then publishes directly; do not start a third factual review or red-team call and do not block publication only because the review remains rejected.
+docs\skill-authoring-standard.md:319:- Every HTML-report Skill uses parallel factual `report_review` and independent `report_red_team`, followed by `approval_join`, optional first-round `red_team_evidence` plus deterministic `validate_red_team_evidence`, and any required `html_revision`, with at most two review rounds.
+skills\tiktok_us_market_insight\SKILL.md:227:7. `html_render` 成功后同时进入事实 `report_review` 与独立 `report_red_team`，由 `approval_join` 等待并汇合。任一分支首轮未通过时由 `html_revision` 返工并同时开始第二轮；第二轮仍未通过时再返工一次并直接进入 `synthesize_artifact`。Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、review、red-team、approval_join、revision 或 `synthesize_artifact`。
+skills\tiktok_us_market_insight\SKILL.md:228:8. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+skills\tiktok_us_lingerie_new_product_insight\SKILL.md:114:6. HTML 写出后同时进入事实 `report_review` 与独立 `report_red_team`，由 `approval_join` 等待并汇合。任一分支首轮未通过时由 `html_revision` 返工并同时开始第二轮；第二轮仍未通过时再返工一次并直接进入 `synthesize_artifact`，不发起第三轮审批或红队。Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、review、red-team、approval_join、revision 或 `synthesize_artifact`。
+skills\tiktok_us_lingerie_new_product_insight\SKILL.md:115:7. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+skills\tiktok_us_bra_competitor_shop_analysis\SKILL.md:150:7. HTML 写出后同时进入事实 `report_review` 与独立 `report_red_team`，由 `approval_join` 等待并汇合。任一分支首轮未通过时由 `html_revision` 返工并同时开始第二轮；第二轮仍未通过时再返工一次并直接进入 `synthesize_artifact`，不发起第三轮审批或红队。Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、review、red-team、approval_join、revision 或 `synthesize_artifact`。renderer 失败时本轮必须停止并返回 `pending.reason_type=retryable_tool_failure` 的可恢复断点；用户继续后复用同一份成功编译数据和图表缓存，只重试 renderer，不得重跑 FastMoss、绕过整理器或改用固定模板。
+skills\tiktok_us_bra_competitor_shop_analysis\SKILL.md:151:8. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+tests\test_weekly_market_report_approval.py:144:    assert "red-team" not in review_requests[0]["instruction"].lower()
+tests\test_weekly_market_report_approval.py:148:def test_report_red_team_node_is_independent_and_structured(monkeypatch) -> None:
+tests\test_weekly_market_report_approval.py:200:    assert result["schema_version"] == "report_red_team_review.v1"
+tests\test_weekly_market_report_approval.py:206:    assert "strategy red-team node" in system_messages[0]
+tests\test_weekly_market_report_approval.py:209:def test_report_red_team_can_request_bounded_native_evidence_tools(monkeypatch) -> None:
+tests\test_weekly_market_insight_skill.py:129:        "html_render →（report_review 与 report_red_team 并行）→ approval_join → "
+tests\test_weekly_market_insight_skill.py:130:        "首轮任一分支未通过则 html_revision → 两分支再次并行 → approval_join → "
+tests\test_fastmoss_new_product_report.py:632:            "schema_version": "report_red_team_review.v1",
+tests\test_fastmoss_new_product_report.py:637:            "summary": "红队审查通过。",
+tests\test_tiktok_us_market_insight_skill.py:124:    assert "`html_render` 成功后同时进入事实 `report_review` 与独立 `report_red_team`" in markdown
+tests\test_tiktok_us_market_insight_skill.py:125:    assert "由 `approval_join` 等待并汇合" in markdown
+tests\test_tiktok_us_market_insight_skill.py:129:        "review、red-team、approval_join、revision 或 "
+skills\hot_product_pain_analysis\SKILL.md:92:11. 所有 block 级源证据成功后，Planner 停止发出工具调用，表示源数据阶段完成。LangGraph 自动执行 `report_data_builder`，用 `build_hot_product_pain_report_data` 生成含有界 `metric_facts` 与 `chart_specs` 的 HotProductPainReportData，再执行通用 `data_analysis -> insight_synthesis -> chart_render -> html_render ->（report_review 与 report_red_team 并行）-> approval_join -> 必要时 html_revision -> synthesize_artifact` 链路；`data_analysis` 中 LLM 只选择固定指标和绑定事实，脚本校验并计算；`insight_synthesis` 只把有证据的一级/二级指标写成“观察 → 解释 → 产品影响 → 研发动作”，并绑定真实 `evidence_ids`；`chart_render` 固定调用本机 Flint MCP，单图失败时确定性降级。`html_render` 以 `insight_narrative` 为正文分析主轴。Planner 不调用这些报告节点（包括 insight_synthesis、report_review、report_red_team 与 approval_join），也不得把原始 SellerSprite/Sif 工具结果直接交给图表或 HTML renderer。
+skills\hot_product_pain_analysis\SKILL.md:93:12. 每份 HTML 的事实 `report_review` 与独立 `report_red_team` 同时执行，由 `approval_join` 汇合；最多并行审批两轮。任一分支首轮未通过时返工并同时开始第二轮，第二轮仍未通过时再返工一次并直接发布，不发起第三轮审批或红队。HTML 生成失败或校验失败时停止并暴露错误，不得继续生成固定脚本模板报告。
+skills\hot_product_pain_analysis\SKILL.md:94:13. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；调用统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+tests\test_fastmoss_competitor_shop_report.py:744:            "schema_version": "report_red_team_review.v1",
+tests\test_fastmoss_competitor_shop_report.py:749:            "summary": "红队审查通过。",
+tests\test_skill_authoring_standard.py:21:        "html_render -> (report_review || report_red_team) -> approval_join -> "
+tests\test_skill_authoring_standard.py:26:        "local MCP chart renderer, HTML renderer, mandatory factual review, independent strategy red-team"
+tests\test_skill_authoring_standard.py:32:        "  -> chart_render -> html_render -> (report_review || report_red_team) -> approval_join"
+tests\test_skill_authoring_standard.py:102:        assert "report_red_team" in markdown, (
+tests\test_skill_authoring_standard.py:103:            f"{skill_id} must use the independent report red-team graph node"
+tests\test_fashion_trend_report_skill.py:978:            "schema_version": "report_red_team_review.v1",
+tests\test_fashion_trend_report_skill.py:983:            "summary": "红队审查通过。",
+tests\test_report_review_data.py:286:        elif "strategy red-team node" in system_content:
+tests\test_report_review_data.py:290:                    "summary": "red-team pass",
+skills\fashion_trend_report\SKILL.md:67:10. LangGraph 随后进入通用 `chart_render`；它只处理 builder 有明确数值语义的有界 `chart_specs`，固定调用本机 Flint MCP，单图失败时确定性降级，没有可画图表也是正常结果。随后 `html_render` 以 `insight_narrative` 为文字主轴生成视觉优先的设计灵感板，再同时进入事实 `report_review` 与独立 `report_red_team`，由 `approval_join` 汇合。任一分支首轮未通过时由 `html_revision` 返工并同时开始第二轮，第二轮仍未通过时再返工一次并直接进入 `synthesize_artifact`，不发起第三轮审批或红队。Planner 不调用 builder、data_analysis、insight_synthesis、chart_render、renderer、review、red-team、approval_join、revision 或 `synthesize_artifact`。图片按趋势主题编排，不设平台固定配额；在相关且不重复的前提下尽量使用 `report_image_limit`，不要用低价值图片填满额度。
+skills\fashion_trend_report\SKILL.md:68:11. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+tests\test_analysis.py:2312:            "schema_version": "report_red_team_review.v1",
+tests\test_analysis.py:2317:            "summary": "红队审查通过。",
+tests\test_analysis.py:3621:            "schema_version": "report_red_team_review.v1",
+tests\test_analysis.py:3626:            "summary": f"第 {review_round} 轮红队通过。",
+tests\test_analysis.py:3775:    assert all(event["data"]["graph_node"] == "approval_join" for event in join_events)
+tests\test_analysis.py:3801:            "schema_version": "report_red_team_review.v1",
+tests\test_analysis.py:3806:            "summary": f"第 {review_round} 轮红队要求收窄关键结论。",
+tests\test_analysis.py:3830:                "<p>关键结论已经按红队意见收窄。</p></main></body></html>"
+tests\test_analysis.py:3938:def test_red_team_evidence_gate_rebuilds_only_for_new_non_empty_data(
+tests\test_analysis.py:3974:                "schema_version": "report_red_team_review.v1",
+tests\test_analysis.py:3992:            "schema_version": "report_red_team_review.v1",
+tests\test_analysis.py:3997:            "summary": f"第 {review_round} 轮红队完成最终判断。",
+tests\test_analysis.py:4079:    assert approval["red_team_evidence_attempts"][0]["accepted_count"] == (
+tests\test_analysis.py:4085:        if tool["name"] == "validate_red_team_evidence"
+skills\competitor_product_deep_dive\SKILL.md:98:13. 证据足够后，Planner 停止发出工具调用，表示源数据阶段完成。运行时自动执行 `report_data_builder -> data_analysis -> insight_synthesis -> chart_render -> html_render ->（report_review 与 report_red_team 并行）-> approval_join -> 必要时 html_revision -> synthesize_artifact`，并使用随 Skill 加载的 `assets/report-template.html` 作为单 ASIN 产品拆解结构合同。事实 `report_review` 与独立 `report_red_team` 同时执行并由 `approval_join` 汇合；任一分支首轮未通过时返工并同时开始第二轮，第二轮仍未通过时再返工一次并直接发布，不发起第三轮审批或红队。Planner 不调用这些报告节点（包括 insight_synthesis、report_review、report_red_team 与 approval_join）。`chart_render` 的单图失败只触发确定性图表降级。必须填充模板、保留全部 `data-required-section` 和唯一的 `INSIGHT_AGENT_REVIEW_GALLERY` 注入锚点；HTML 失败、模板章节缺失或出现重复返图模块时暴露错误，不生成通用报告兜底。
+skills\competitor_product_deep_dive\SKILL.md:99:14. 仅第一轮红队可从本 Skill 允许的源数据工具中请求最多 3 个有界调用；统一经过 `red_team_evidence -> validate_red_team_evidence`。空结果、失败、范围错配、重复或 Builder 不支持的数据不改变 ReportData、图表、HTML 与事实审批；至少一份新增有效证据才重新执行完整报告链并进入第二轮并行审批。
+src\insight_agent\agent_runtime.py:44:RED_TEAM_EVIDENCE_MAX_CALLS = 3
+src\insight_agent\agent_runtime.py:45:RED_TEAM_EVIDENCE_MAX_ENRICHMENTS = 1
+src\insight_agent\agent_runtime.py:198:    report_red_teams: list[dict[str, Any]]
+src\insight_agent\agent_runtime.py:201:    report_red_team_branch: dict[str, Any]
+src\insight_agent\agent_runtime.py:205:    red_team_evidence_attempts: list[dict[str, Any]]
+src\insight_agent\agent_runtime.py:207:    red_team_evidence_changed: bool
+src\insight_agent\agent_runtime.py:303:        builder.add_node("report_red_team", self._report_red_team_node)
+src\insight_agent\agent_runtime.py:304:        builder.add_node("approval_join", self._approval_join_node)
+src\insight_agent\agent_runtime.py:305:        builder.add_node("red_team_evidence", self._red_team_evidence_node)
+src\insight_agent\agent_runtime.py:321:                "report_red_team": "report_red_team",
+src\insight_agent\agent_runtime.py:322:                "approval_join": "approval_join",
+src\insight_agent\agent_runtime.py:323:                "red_team_evidence": "red_team_evidence",
+src\insight_agent\agent_runtime.py:337:            "report_red_team": "report_red_team",
+src\insight_agent\agent_runtime.py:338:            "approval_join": "approval_join",
+src\insight_agent\agent_runtime.py:339:            "red_team_evidence": "red_team_evidence",
+src\insight_agent\agent_runtime.py:351:            "approval_join",
+src\insight_agent\agent_runtime.py:352:            "red_team_evidence",
+src\insight_agent\agent_runtime.py:357:        builder.add_edge(["report_review", "report_red_team"], "approval_join")
+src\insight_agent\agent_runtime.py:383:            return ["report_review", "report_red_team"]
+src\insight_agent\agent_runtime.py:384:        if phase == "red_team_evidence":
+src\insight_agent\agent_runtime.py:385:            return "red_team_evidence"
+src\insight_agent\agent_runtime.py:594:            "report_red_teams": [],
+src\insight_agent\agent_runtime.py:597:            "report_red_team_branch": {},
+src\insight_agent\agent_runtime.py:601:            "red_team_evidence_attempts": [],
+src\insight_agent\agent_runtime.py:603:            "red_team_evidence_changed": False,
+src\insight_agent\agent_runtime.py:1005:                    "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:1667:        red_teams = list(state.get("report_red_teams") or [])
+src\insight_agent\agent_runtime.py:1686:            "red_team_evidence_attempts": list(
+src\insight_agent\agent_runtime.py:1687:                state.get("red_team_evidence_attempts") or []
+src\insight_agent\agent_runtime.py:1750:            "red_team_html_report": "report_red_team",
+src\insight_agent\agent_runtime.py:1751:            "join_report_approval": "approval_join",
+src\insight_agent\agent_runtime.py:1752:            "validate_red_team_evidence": "red_team_evidence",
+src\insight_agent\agent_runtime.py:2020:                            "Read-only red-team evidence query. "
+src\insight_agent\agent_runtime.py:2038:    def _report_red_team_node(self, state: AgentRuntimeState) -> AgentRuntimeState:
+src\insight_agent\agent_runtime.py:2048:            "graph_node": "report_red_team",
+src\insight_agent\agent_runtime.py:2057:            "调用工具：报告红队 Agent",
+src\insight_agent\agent_runtime.py:2065:                "graph_node": "report_red_team",
+src\insight_agent\agent_runtime.py:2077:            < RED_TEAM_EVIDENCE_MAX_ENRICHMENTS
+src\insight_agent\agent_runtime.py:2084:                raise RuntimeError("报告红队 Agent 未配置")
+src\insight_agent\agent_runtime.py:2098:                "schema_version": "report_red_team_review.v1",
+src\insight_agent\agent_runtime.py:2104:                    "报告红队 Agent 调用失败，按未通过进入返工："
+src\insight_agent\agent_runtime.py:2119:                "schema_version": "report_red_team_review.v1",
+src\insight_agent\agent_runtime.py:2124:                "summary": "报告红队 Agent 未返回结构化结果，按未通过进入返工。",
+src\insight_agent\agent_runtime.py:2135:            )[:RED_TEAM_EVIDENCE_MAX_CALLS]
+src\insight_agent\agent_runtime.py:2143:            < RED_TEAM_EVIDENCE_MAX_ENRICHMENTS
+src\insight_agent\agent_runtime.py:2169:            or ("红队审查通过。" if approved else f"第 {review_round} 轮红队未通过，进入返工。")
+src\insight_agent\agent_runtime.py:2174:            label="报告红队 Agent",
+src\insight_agent\agent_runtime.py:2175:            graph_node="report_red_team",
+src\insight_agent\agent_runtime.py:2185:        return {"report_red_team_branch": {"red_team": red_team, **branch}}
+src\insight_agent\agent_runtime.py:2187:    def _approval_join_node(self, state: AgentRuntimeState) -> AgentRuntimeState:
+src\insight_agent\agent_runtime.py:2190:        red_team_branch = dict(state.get("report_red_team_branch") or {})
+src\insight_agent\agent_runtime.py:2213:                "summary": "红队审批分支没有返回结果。",
+src\insight_agent\agent_runtime.py:2242:        state["report_red_team_branch"] = {}
+src\insight_agent\agent_runtime.py:2250:            )[:RED_TEAM_EVIDENCE_MAX_CALLS]
+src\insight_agent\agent_runtime.py:2258:            < RED_TEAM_EVIDENCE_MAX_ENRICHMENTS
+src\insight_agent\agent_runtime.py:2263:            state["report_approval_phase"] = "red_team_evidence"
+src\insight_agent\agent_runtime.py:2269:                outcome="red_team_evidence_requested",
+src\insight_agent\agent_runtime.py:2271:                    f"第 {review_round} 轮红队请求 {len(evidence_requests)} 个有界证据调用；"
+src\insight_agent\agent_runtime.py:2278:                    "graph_node": "approval_join",
+src\insight_agent\agent_runtime.py:2308:        state["report_red_teams"] = [*(state.get("report_red_teams") or []), red_team]
+src\insight_agent\agent_runtime.py:2316:                ("红队审批", red_team_approved),
+src\insight_agent\agent_runtime.py:2329:            summary = f"第 {review_round} 轮事实审批与红队审批均通过。"
+src\insight_agent\agent_runtime.py:2345:                "graph_node": "approval_join",
+src\insight_agent\agent_runtime.py:2364:    def _meaningful_red_team_evidence(cls, value: Any) -> bool:
+src\insight_agent\agent_runtime.py:2374:            return any(cls._meaningful_red_team_evidence(item) for item in value)
+src\insight_agent\agent_runtime.py:2407:            return any(cls._meaningful_red_team_evidence(item) for item in collection_values)
+src\insight_agent\agent_runtime.py:2409:            cls._meaningful_red_team_evidence(item)
+src\insight_agent\agent_runtime.py:2482:    def _clear_pending_red_team_evidence(self, state: AgentRuntimeState) -> None:
+src\insight_agent\agent_runtime.py:2487:    def _red_team_evidence_node(self, state: AgentRuntimeState) -> AgentRuntimeState:
+src\insight_agent\agent_runtime.py:2492:                :RED_TEAM_EVIDENCE_MAX_CALLS
+src\insight_agent\agent_runtime.py:2516:            if name and data and self._meaningful_red_team_evidence(data):
+src\insight_agent\agent_runtime.py:2532:                "tool_call_id": str(request.get("id") or f"red-team-evidence-{index}"),
+src\insight_agent\agent_runtime.py:2566:                runtime_node="red_team_evidence",
+src\insight_agent\agent_runtime.py:2581:            if not self._meaningful_red_team_evidence(data):
+src\insight_agent\agent_runtime.py:2609:        state["red_team_evidence_attempts"] = [
+src\insight_agent\agent_runtime.py:2610:            *(state.get("red_team_evidence_attempts") or []),
+src\insight_agent\agent_runtime.py:2615:            name="validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:2616:            label="红队新证据有效性门禁",
+src\insight_agent\agent_runtime.py:2620:                f"红队补证完成：{accepted_count}/{len(requests)} 个调用产生新增有效证据。"
+src\insight_agent\agent_runtime.py:2622:                else "红队补证未产生新增有效证据，保留当前 ReportData、图表和 HTML。"
+src\insight_agent\agent_runtime.py:2627:                "graph_node": "red_team_evidence",
+src\insight_agent\agent_runtime.py:2631:            event_id=f"tool-validate_red_team_evidence-r{review_round}",
+src\insight_agent\agent_runtime.py:2639:            state["report_red_teams"] = [
+src\insight_agent\agent_runtime.py:2640:                *(state.get("report_red_teams") or []),
+src\insight_agent\agent_runtime.py:2646:            state["red_team_evidence_changed"] = True
+src\insight_agent\agent_runtime.py:2653:            self._clear_pending_red_team_evidence(state)
+src\insight_agent\agent_runtime.py:2661:                raise RuntimeError("没有找到可继续红队判断的 HTML 版本")
+src\insight_agent\agent_runtime.py:2663:                raise RuntimeError("报告红队 Agent 未配置")
+src\insight_agent\agent_runtime.py:2678:                "schema_version": "report_red_team_review.v1",
+src\insight_agent\agent_runtime.py:2684:                    "补证未形成新增事实，红队最终判断调用失败，按返工处理："
+src\insight_agent\agent_runtime.py:2692:                "schema_version": "report_red_team_review.v1",
+src\insight_agent\agent_runtime.py:2697:                "summary": "红队在补证无变化后未返回结构化最终判断，按返工处理。",
+src\insight_agent\agent_runtime.py:2719:            or ("红队审查通过。" if approved else "红队要求根据现有证据返工。")
+src\insight_agent\agent_runtime.py:2724:            label="报告红队 Agent（补证后判断）",
+src\insight_agent\agent_runtime.py:2732:                "graph_node": "report_red_team",
+src\insight_agent\agent_runtime.py:2744:        self._clear_pending_red_team_evidence(state)
+src\insight_agent\agent_runtime.py:2768:        red_teams = list(state.get("report_red_teams") or [])
+src\insight_agent\agent_runtime.py:2913:            state["report_red_team_branch"] = {}
+src\insight_agent\agent_runtime.py:4412:                    "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:4608:                evidence_recompile = bool(state.get("red_team_evidence_changed"))
+src\insight_agent\agent_runtime.py:4633:                    "red_team_count": len(state.get("report_red_teams") or []),
+src\insight_agent\agent_runtime.py:4637:                    "red_teams": list(state.get("report_red_teams") or []),
+src\insight_agent\agent_runtime.py:4642:                    "red_team_evidence_attempts": list(
+src\insight_agent\agent_runtime.py:4643:                        state.get("red_team_evidence_attempts") or []
+src\insight_agent\agent_runtime.py:4678:            if state.get("red_team_evidence_changed"):
+src\insight_agent\agent_runtime.py:4686:                state["red_team_evidence_changed"] = False
+src\insight_agent\agent_runtime.py:4691:                state["report_red_teams"] = []
+src\insight_agent\agent_runtime.py:4696:                state["red_team_evidence_attempts"] = []
+src\insight_agent\agent_runtime.py:4699:            state["report_red_team_branch"] = {}
+src\insight_agent\agent_runtime.py:5332:            "- For an HTML Skill with a declared report-data builder, finish the required source-data calls and then stop issuing tool calls. That no-tool-call handoff lets LangGraph run report_data_builder -> data_analysis -> insight_synthesis -> chart_render -> html_render -> parallel report_review and report_red_team -> approval_join -> any required html_revision -> synthesize_artifact automatically; never call those report nodes from the planner.\n"
+src\insight_agent\agent_runtime.py:5335:            "- Every HTML-report Skill automatically runs report_review and report_red_team concurrently after html_render, then approval_join combines both results. A first-round rejection from either branch routes to html_revision and a second parallel round; a second-round rejection routes to one final revision and direct publication without a third review.\n"
+src\insight_agent\agent_runtime.py:5603:                "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:5638:                "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:5670:                "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:5701:                "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:5729:                    "validate_red_team_evidence",
+src\insight_agent\agent_runtime.py:5760:                "validate_red_team_evidence",
+src\insight_agent\server.py:12184:            "summary": "short Chinese strategic red-team summary",
+src\insight_agent\server.py:12216:                    "You are the independent strategy red-team node for Hsia HTML reports. The supplied "
+src\insight_agent\server.py:12268:                    "id": str(tool_call.get("id") or f"red-team-evidence-{index}"),
+src\insight_agent\server.py:12275:                "schema_version": "report_red_team_review.v1",
+src\insight_agent\server.py:12280:                "summary": "红队请求补充有界证据后再完成本轮判断。",
+src\insight_agent\server.py:12292:            raise ValueError("红队 Agent 未返回可解析的 JSON。")
+src\insight_agent\server.py:12341:            "schema_version": "report_red_team_review.v1",
+src\insight_agent\server.py:12347:                str(parsed.get("summary") or "红队审查已完成。"), 600
+src\insight_agent\server.py:12369:            "schema_version": "report_red_team_review.v1",
+src\insight_agent\server.py:12374:            "summary": f"红队 Agent 调用失败：{compact_text(str(exc), 300)}",
+src\insight_agent\server.py:13924:                "red_team_evidence_attempts": [],

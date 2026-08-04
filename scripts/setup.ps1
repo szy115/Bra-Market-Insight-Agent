@@ -31,10 +31,17 @@ if (-not (Test-Path (Join-Path $Root ".env"))) {
   Copy-Item (Join-Path $Root ".env.example") (Join-Path $Root ".env")
 }
 
+$PackageManager = Get-InsightPackageManager
 $Frontend = Join-Path $Root "frontend"
 if (Test-Path $Frontend) {
-  $PackageManager = Get-InsightPackageManager
   Set-Location $Frontend
+  Invoke-InsightPackageManager $PackageManager @("install")
+  Set-Location $Root
+}
+
+$ChartRuntime = Join-Path $Root "chart-runtime"
+if (Test-Path $ChartRuntime) {
+  Set-Location $ChartRuntime
   Invoke-InsightPackageManager $PackageManager @("install")
   Set-Location $Root
 }
