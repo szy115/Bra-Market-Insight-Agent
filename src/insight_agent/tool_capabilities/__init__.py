@@ -5,6 +5,7 @@ from .registry import (
     ResultContract,
     ToolCapability,
     ToolCapabilityRegistry,
+    ToolInvocation,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "ResultContract",
     "ToolCapability",
     "ToolCapabilityRegistry",
+    "ToolInvocation",
 ]

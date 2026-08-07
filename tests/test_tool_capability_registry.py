@@ -26,7 +26,7 @@ def sample_capability(**overrides) -> ToolCapability:
         },
         "invocation_scope": InvocationScope.PLANNER,
         "normalize_input": lambda category, payload: {"category": category, **payload},
-        "adapter": lambda tool_input: {"value": tool_input["category"]},
+        "adapter": lambda invocation: {"value": invocation.tool_input["category"]},
         "shape_result": lambda raw: raw,
         "summarize": lambda raw: f"Sampled {raw['value']}",
         "result_contract": ResultContract(
@@ -94,6 +94,18 @@ def test_registry_composition_does_not_probe_tool_adapters() -> None:
     assert tuple(registry.capabilities) == ("sample_tool",)
 
 
+def test_registry_freezes_non_reserved_catalog_metadata() -> None:
+    registry = ToolCapabilityRegistry(
+        [sample_capability(catalog_metadata={"source": "local_fixture"})]
+    )
+
+    capability = registry.get("sample_tool")
+
+    assert registry.catalog()["sample_tool"]["source"] == "local_fixture"
+    with pytest.raises(TypeError):
+        capability.catalog_metadata["source"] = "changed"
+
+
 def test_registry_executes_a_capability_through_the_common_result_envelope() -> None:
     ticks = iter([10.0, 10.012])
     registry = ToolCapabilityRegistry([sample_capability()], clock=lambda: next(ticks))
@@ -124,7 +136,7 @@ def test_registry_reports_a_result_contract_mismatch() -> None:
 
 
 def test_registry_preserves_normalized_input_when_an_adapter_fails() -> None:
-    def unavailable_adapter(_tool_input):
+    def unavailable_adapter(_invocation):
         raise RuntimeError("temporary provider unavailable")
 
     ticks = iter([20.0, 20.5])
@@ -172,6 +184,10 @@ def test_registry_preserves_normalized_input_when_an_adapter_fails() -> None:
         (
             [sample_capability(result_contract="sample_result.v1")],
             "result_contract must be a ResultContract",
+        ),
+        (
+            [sample_capability(catalog_metadata={"label": "override"})],
+            "catalog_metadata cannot override registry fields",
         ),
     ],
 )

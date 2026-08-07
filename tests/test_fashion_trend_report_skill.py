@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from insight_agent import server as server_module
-from insight_agent.agent_params import adapt_agent_params_for_tool, agent_payload_from_params
+from insight_agent.agent_params import agent_payload_from_params
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,7 +71,7 @@ def test_trend_platform_params_default_to_thirty_days() -> None:
         {"category": "women's intimates"},
     )
 
-    tool_input = adapt_agent_params_for_tool("trend_platforms", "fallback", payload)
+    tool_input = server_module.agent_tool_input_payload("trend_platforms", "fallback", payload)
 
     assert tool_input["category"] == "women's intimates"
     assert tool_input["marketplace"] == "Global"
@@ -296,7 +296,7 @@ def test_trend_platform_params_use_canonical_names() -> None:
         },
     )
 
-    tool_input = adapt_agent_params_for_tool("trend_platforms", "fallback", payload)
+    tool_input = server_module.agent_tool_input_payload("trend_platforms", "fallback", payload)
 
     assert tool_input["category"] == "minimizer bra"
     assert tool_input["marketplace"] == "US"

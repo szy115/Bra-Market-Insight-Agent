@@ -154,6 +154,14 @@ from .settings import (
 )
 from .tool_capabilities import ToolCapabilityRegistry
 from .tool_capabilities.local import build_reddit_voc_capability
+from .tool_capabilities.planner_amazon import build_amazon_shelf_capability
+from .tool_capabilities.planner_media import build_media_rankings_capability
+from .tool_capabilities.planner_tiktok import build_tiktok_social_capability
+from .tool_capabilities.planner_trend import (
+    TREND_MAX_IMAGES_PER_PLATFORM,
+    TREND_MAX_REPORT_IMAGES,
+    build_trend_platforms_capability,
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(os.getenv("INSIGHT_AGENT_HOME", Path.cwd())).resolve()
@@ -4366,8 +4374,6 @@ TREND_QUERY_DIMENSIONS: tuple[dict[str, str], ...] = (
 )
 
 TREND_MAX_IMAGES_PER_PAGE = 12
-TREND_MAX_IMAGES_PER_PLATFORM = 48
-TREND_MAX_REPORT_IMAGES = 36
 
 TREND_INTIMATES_TERMS = {
     "intimate",
@@ -7669,44 +7675,6 @@ def rotate_ids(ids: list[str], index: int) -> list[str]:
 
 
 AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {
-    "amazon_shelf": {
-        "label": "Amazon shelf",
-        "description": "Collect Amazon search/product/review evidence for price, rating, review volume, claims, and brands.",
-    },
-    "media_rankings": {
-        "label": "Media/ranking articles",
-        "description": "Discover and read US media reviews, public rankings, and accessible report pages.",
-    },
-    "trend_platforms": {
-        "label": "WGSN / 蝶讯 / Pinterest trend crawler",
-        "description": (
-            "Visit WGSN, 蝶讯, and Pinterest separately through domain-targeted web search and public-page "
-            "reading; return color, fabric, silhouette, and style evidence with per-platform access status."
-        ),
-        "source": "agent_reach_crawler",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "description": "Target fashion or product category.",
-                },
-                "marketplace": {"type": "string", "description": "Target market or region."},
-                "timeRange": {"type": "string", "description": "Research time window."},
-                "resultsPerQuery": {"type": "integer", "minimum": 1, "maximum": 20},
-                "resultsPerPlatform": {"type": "integer", "minimum": 1, "maximum": 20},
-                "pageReadLimit": {"type": "integer", "minimum": 1, "maximum": 50},
-                "reportImageLimit": {"type": "integer", "minimum": 1, "maximum": 36},
-                "bypassCache": {"type": "boolean"},
-            },
-            "required": ["category"],
-            "additionalProperties": True,
-        },
-    },
-    "tiktok_social": {
-        "label": "TikTok social validation",
-        "description": "Collect TikTok videos and detail-page comment samples for social visibility and creator/user language.",
-    },
     "build_market_report_data": {
         "label": "MarketReportData builder",
         "description": "Compile collected tool results into a stable MarketReportData JSON structure before rendering a market insight report.",
@@ -7792,7 +7760,32 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             resolve_params=resolve_agent_tool_params,
             bounded_int=bounded_int,
             adapter=lambda tool_input: analyze_category(tool_input),
-        )
+        ),
+        build_amazon_shelf_capability(
+            resolve_params=resolve_agent_tool_params,
+            bounded_int=bounded_int,
+            adapter=lambda tool_input: analyze_amazon_category(tool_input),
+        ),
+        build_media_rankings_capability(
+            resolve_params=resolve_agent_tool_params,
+            bounded_int=bounded_int,
+            discover=lambda tool_input: discover_article_urls(tool_input),
+            extract_urls=lambda payload: extract_article_urls(payload),
+            analyze=lambda payload: analyze_articles(payload),
+            now_iso=now_iso,
+        ),
+        build_trend_platforms_capability(
+            resolve_params=resolve_agent_tool_params,
+            bounded_int=bounded_int,
+            adapter=lambda tool_input: crawl_trend_platforms(tool_input),
+        ),
+        build_tiktok_social_capability(
+            resolve_params=resolve_agent_tool_params,
+            bounded_int=bounded_int,
+            adapter=lambda tool_input: analyze_tiktok_category(tool_input),
+            video_text=tiktok_video_text,
+            compact_text=compact_text,
+        ),
     ]
 )
 
@@ -8027,122 +8020,6 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
         return result
     if tool_name in {"render_html_report", "render_markdown_report"}:
         return result
-    if tool_name == "amazon_shelf":
-        products = result.get("products", [])
-        return {
-            "metrics": result.get("metrics"),
-            "price_bands": result.get("price_bands"),
-            "brands": result.get("brands", [])[:10],
-            "queries": result.get("queries", [])[:8],
-            "products": [
-                {
-                    "asin": product.get("asin"),
-                    "title": product.get("title"),
-                    "brand": product.get("brand"),
-                    "url": product.get("product_url"),
-                    "image_url": product.get("image_url"),
-                    "price": product.get("price_text"),
-                    "rating": product.get("rating_value"),
-                    "reviews": product.get("review_count"),
-                    "review_sample_count": len(product.get("review_samples") or []),
-                    "review_samples": product.get("review_samples")
-                    if isinstance(product.get("review_samples"), list)
-                    else [],
-                    "badges": product.get("badges", [])[:4],
-                }
-                for product in products
-            ],
-        }
-    if tool_name == "media_rankings":
-        return {
-            "summary": result.get("summary"),
-            "articles": [
-                {
-                    "title": article.get("title"),
-                    "domain": article.get("domain"),
-                    "url": article.get("url"),
-                    "source_type": article.get("source_type"),
-                    "authority_level": article.get("authority_level"),
-                    "product_signals": article.get("product_signals", [])[:5],
-                    "evidence_snippets": article.get("evidence_snippets", [])[:6],
-                    "cautions": article.get("cautions", [])[:4],
-                }
-                for article in result.get("articles", [])[:12]
-            ],
-            "data_volume": result.get("data_volume"),
-            "warnings": result.get("warnings", [])[:8],
-        }
-    if tool_name == "trend_platforms":
-        return {
-            "category": result.get("category"),
-            "marketplace": result.get("marketplace"),
-            "time_range": result.get("time_range"),
-            "generated_at": result.get("generated_at"),
-            "source_mode": result.get("source_mode"),
-            "coverage": result.get("coverage"),
-            "visual_evidence": result.get("visual_evidence", [])[:TREND_MAX_REPORT_IMAGES],
-            "visual_coverage": result.get("visual_coverage"),
-            "platforms": [
-                {
-                    "platform_id": platform.get("platform_id"),
-                    "name": platform.get("name"),
-                    "official_domains": platform.get("official_domains"),
-                    "search_query": platform.get("search_query"),
-                    "search_queries": platform.get("search_queries", []),
-                    "query_runs": platform.get("query_runs", []),
-                    "query_count": platform.get("query_count"),
-                    "search_provider": platform.get("search_provider"),
-                    "raw_result_count": platform.get("raw_result_count"),
-                    "unique_candidate_count": platform.get("unique_candidate_count"),
-                    "search_result_count": platform.get("search_result_count"),
-                    "search_results": platform.get("search_results", [])[:120],
-                    "page_read_target": platform.get("page_read_target"),
-                    "page_attempt_count": platform.get("page_attempt_count"),
-                    "page_read_count": platform.get("page_read_count"),
-                    "pages": platform.get("pages", [])[:50],
-                    "qualified_page_count": platform.get("qualified_page_count"),
-                    "supporting_page_count": platform.get("supporting_page_count"),
-                    "recent_page_count": platform.get("recent_page_count"),
-                    "background_page_count": platform.get("background_page_count"),
-                    "undated_page_count": platform.get("undated_page_count"),
-                    "discarded_page_count": platform.get("discarded_page_count"),
-                    "visual_evidence": platform.get("visual_evidence", [])[
-                        :TREND_MAX_IMAGES_PER_PLATFORM
-                    ],
-                    "visual_count": platform.get("visual_count"),
-                    "accessed": platform.get("accessed"),
-                    "access_status": platform.get("access_status"),
-                    "evidence_status": platform.get("evidence_status"),
-                    "evidence_snippets": platform.get("evidence_snippets", [])[:12],
-                    "warnings": platform.get("warnings", [])[:8],
-                }
-                for platform in result.get("platforms", [])
-                if isinstance(platform, dict)
-            ],
-            "warnings": result.get("warnings", [])[:16],
-            "method": result.get("method"),
-        }
-    if tool_name == "tiktok_social":
-        return {
-            "metrics": result.get("metrics"),
-            "market_signal": result.get("market_signal"),
-            "hashtags": result.get("hashtags", [])[:10],
-            "pain_points": result.get("pain_points", [])[:5],
-            "videos": [
-                {
-                    "title": video.get("title") or video.get("caption"),
-                    "url": video.get("url"),
-                    "author": video.get("author"),
-                    "views": video.get("view_count"),
-                    "comments": len(video.get("comment_samples") or []),
-                    "comment_samples": video.get("comment_samples")
-                    if isinstance(video.get("comment_samples"), list)
-                    else [],
-                    "snippet": compact_text(tiktok_video_text(video), 260),
-                }
-                for video in result.get("videos", [])[:12]
-            ],
-        }
     return result
 
 
@@ -8219,27 +8096,6 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
         return f"Rendered HTML report: {result.get('title') or 'HTML report'}."
     if tool_name == "render_markdown_report":
         return f"Rendered Markdown report: {result.get('title') or 'Markdown report'}."
-    if tool_name == "amazon_shelf":
-        metrics = result.get("metrics") or {}
-        return f"{metrics.get('products', 0)} Amazon products, {metrics.get('total_review_count', 0)} review/rating signals."
-    if tool_name == "media_rankings":
-        data_volume = result.get("data_volume") or {}
-        return f"{data_volume.get('collected_articles', 0)} readable articles."
-    if tool_name == "trend_platforms":
-        coverage = result.get("coverage") if isinstance(result.get("coverage"), dict) else {}
-        visual_coverage = (
-            result.get("visual_coverage") if isinstance(result.get("visual_coverage"), dict) else {}
-        )
-        return (
-            f"Accessed {coverage.get('accessed_platforms', 0)}/{coverage.get('required_platforms', 3)} "
-            f"required trend platforms; read {coverage.get('readable_pages', 0)} effective public page(s), "
-            f"including {coverage.get('recent_pages', 0)} within the requested window, and selected "
-            f"{visual_coverage.get('selected_for_report', 0)} visual evidence item(s)."
-        )
-    if tool_name == "tiktok_social":
-        metrics = result.get("metrics") or {}
-        data_volume = result.get("data_volume") or {}
-        return f"{metrics.get('videos', 0)} TikTok videos, {data_volume.get('comment_samples', 0)} comment samples."
     return "Tool completed."
 
 
@@ -8266,48 +8122,7 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             bypass_cache=bool(payload.get("bypassCache")),
         )
     try:
-        if tool_name == "amazon_shelf":
-            raw = analyze_amazon_category(tool_input)
-        elif tool_name == "media_rankings":
-            discovery = discover_article_urls(tool_input)
-            provided_urls, provided_warnings = extract_article_urls(
-                {"urls": tool_input.get("urls") or []}
-            )
-            discovered_urls = [
-                item.get("url") for item in discovery.get("candidates", []) if item.get("url")
-            ]
-            candidate_limit = max(1, min(int(tool_input.get("candidateLimit") or 8), 20))
-            urls = list(dict.fromkeys([*provided_urls, *discovered_urls]))[:candidate_limit]
-            raw = (
-                analyze_articles(
-                    {
-                        "category": category,
-                        "urls": urls,
-                        "limit": len(urls),
-                        "bypassCache": bool(tool_input.get("bypassCache")),
-                    }
-                )
-                if urls
-                else {
-                    "category": category,
-                    "generated_at": now_iso(),
-                    "summary": {"collected_articles": 0},
-                    "data_volume": {"collected_articles": 0},
-                    "articles": [],
-                    "warnings": discovery.get("warnings", [])
-                    + ["No article URLs were selected for reading."],
-                }
-            )
-            raw["discovery"] = discovery
-            raw["provided_urls"] = provided_urls
-            raw["warnings"] = list(
-                dict.fromkeys([*(raw.get("warnings") or []), *provided_warnings])
-            )
-        elif tool_name == "trend_platforms":
-            raw = crawl_trend_platforms(tool_input)
-        elif tool_name == "tiktok_social":
-            raw = analyze_tiktok_category(tool_input)
-        elif tool_name == "build_market_report_data":
+        if tool_name == "build_market_report_data":
             raw = build_market_report_data(tool_input)
         elif tool_name == "build_tiktok_new_product_report_data":
             raw = build_tiktok_new_product_report_data(tool_input)

@@ -1,3 +1,4 @@
+from insight_agent import server as server_module
 from insight_agent.agent_params import (
     adapt_agent_params_for_tool,
     agent_payload_from_params,
@@ -155,8 +156,8 @@ def test_adapt_agent_params_for_tool_uses_canonical_params() -> None:
     }
 
     reddit_input = adapt_agent_params_for_tool("reddit_voc", "fallback", payload)
-    amazon_input = adapt_agent_params_for_tool("amazon_shelf", "fallback", payload)
-    tiktok_input = adapt_agent_params_for_tool("tiktok_social", "fallback", payload)
+    amazon_input = server_module.agent_tool_input_payload("amazon_shelf", "fallback", payload)
+    tiktok_input = server_module.agent_tool_input_payload("tiktok_social", "fallback", payload)
 
     assert reddit_input["category"] == "minimizer bra"
     assert reddit_input["timeRange"] == "90d"
@@ -344,7 +345,7 @@ def test_product_design_params_bridge_to_builder_markdown_and_public_urls() -> N
     assert payload["targetUser"] == "US full-bust users"
     assert payload["brandSiteUrls"] == ["https://wacoal-america.com/collections/best-sellers"]
 
-    media_input = adapt_agent_params_for_tool("media_rankings", "strapless bra", payload)
+    media_input = server_module.agent_tool_input_payload("media_rankings", "strapless bra", payload)
     assert media_input["urls"] == ["https://wacoal-america.com/collections/best-sellers"]
 
     builder_input = adapt_agent_params_for_tool(

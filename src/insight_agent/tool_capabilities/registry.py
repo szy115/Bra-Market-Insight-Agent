@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import time
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
@@ -28,6 +28,12 @@ class ResultContract:
 
 
 @dataclass(frozen=True)
+class ToolInvocation:
+    requested_category: str
+    tool_input: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class ToolCapability:
     capability_id: str
     label: str
@@ -35,12 +41,13 @@ class ToolCapability:
     input_schema: Mapping[str, Any]
     invocation_scope: InvocationScope
     normalize_input: Callable[[str, dict[str, Any]], dict[str, Any]]
-    adapter: Callable[[dict[str, Any]], dict[str, Any]]
+    adapter: Callable[[ToolInvocation], dict[str, Any]]
     shape_result: Callable[[dict[str, Any]], dict[str, Any]]
     summarize: Callable[[dict[str, Any]], str]
     result_contract: ResultContract
     recovery: RecoveryTraits
     output_kind: str
+    catalog_metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 class InvalidToolCapability(ValueError):
@@ -80,6 +87,7 @@ class ToolCapabilityRegistry:
             registered[capability.capability_id] = replace(
                 capability,
                 input_schema=_freeze_json(capability.input_schema),
+                catalog_metadata=_freeze_json(capability.catalog_metadata),
             )
         self._capabilities = MappingProxyType(registered)
         self._clock = clock
@@ -99,7 +107,9 @@ class ToolCapabilityRegistry:
         started = self._clock()
         tool_input = capability.normalize_input(category, payload)
         try:
-            raw_result = capability.adapter(tool_input)
+            raw_result = capability.adapter(
+                ToolInvocation(requested_category=category, tool_input=tool_input)
+            )
             shaped_result = capability.shape_result(raw_result)
             try:
                 capability.result_contract.validate(shaped_result)
@@ -147,21 +157,26 @@ class ToolCapabilityRegistry:
 
     def catalog(self, invocation_scope: InvocationScope | None = None) -> dict[str, dict[str, Any]]:
         return {
-            capability_id: {
-                "label": capability.label,
-                "description": capability.description,
-                "input_schema": _thaw_json(capability.input_schema),
-                "invocation_scope": capability.invocation_scope.value,
-                "result_contract": capability.result_contract.contract_id,
-                "recovery": {
-                    "retryable": capability.recovery.retryable,
-                    "default_timeout_seconds": capability.recovery.default_timeout_seconds,
-                    "default_retry_attempts": capability.recovery.default_retry_attempts,
-                },
-                "output_kind": capability.output_kind,
-            }
+            capability_id: self._catalog_entry(capability)
             for capability_id, capability in self._capabilities.items()
             if invocation_scope is None or capability.invocation_scope == invocation_scope
+        }
+
+    @staticmethod
+    def _catalog_entry(capability: ToolCapability) -> dict[str, Any]:
+        return {
+            "label": capability.label,
+            "description": capability.description,
+            "input_schema": _thaw_json(capability.input_schema),
+            "invocation_scope": capability.invocation_scope.value,
+            "result_contract": capability.result_contract.contract_id,
+            "recovery": {
+                "retryable": capability.recovery.retryable,
+                "default_timeout_seconds": capability.recovery.default_timeout_seconds,
+                "default_retry_attempts": capability.recovery.default_retry_attempts,
+            },
+            "output_kind": capability.output_kind,
+            **_thaw_json(capability.catalog_metadata),
         }
 
     @staticmethod
@@ -194,6 +209,19 @@ class ToolCapabilityRegistry:
             raise InvalidToolCapability("input_schema.properties must be a mapping")
         if not isinstance(capability.input_schema.get("required"), list | tuple):
             raise InvalidToolCapability("input_schema.required must be a list")
+        if not isinstance(capability.catalog_metadata, Mapping):
+            raise InvalidToolCapability("catalog_metadata must be a mapping")
+        reserved_metadata = {
+            "label",
+            "description",
+            "input_schema",
+            "invocation_scope",
+            "result_contract",
+            "recovery",
+            "output_kind",
+        }
+        if reserved_metadata.intersection(capability.catalog_metadata):
+            raise InvalidToolCapability("catalog_metadata cannot override registry fields")
         callables = {
             "normalize_input": capability.normalize_input,
             "adapter": capability.adapter,

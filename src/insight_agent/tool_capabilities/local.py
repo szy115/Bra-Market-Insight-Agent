@@ -4,7 +4,12 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .registry import InvocationScope, RecoveryTraits, ResultContract, ToolCapability
+from .registry import (
+    InvocationScope,
+    RecoveryTraits,
+    ResultContract,
+    ToolCapability,
+)
 
 DEFAULT_PLANNER_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -95,7 +100,7 @@ def build_reddit_voc_capability(
             resolve_params(payload),
             bounded_int,
         ),
-        adapter=adapter,
+        adapter=lambda invocation: adapter(invocation.tool_input),
         shape_result=shape_reddit_voc_result,
         summarize=summarize_reddit_voc_result,
         result_contract=ResultContract(
