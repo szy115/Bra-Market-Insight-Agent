@@ -27,7 +27,9 @@ from typing import Any
 from .agent_params import (
     adapt_agent_params_for_tool,
     agent_payload_from_params,
+    bounded_int,
     normalize_agent_time_range,
+    resolve_agent_tool_params,
     resolve_canonical_agent_params,
 )
 from .agent_skill_harness import parse_evidence_contract, parse_tool_policy
@@ -150,6 +152,8 @@ from .settings import (
     update_research_settings,
     update_web_search_settings,
 )
+from .tool_capabilities import ToolCapabilityRegistry
+from .tool_capabilities.local import build_reddit_voc_capability
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(os.getenv("INSIGHT_AGENT_HOME", Path.cwd())).resolve()
@@ -7665,10 +7669,6 @@ def rotate_ids(ids: list[str], index: int) -> list[str]:
 
 
 AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {
-    "reddit_voc": {
-        "label": "Reddit VOC",
-        "description": "Collect Reddit posts and comment samples for user pain points, language, and brand/size mentions.",
-    },
     "amazon_shelf": {
         "label": "Amazon shelf",
         "description": "Collect Amazon search/product/review evidence for price, rating, review volume, claims, and brands.",
@@ -7786,11 +7786,20 @@ AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {
     },
 }
 
+AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
+    [
+        build_reddit_voc_capability(
+            resolve_params=resolve_agent_tool_params,
+            bounded_int=bounded_int,
+            adapter=lambda tool_input: analyze_category(tool_input),
+        )
+    ]
+)
+
 
 def agent_tool_catalog() -> dict[str, dict[str, Any]]:
-    catalog: dict[str, dict[str, Any]] = {
-        name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()
-    }
+    catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog()
+    catalog.update({name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()})
     catalog.update(get_fastmoss_tool_catalog())
     catalog.update(get_sif_tool_catalog())
     catalog.update(get_sellersprite_tool_catalog())
@@ -7986,6 +7995,8 @@ def agent_brief_for_category(category: str) -> dict[str, str]:
 def agent_tool_input_payload(
     tool_name: str, category: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
+    if tool_name in AGENT_TOOL_CAPABILITY_REGISTRY:
+        return AGENT_TOOL_CAPABILITY_REGISTRY.get(tool_name).normalize_input(category, payload)
     if is_fastmoss_agent_tool(tool_name):
         return build_fastmoss_input_payload(tool_name, category, payload)
     if is_sif_agent_tool(tool_name):
@@ -7996,6 +8007,8 @@ def agent_tool_input_payload(
 
 
 def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, Any]:
+    if tool_name in AGENT_TOOL_CAPABILITY_REGISTRY:
+        return AGENT_TOOL_CAPABILITY_REGISTRY.get(tool_name).shape_result(result)
     if is_fastmoss_agent_tool(tool_name):
         return result
     if is_sif_agent_tool(tool_name):
@@ -8014,29 +8027,6 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
         return result
     if tool_name in {"render_html_report", "render_markdown_report"}:
         return result
-    if tool_name == "reddit_voc":
-        return {
-            "coverage": result.get("coverage"),
-            "market_signal": result.get("market_signal"),
-            "sentiment": result.get("sentiment"),
-            "pain_points": result.get("pain_points", [])[:5],
-            "brands": result.get("brands", [])[:8],
-            "sizes": result.get("sizes", [])[:8],
-            "posts": [
-                {
-                    "id": post.get("id"),
-                    "title": post.get("title"),
-                    "url": post.get("url"),
-                    "subreddit": post.get("subreddit"),
-                    "score": post.get("score"),
-                    "comments": post.get("comments"),
-                    "comment_sample_count": len(post_comment_items(post)),
-                    "comment_items": post_comment_items(post),
-                    "excerpt": compact_text(str(post.get("excerpt") or ""), 260),
-                }
-                for post in result.get("posts", [])
-            ],
-        }
     if tool_name == "amazon_shelf":
         products = result.get("products", [])
         return {
@@ -8157,6 +8147,8 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
 
 
 def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
+    if tool_name in AGENT_TOOL_CAPABILITY_REGISTRY:
+        return AGENT_TOOL_CAPABILITY_REGISTRY.get(tool_name).summarize(result)
     if is_fastmoss_agent_tool(tool_name):
         return result.get("summary") or "FastMoss MCP returned structured evidence."
     if is_sif_agent_tool(tool_name):
@@ -8227,10 +8219,6 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
         return f"Rendered HTML report: {result.get('title') or 'HTML report'}."
     if tool_name == "render_markdown_report":
         return f"Rendered Markdown report: {result.get('title') or 'Markdown report'}."
-    if tool_name == "reddit_voc":
-        coverage = result.get("coverage") or {}
-        data_volume = result.get("data_volume") or {}
-        return f"{coverage.get('posts', 0)} Reddit posts, {data_volume.get('collected_comments', 0)} comments."
     if tool_name == "amazon_shelf":
         metrics = result.get("metrics") or {}
         return f"{metrics.get('products', 0)} Amazon products, {metrics.get('total_review_count', 0)} review/rating signals."
@@ -8256,6 +8244,8 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
 
 
 def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if tool_name in AGENT_TOOL_CAPABILITY_REGISTRY:
+        return AGENT_TOOL_CAPABILITY_REGISTRY.execute(tool_name, category, payload)
     started = time.time()
     tool_input = agent_tool_input_payload(tool_name, category, payload)
     catalog = agent_tool_catalog()
@@ -8276,9 +8266,7 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             bypass_cache=bool(payload.get("bypassCache")),
         )
     try:
-        if tool_name == "reddit_voc":
-            raw = analyze_category(tool_input)
-        elif tool_name == "amazon_shelf":
+        if tool_name == "amazon_shelf":
             raw = analyze_amazon_category(tool_input)
         elif tool_name == "media_rankings":
             discovery = discover_article_urls(tool_input)
@@ -8411,11 +8399,33 @@ def execute_agent_tool_once_with_timeout(
             executor.shutdown(wait=False, cancel_futures=True)
 
 
+def agent_tool_recovery_defaults(tool_name: str) -> tuple[int, int, bool]:
+    if tool_name in AGENT_TOOL_CAPABILITY_REGISTRY:
+        recovery = AGENT_TOOL_CAPABILITY_REGISTRY.get(tool_name).recovery
+        return (
+            recovery.default_timeout_seconds,
+            recovery.default_retry_attempts,
+            recovery.retryable,
+        )
+    return 600, 2, True
+
+
 def execute_agent_tool_with_timeout(
     tool_name: str, category: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
-    timeout_seconds = min(max(int(payload.get("agentToolTimeoutSeconds") or 600), 30), 1200)
-    configured_retries = min(max(int(payload.get("agentToolRetryAttempts") or 2), 0), 3)
+    default_timeout, default_retries, capability_retryable = agent_tool_recovery_defaults(
+        tool_name
+    )
+    timeout_value = payload.get("agentToolTimeoutSeconds")
+    retry_value = payload.get("agentToolRetryAttempts")
+    timeout_seconds = min(
+        max(int(default_timeout if timeout_value is None else timeout_value), 30), 1200
+    )
+    configured_retries = min(
+        max(int(default_retries if retry_value is None else retry_value), 0), 3
+    )
+    if not capability_retryable:
+        configured_retries = 0
     if tool_name in {"render_html_report", "render_markdown_report"} or tool_name.startswith(
         "build_"
     ):

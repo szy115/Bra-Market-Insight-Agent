@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .tool_capabilities.local import normalize_reddit_voc_input
+
 REDDIT_NATIVE_TIME_RANGES = {"day", "week", "month", "year", "all"}
 
 AGENT_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
@@ -290,6 +292,14 @@ def payload_param_source(payload: dict[str, Any]) -> dict[str, Any]:
     return source
 
 
+def resolve_agent_tool_params(payload: dict[str, Any]) -> dict[str, Any]:
+    return merge_agent_param_sources(
+        infer_agent_params_from_prompt(payload.get("prompt")),
+        payload_param_source(payload),
+        payload.get("params") if isinstance(payload.get("params"), dict) else {},
+    )
+
+
 def resolve_canonical_agent_params(
     skill: dict[str, Any],
     payload: dict[str, Any],
@@ -391,27 +401,17 @@ def agent_payload_from_params(payload: dict[str, Any], params: dict[str, Any]) -
 def adapt_agent_params_for_tool(
     tool_name: str, category: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
-    canonical = merge_agent_param_sources(
-        infer_agent_params_from_prompt(payload.get("prompt")),
-        payload_param_source(payload),
-        payload.get("params") if isinstance(payload.get("params"), dict) else {},
-    )
+    canonical = resolve_agent_tool_params(payload)
     tool_category = str(canonical.get("category") or category)
     bypass_cache = bool(canonical.get("bypass_cache") or payload.get("bypassCache"))
 
     if tool_name == "reddit_voc":
-        return {
-            "category": tool_category,
-            "timeRange": canonical.get("time_range") or "year",
-            "limit": bounded_int(canonical.get("reddit_post_limit"), 30, 5, 120),
-            "mode": payload.get("mode") or "auto",
-            "useLlm": False,
-            "redditDetailLimit": bounded_int(canonical.get("reddit_detail_limit"), 5, 0, 30),
-            "redditCommentsPerPost": bounded_int(
-                canonical.get("reddit_comments_per_post"), 10, 0, 80
-            ),
-            "bypassCache": bypass_cache,
-        }
+        return normalize_reddit_voc_input(
+            tool_category,
+            payload,
+            canonical,
+            bounded_int,
+        )
     if tool_name == "amazon_shelf":
         return {
             "category": tool_category,
