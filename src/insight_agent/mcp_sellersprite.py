@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import json
 import os
 import re
 import time
 import urllib.error
 import urllib.request
-from functools import lru_cache
 from typing import Any
 
 from .mcp_result_cache import (
@@ -190,28 +188,10 @@ def _cached_exhaustive_review_satisfies(
     return True
 
 
-def is_sellersprite_agent_tool(tool_name: str) -> bool:
-    return tool_name.startswith(SELLERSPRITE_AGENT_TOOL_PREFIX)
-
-
 def sellersprite_mcp_tool_name(agent_tool_name: str) -> str:
-    if is_sellersprite_agent_tool(agent_tool_name):
+    if agent_tool_name.startswith(SELLERSPRITE_AGENT_TOOL_PREFIX):
         return agent_tool_name[len(SELLERSPRITE_AGENT_TOOL_PREFIX):]
     return agent_tool_name
-
-
-def sellersprite_agent_tool_name(mcp_tool_name: str) -> str:
-    normalized = str(mcp_tool_name or "").strip()
-    return f"{SELLERSPRITE_AGENT_TOOL_PREFIX}{normalized}"
-
-
-def sellersprite_enabled_tool_names() -> set[str]:
-    configured = os.getenv("SELLERSPRITE_MCP_TOOLS", "").strip()
-    if not configured:
-        return {"*"}
-    if configured.lower() in {"*", "all"}:
-        return {"*"}
-    return {item.strip() for item in configured.split(",") if item.strip()}
 
 
 def sellersprite_secret_key() -> str:
@@ -327,66 +307,6 @@ def _initialize_session() -> str | None:
     except Exception:
         pass
     return session_id
-
-
-def call_sellersprite_mcp_method(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    session_id = _initialize_session()
-    response, _ = _post_json_rpc(method, params or {}, 2, session_id)
-    if response.get("error"):
-        raise SellerSpriteMcpError(json.dumps(response["error"], ensure_ascii=False))
-    result = response.get("result")
-    return result if isinstance(result, dict) else {"result": result}
-
-
-def fetch_sellersprite_tool_schema() -> list[dict[str, Any]]:
-    if not sellersprite_secret_key():
-        return []
-    try:
-        result = call_sellersprite_mcp_method("tools/list", {})
-    except Exception:
-        return []
-    tools = result.get("tools")
-    return tools if isinstance(tools, list) else []
-
-
-def build_sellersprite_tool_catalog(schema_tools: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    enabled = sellersprite_enabled_tool_names()
-    include_all = "*" in enabled
-    catalog: dict[str, dict[str, Any]] = {}
-    for tool in schema_tools:
-        if not isinstance(tool, dict):
-            continue
-        mcp_name = str(tool.get("name") or "").strip()
-        if not mcp_name:
-            continue
-        if not include_all and mcp_name not in enabled:
-            continue
-        input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {"type": "object", "properties": {}}
-        agent_name = sellersprite_agent_tool_name(mcp_name)
-        catalog[agent_name] = {
-            "label": f"SellerSprite: {mcp_name}",
-            "description": compact_text(tool.get("description"), 720),
-            "input_schema": input_schema,
-            "source": "sellersprite_mcp",
-            "mcp_tool": mcp_name,
-            "auth_env_names": SELLERSPRITE_AUTH_ENV_NAMES,
-        }
-    return catalog
-
-
-@lru_cache(maxsize=4)
-def _get_sellersprite_tool_catalog_for_secret(secret_fingerprint: str) -> dict[str, dict[str, Any]]:
-    if not secret_fingerprint:
-        return {}
-    return build_sellersprite_tool_catalog(fetch_sellersprite_tool_schema())
-
-
-def get_sellersprite_tool_catalog() -> dict[str, dict[str, Any]]:
-    secret = sellersprite_secret_key()
-    if not secret:
-        return {}
-    fingerprint = hashlib.sha256(secret.encode("utf-8")).hexdigest()
-    return _get_sellersprite_tool_catalog_for_secret(fingerprint)
 
 
 def _market_from_payload(payload: dict[str, Any]) -> str:
@@ -820,7 +740,11 @@ def _resolve_sellersprite_tool_meta(
     agent_tool_name: str,
     tool_meta: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    return tool_meta or get_sellersprite_tool_catalog().get(agent_tool_name) or {}
+    if tool_meta is None:
+        raise SellerSpriteMcpError(
+            f"SellerSprite metadata must come from the Tool Capability Registry: {agent_tool_name}"
+        )
+    return tool_meta
 
 
 def build_sellersprite_input_payload(

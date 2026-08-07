@@ -401,21 +401,15 @@ def test_fastmoss_reclassifies_legacy_cached_empty_result(monkeypatch) -> None:
 def test_sellersprite_reuses_cached_result(monkeypatch) -> None:
     agent_tool_name = "sellersprite_asin_detail"
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
-    monkeypatch.setattr(
-        mcp_sellersprite,
-        "get_sellersprite_tool_catalog",
-        lambda: {
-            agent_tool_name: {
-                "label": "SellerSprite ASIN detail",
-                "mcp_tool": "asin_detail",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"marketplace": {"type": "string"}, "asin": {"type": "string"}},
-                    "required": ["marketplace", "asin"],
-                },
-            }
+    tool_meta = {
+        "label": "SellerSprite ASIN detail",
+        "mcp_tool": "asin_detail",
+        "input_schema": {
+            "type": "object",
+            "properties": {"marketplace": {"type": "string"}, "asin": {"type": "string"}},
+            "required": ["marketplace", "asin"],
         },
-    )
+    }
     calls: list[dict] = []
 
     def fake_call(_tool_name, arguments):
@@ -425,8 +419,14 @@ def test_sellersprite_reuses_cached_result(monkeypatch) -> None:
     monkeypatch.setattr(mcp_sellersprite, "call_sellersprite_mcp_tool", fake_call)
     params = {"marketplace": "US", "asin": "B000000001"}
 
-    first = mcp_sellersprite.execute_sellersprite_agent_tool(agent_tool_name, params)
-    cached = mcp_sellersprite.execute_sellersprite_agent_tool(agent_tool_name, dict(reversed(list(params.items()))))
+    first = mcp_sellersprite.execute_sellersprite_agent_tool(
+        agent_tool_name, params, tool_meta=tool_meta
+    )
+    cached = mcp_sellersprite.execute_sellersprite_agent_tool(
+        agent_tool_name,
+        dict(reversed(list(params.items()))),
+        tool_meta=tool_meta,
+    )
 
     assert len(calls) == 1
     assert first["cache"]["stored"] is True
@@ -437,27 +437,21 @@ def test_sellersprite_reuses_cached_result(monkeypatch) -> None:
 def test_competitor_review_cache_reuses_same_marketplace_asin_across_request_shapes(monkeypatch) -> None:
     agent_tool_name = "sellersprite_review"
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
-    monkeypatch.setattr(
-        mcp_sellersprite,
-        "get_sellersprite_tool_catalog",
-        lambda: {
-            agent_tool_name: {
-                "label": "SellerSprite reviews",
-                "mcp_tool": "review",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "marketplace": {"type": "string"},
-                        "asin": {"type": "string"},
-                        "starList": {"type": "array"},
-                        "page": {"type": "integer"},
-                        "size": {"type": "integer"},
-                    },
-                    "required": ["marketplace", "asin"],
-                },
-            }
+    tool_meta = {
+        "label": "SellerSprite reviews",
+        "mcp_tool": "review",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "marketplace": {"type": "string"},
+                "asin": {"type": "string"},
+                "starList": {"type": "array"},
+                "page": {"type": "integer"},
+                "size": {"type": "integer"},
+            },
+            "required": ["marketplace", "asin"],
         },
-    )
+    }
     calls: list[dict] = []
 
     def fake_call(_tool_name, arguments):
@@ -490,10 +484,12 @@ def test_competitor_review_cache_reuses_same_marketplace_asin_across_request_sha
     first = mcp_sellersprite.execute_sellersprite_agent_tool(
         agent_tool_name,
         {"marketplace": "US", "asin": "B000000001", "page": 1, "size": 20, **context},
+        tool_meta=tool_meta,
     )
     cached = mcp_sellersprite.execute_sellersprite_agent_tool(
         agent_tool_name,
         {"size": 100, "page": 9, "asin": "B000000001", "marketplace": "US", **context},
+        tool_meta=tool_meta,
     )
 
     assert len(calls) == 2

@@ -2,6 +2,27 @@ import json
 
 from insight_agent import mcp_sellersprite
 
+
+def build_sellersprite_test_catalog(schema_tools) -> dict[str, dict]:
+    return {
+        f"sellersprite_{tool['name']}": {
+            "label": f"SellerSprite: {tool['name']}",
+            "description": str(tool.get("description") or ""),
+            "input_schema": dict(tool.get("inputSchema") or {}),
+            "source": "sellersprite_mcp",
+            "mcp_tool": tool["name"],
+        }
+        for tool in schema_tools
+    }
+
+
+def install_sellersprite_test_catalog(monkeypatch, catalog) -> None:
+    monkeypatch.setattr(
+        mcp_sellersprite,
+        "_resolve_sellersprite_tool_meta",
+        lambda agent_tool_name, tool_meta: tool_meta or catalog.get(agent_tool_name) or {},
+    )
+
 SELLERSPRITE_SAMPLE_SCHEMA = [
     {
         "name": "market_research",
@@ -207,34 +228,9 @@ SELLERSPRITE_REVIEW_SCHEMA = [
 ]
 
 
-def test_build_sellersprite_tool_catalog_prefixes_tools(monkeypatch) -> None:
-    monkeypatch.delenv("SELLERSPRITE_MCP_TOOLS", raising=False)
-
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-
-    assert "sellersprite_market_research" in catalog
-    assert "sellersprite_keyword_history" in catalog
-    assert catalog["sellersprite_market_research"]["mcp_tool"] == "market_research"
-    assert catalog["sellersprite_market_research"]["source"] == "sellersprite_mcp"
-    assert catalog["sellersprite_market_research"]["auth_env_names"] == [
-        "SELLERSPRITE_MCP_SECRET_KEY",
-        "SELLERSPRITE_SECRET_KEY",
-        "SELLERSPRITE_API_KEY",
-    ]
-
-
-def test_build_sellersprite_tool_catalog_can_be_curated(monkeypatch) -> None:
-    monkeypatch.setenv("SELLERSPRITE_MCP_TOOLS", "keyword_history")
-
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-
-    assert "sellersprite_keyword_history" in catalog
-    assert "sellersprite_market_research" not in catalog
-
-
 def test_build_sellersprite_input_payload_filters_to_schema(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_market_research",
@@ -255,8 +251,8 @@ def test_build_sellersprite_input_payload_filters_to_schema(monkeypatch) -> None
 
 
 def test_build_sellersprite_input_payload_adds_keyword_array_and_country(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_keyword_history",
@@ -276,8 +272,8 @@ def test_request_month_uses_previous_complete_month() -> None:
 
 
 def test_aba_weekly_request_forces_previous_complete_week_and_removes_department_text(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_ABA_WEEKLY_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_ABA_WEEKLY_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     class FixedDate(mcp_sellersprite.dt.date):
         @classmethod
@@ -316,8 +312,8 @@ def test_aba_weekly_request_forces_previous_complete_week_and_removes_department
 
 
 def test_google_trend_request_defaults_to_monthly_web_and_preserves_explicit_scope(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_GOOGLE_TREND_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_GOOGLE_TREND_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     default_payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_google_trend",
@@ -367,8 +363,8 @@ def test_google_trend_request_defaults_to_monthly_web_and_preserves_explicit_sco
 
 
 def test_execute_aba_weekly_retries_one_earlier_week_on_date_error(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_ABA_WEEKLY_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_ABA_WEEKLY_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     requests: list[dict] = []
 
@@ -404,8 +400,8 @@ def test_execute_aba_weekly_retries_one_earlier_week_on_date_error(monkeypatch) 
 
 
 def test_build_sellersprite_input_payload_wraps_request_object(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setattr(mcp_sellersprite.dt, "date", type("FixedDate", (mcp_sellersprite.dt.date,), {
         "today": classmethod(lambda cls: cls(2026, 7, 7)),
     }))
@@ -457,8 +453,8 @@ def test_demand_trend_request_omits_month_for_rolling_series(monkeypatch) -> Non
             },
         }
     ]
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(schema)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_market_product_demand_trend",
@@ -477,8 +473,8 @@ def test_demand_trend_request_omits_month_for_rolling_series(monkeypatch) -> Non
 
 
 def test_build_sellersprite_input_payload_overrides_model_invented_market_month(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     class FixedDate(mcp_sellersprite.dt.date):
         @classmethod
@@ -512,8 +508,8 @@ def test_build_sellersprite_input_payload_overrides_model_invented_market_month(
 
 
 def test_build_sellersprite_input_payload_keeps_user_mentioned_market_month(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     class FixedDate(mcp_sellersprite.dt.date):
         @classmethod
@@ -543,8 +539,8 @@ def test_build_sellersprite_input_payload_keeps_user_mentioned_market_month(monk
 
 
 def test_build_sellersprite_input_payload_does_not_infer_departments_from_category(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_KEYWORD_RESEARCH_REQUEST_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_KEYWORD_RESEARCH_REQUEST_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     class FixedDate(mcp_sellersprite.dt.date):
         @classmethod
@@ -597,8 +593,8 @@ def test_normalize_sellersprite_result_parses_text_content_json() -> None:
 
 
 def test_build_review_input_uses_skill_sample_size_and_recent_window(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_review",
@@ -622,8 +618,8 @@ def test_build_review_input_uses_skill_sample_size_and_recent_window(monkeypatch
 
 
 def test_product_design_review_uses_balanced_sampling_defaults(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_review",
@@ -646,8 +642,8 @@ def test_product_design_review_uses_balanced_sampling_defaults(monkeypatch) -> N
 
 
 def test_competitor_review_uses_full_history_and_exhaustive_pagination_context(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     payload = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_review",
@@ -675,8 +671,8 @@ def test_competitor_review_uses_full_history_and_exhaustive_pagination_context(m
 
 
 def test_hot_product_concentration_buffers_candidates_and_excludes_mismatch(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     calls = []
 
@@ -727,8 +723,8 @@ def test_hot_product_concentration_buffers_candidates_and_excludes_mismatch(monk
 
 
 def test_product_design_concentration_uses_top_100_and_deduplicates_variation_families(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     tool_input = mcp_sellersprite.build_sellersprite_input_payload(
         "sellersprite_market_product_concentration",
@@ -773,8 +769,8 @@ def test_product_design_concentration_uses_top_100_and_deduplicates_variation_fa
 
 
 def test_execute_review_balances_stars_and_recovers_from_family_variant(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     calls = []
 
@@ -849,8 +845,8 @@ def test_execute_review_balances_stars_and_recovers_from_family_variant(monkeypa
 
 
 def test_execute_competitor_review_reads_every_available_page(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_REVIEW_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_REVIEW_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     calls: list[dict] = []
 
@@ -1047,8 +1043,8 @@ def test_resolve_sellersprite_product_node_preserves_requested_audience_during_a
 
 
 def test_asin_detail_promotes_matching_weekly_market_category_node(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_ASIN_DETAIL_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_ASIN_DETAIL_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1044990"
 
@@ -1104,8 +1100,8 @@ def test_execute_product_node_exposes_resolved_skill_params(monkeypatch) -> None
             },
         }
     ]
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(schema)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
     monkeypatch.setattr(
@@ -1159,8 +1155,8 @@ def test_execute_product_node_recovers_with_official_plural_leaf(monkeypatch) ->
             },
         }
     ]
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(schema)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
     queries = []
@@ -1221,8 +1217,8 @@ def test_execute_product_node_disambiguates_womens_sports_bras(monkeypatch) -> N
             },
         }
     ]
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(schema)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     women_node = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1044990"
     queries: list[str] = []
@@ -1287,8 +1283,8 @@ def test_execute_product_node_uses_explicit_everyday_bra_proxy(monkeypatch) -> N
             },
         }
     ]
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(schema)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(schema)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     proxy_node = "7141123011:7147440011:1040660:9522931011:14333511:1044960:2376204011"
     queries: list[str] = []
@@ -1332,8 +1328,8 @@ def test_execute_sellersprite_agent_tool_returns_needs_user_action_without_secre
     monkeypatch.delenv("SELLERSPRITE_MCP_SECRET_KEY", raising=False)
     monkeypatch.delenv("SELLERSPRITE_SECRET_KEY", raising=False)
     monkeypatch.delenv("SELLERSPRITE_API_KEY", raising=False)
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
 
     result = mcp_sellersprite.execute_sellersprite_agent_tool(
         "sellersprite_market_research",
@@ -1345,8 +1341,8 @@ def test_execute_sellersprite_agent_tool_returns_needs_user_action_without_secre
 
 
 def test_execute_sellersprite_agent_tool_blocks_missing_required_request_param(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_SAMPLE_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
 
     def fail_call(*args, **kwargs):
@@ -1365,8 +1361,8 @@ def test_execute_sellersprite_agent_tool_blocks_missing_required_request_param(m
 
 
 def test_execute_market_research_recovers_with_discriminative_core_keyword(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     requests = []
 
@@ -1404,8 +1400,8 @@ def test_execute_market_research_recovers_with_discriminative_core_keyword(monke
 
 
 def test_execute_market_research_stays_empty_when_controlled_fallback_is_empty(monkeypatch) -> None:
-    catalog = mcp_sellersprite.build_sellersprite_tool_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
-    monkeypatch.setattr(mcp_sellersprite, "get_sellersprite_tool_catalog", lambda: catalog)
+    catalog = build_sellersprite_test_catalog(SELLERSPRITE_MARKET_RESEARCH_REQUEST_SCHEMA)
+    install_sellersprite_test_catalog(monkeypatch, catalog)
     monkeypatch.setenv("SELLERSPRITE_MCP_SECRET_KEY", "test-secret")
     requests = []
 

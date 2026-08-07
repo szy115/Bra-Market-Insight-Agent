@@ -41,3 +41,8 @@ SELLERSPRITE_PRODUCT_KEYWORD_TRAFFIC_MCP_TOOL_NAMES = tuple(
     str(item["name"])
     for item in sellersprite_specs_for_batch(SELLERSPRITE_PRODUCT_KEYWORD_TRAFFIC_BATCH)
 )
+
+SELLERSPRITE_MARKET_ABA_DISTRIBUTION_MCP_TOOL_NAMES = tuple(
+    str(item["name"])
+    for item in sellersprite_specs_for_batch(SELLERSPRITE_MARKET_ABA_DISTRIBUTION_BATCH)
+)

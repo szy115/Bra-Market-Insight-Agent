@@ -102,8 +102,6 @@ from .mcp_fastmoss import (
 from .mcp_sellersprite import (
     build_sellersprite_input_payload,
     execute_sellersprite_agent_tool,
-    get_sellersprite_tool_catalog,
-    is_sellersprite_agent_tool,
 )
 from .mcp_sif import (
     build_sif_input_payload,
@@ -194,6 +192,9 @@ from .tool_capabilities.runtime_report import (
     summarize_tiktok_competitor_report_data,
     summarize_tiktok_new_product_report_data,
     summarize_trend_report_data,
+)
+from .tool_capabilities.sellersprite_market import (
+    build_sellersprite_market_aba_distribution_capabilities,
 )
 from .tool_capabilities.sellersprite_product_keyword import (
     build_sellersprite_product_keyword_traffic_capabilities,
@@ -7845,6 +7846,10 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             normalize_input=normalize_sellersprite_capability_input,
             adapter=execute_sellersprite_capability_adapter,
         ),
+        *build_sellersprite_market_aba_distribution_capabilities(
+            normalize_input=normalize_sellersprite_capability_input,
+            adapter=execute_sellersprite_capability_adapter,
+        ),
         build_runtime_report_capability(
             capability_id="build_market_report_data",
             label="MarketReportData builder",
@@ -8055,7 +8060,6 @@ def agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog.update({name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()})
     merge_legacy_capability_catalog(catalog, get_fastmoss_tool_catalog())
     merge_legacy_capability_catalog(catalog, get_sif_tool_catalog())
-    merge_legacy_capability_catalog(catalog, get_sellersprite_tool_catalog())
     return catalog
 
 
@@ -8063,7 +8067,6 @@ def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog(InvocationScope.PLANNER)
     merge_legacy_capability_catalog(catalog, get_fastmoss_tool_catalog())
     merge_legacy_capability_catalog(catalog, get_sif_tool_catalog())
-    merge_legacy_capability_catalog(catalog, get_sellersprite_tool_catalog())
     return catalog
 
 
@@ -8292,8 +8295,6 @@ def agent_tool_input_payload(
         return build_fastmoss_input_payload(tool_name, category, payload)
     if is_sif_agent_tool(tool_name):
         return build_sif_input_payload(tool_name, category, payload)
-    if is_sellersprite_agent_tool(tool_name):
-        return build_sellersprite_input_payload(tool_name, category, payload)
     return adapt_agent_params_for_tool(tool_name, category, payload)
 
 
@@ -8303,8 +8304,6 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
     if is_fastmoss_agent_tool(tool_name):
         return result
     if is_sif_agent_tool(tool_name):
-        return result
-    if is_sellersprite_agent_tool(tool_name):
         return result
     return result
 
@@ -8316,8 +8315,6 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
         return result.get("summary") or "FastMoss MCP returned structured evidence."
     if is_sif_agent_tool(tool_name):
         return "Sif MCP returned structured evidence."
-    if is_sellersprite_agent_tool(tool_name):
-        return result.get("summary") or "SellerSprite MCP returned structured evidence."
     return "Tool completed."
 
 
@@ -8336,12 +8333,6 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
     if is_sif_agent_tool(tool_name):
         return execute_sif_agent_tool(
             tool_name, tool_input, bypass_cache=bool(payload.get("bypassCache"))
-        )
-    if is_sellersprite_agent_tool(tool_name):
-        return execute_sellersprite_agent_tool(
-            tool_name,
-            tool_input,
-            bypass_cache=bool(payload.get("bypassCache")),
         )
     try:
         raise ValueError(f"Unknown agent tool: {tool_name}")
@@ -14535,7 +14526,7 @@ def build_market_report_data(payload: dict[str, Any]) -> dict[str, Any]:
     ]
     if uncovered_p0:
         data_gaps.append("P0 分析维度未完整覆盖：" + "、".join(uncovered_p0))
-    tool_catalog = {**get_sif_tool_catalog(), **get_sellersprite_tool_catalog()}
+    tool_catalog = planner_agent_tool_catalog()
     tool_descriptions = {
         name: str(metadata.get("description") or "")
         for name, metadata in tool_catalog.items()

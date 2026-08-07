@@ -1440,22 +1440,10 @@ def test_product_design_agent_publishes_persistent_markdown_report(monkeypatch, 
         "sif_market_get_keyword_history",
         "sif_market_get_keyword_competition",
     ]
-    seller_tools = [
-        "sellersprite_aba_research_weekly",
-        "sellersprite_product_node",
-        "sellersprite_market_research",
-        "sellersprite_market_product_concentration",
-        "sellersprite_review",
-    ]
     monkeypatch.setattr(
         server_module,
         "get_sif_tool_catalog",
         lambda: {name: {"label": name, "description": name, "source": "sif_mcp"} for name in sif_tools},
-    )
-    monkeypatch.setattr(
-        server_module,
-        "get_sellersprite_tool_catalog",
-        lambda: {name: {"label": name, "description": name, "source": "sellersprite_mcp"} for name in seller_tools},
     )
     monkeypatch.setattr(server_module, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(
@@ -2446,37 +2434,6 @@ def install_weekly_market_test_catalog(monkeypatch) -> None:
                 "label": "Sif keyword competition",
                 "description": "Mock Sif keyword competition tool.",
                 "source": "sif_mcp",
-            },
-        },
-    )
-    monkeypatch.setattr(
-        server_module,
-        "get_sellersprite_tool_catalog",
-        lambda: {
-            "sellersprite_market_research": {
-                "label": "SellerSprite market research",
-                "description": "Mock SellerSprite market baseline tool.",
-                "source": "sellersprite_mcp",
-            },
-            "sellersprite_aba_research_weekly": {
-                "label": "SellerSprite ABA weekly",
-                "description": "Mock SellerSprite weekly ABA keyword tool.",
-                "source": "sellersprite_mcp",
-            },
-            "sellersprite_keyword_research": {
-                "label": "SellerSprite keyword research",
-                "description": "Mock keyword demand, competition, purchase, and cost methodology.",
-                "source": "sellersprite_mcp",
-            },
-            "sellersprite_keyword_research_trends": {
-                "label": "SellerSprite keyword research trends",
-                "description": "Mock keyword search and purchase trend methodology.",
-                "source": "sellersprite_mcp",
-            },
-            "sellersprite_google_trend": {
-                "label": "SellerSprite Google trend",
-                "description": "Mock Google relative search-interest trend methodology.",
-                "source": "sellersprite_mcp",
             },
         },
     )
@@ -4302,29 +4259,7 @@ def test_weekly_market_agent_uses_llm_extracted_open_category(monkeypatch) -> No
 
 def test_weekly_market_agent_promotes_resolved_category_node_for_followup_tool(monkeypatch) -> None:
     install_weekly_market_test_catalog(monkeypatch)
-    seller_catalog = {
-        "sellersprite_market_research": {
-            "label": "SellerSprite market research",
-            "description": "Mock SellerSprite market baseline tool.",
-            "source": "sellersprite_mcp",
-        },
-        "sellersprite_aba_research_weekly": {
-            "label": "SellerSprite ABA weekly",
-            "description": "Mock SellerSprite weekly ABA keyword tool.",
-            "source": "sellersprite_mcp",
-        },
-        "sellersprite_product_node": {
-            "label": "SellerSprite product node",
-            "description": "Resolve a category node path.",
-            "source": "sellersprite_mcp",
-        },
-        "sellersprite_market_product_concentration": {
-            "label": "SellerSprite product concentration",
-            "description": "Use a resolved category node path.",
-            "source": "sellersprite_mcp",
-        },
-    }
-    monkeypatch.setattr(server_module, "get_sellersprite_tool_catalog", lambda: seller_catalog)
+    seller_catalog = server_module.planner_agent_tool_catalog()
     node_id_path = "7141123011:7147440011:1040660:9522931011:14333511:1044960:1045002"
     chat_responses = [
         native_chat_response(

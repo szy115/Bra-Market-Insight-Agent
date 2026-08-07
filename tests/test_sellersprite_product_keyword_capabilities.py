@@ -66,27 +66,6 @@ def test_sellersprite_registry_composition_does_not_touch_provider_runtime() -> 
     )
 
 
-def test_dynamic_sellersprite_catalog_cannot_override_migrated_capabilities(
-    monkeypatch,
-) -> None:
-    migrated_id = "sellersprite_keyword_research"
-    remaining_id = "sellersprite_aba_research_weekly"
-    monkeypatch.setattr(
-        server_module,
-        "get_sellersprite_tool_catalog",
-        lambda: {
-            migrated_id: {"label": "dynamic duplicate"},
-            remaining_id: {"label": "SellerSprite: aba_research_weekly"},
-        },
-    )
-
-    catalog = server_module.planner_agent_tool_catalog()
-
-    assert catalog[migrated_id]["label"] == "SellerSprite: keyword_research"
-    assert catalog[migrated_id]["result_contract"] == "sellersprite_result.v1"
-    assert catalog[remaining_id] == {"label": "SellerSprite: aba_research_weekly"}
-
-
 def test_sellersprite_review_normalizes_market_asin_paging_and_filters() -> None:
     capability = server_module.AGENT_TOOL_CAPABILITY_REGISTRY.get("sellersprite_review")
 
@@ -162,13 +141,6 @@ def test_sellersprite_success_and_bypass_execute_through_registry(monkeypatch) -
         }
 
     monkeypatch.setattr(server_module, "execute_sellersprite_agent_tool", execute)
-    monkeypatch.setattr(
-        server_module,
-        "is_sellersprite_agent_tool",
-        lambda _tool_name: (_ for _ in ()).throw(
-            AssertionError("migrated capability reached legacy family dispatch")
-        ),
-    )
 
     result = server_module.execute_agent_tool(
         "sellersprite_traffic_keyword_stat",
