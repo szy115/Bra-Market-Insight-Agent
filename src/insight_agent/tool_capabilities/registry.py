@@ -103,12 +103,20 @@ class ToolCapabilityRegistry:
     def __contains__(self, capability_id: object) -> bool:
         return capability_id in self._capabilities
 
-    def execute(self, capability_id: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def execute(
+        self,
+        capability_id: str,
+        category: str,
+        payload: dict[str, Any],
+        *,
+        runtime_adapter: Callable[[ToolInvocation], dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         capability = self.get(capability_id)
         started = self._clock()
         tool_input = capability.normalize_input(category, payload)
         try:
-            raw_result = capability.adapter(
+            adapter = runtime_adapter or capability.adapter
+            raw_result = adapter(
                 ToolInvocation(requested_category=category, tool_input=tool_input)
             )
             shaped_result = capability.shape_result(raw_result)

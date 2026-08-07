@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from html.parser import HTMLParser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -161,6 +162,20 @@ from .tool_capabilities.planner_trend import (
     TREND_MAX_IMAGES_PER_PLATFORM,
     TREND_MAX_REPORT_IMAGES,
     build_trend_platforms_capability,
+)
+from .tool_capabilities.runtime_approval import (
+    APPROVAL_JOIN_INPUT_SCHEMA,
+    ARTIFACT_SYNTHESIS_INPUT_SCHEMA,
+    HTML_REVISION_INPUT_SCHEMA,
+    REPORT_RED_TEAM_INPUT_SCHEMA,
+    REPORT_REVIEW_INPUT_SCHEMA,
+    build_runtime_approval_capability,
+    join_report_approval_result,
+    summarize_approval_join,
+    summarize_artifact,
+    summarize_review,
+    summarize_revision,
+    synthesize_artifact_result,
 )
 from .tool_capabilities.runtime_report import (
     build_runtime_report_capability,
@@ -7870,6 +7885,51 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             output_kind="markdown_document",
             shape_error=markdown_error_data,
         ),
+        build_runtime_approval_capability(
+            capability_id="review_html_report",
+            label="报告事实审批 Agent",
+            description="Review bounded report data for factual and evidence consistency.",
+            adapter=lambda tool_input: review_html_report_node(tool_input),
+            summarize=summarize_review,
+            output_kind="factual_review",
+            input_schema=REPORT_REVIEW_INPUT_SCHEMA,
+        ),
+        build_runtime_approval_capability(
+            capability_id="red_team_html_report",
+            label="报告红队 Agent",
+            description="Challenge report strategy claims without source-data tool access.",
+            adapter=lambda tool_input: red_team_html_report_node(tool_input),
+            summarize=summarize_review,
+            output_kind="strategy_red_team_review",
+            input_schema=REPORT_RED_TEAM_INPUT_SCHEMA,
+        ),
+        build_runtime_approval_capability(
+            capability_id="join_report_approval",
+            label="报告审批汇合",
+            description="Join the independent factual and red-team approval decisions.",
+            adapter=join_report_approval_result,
+            summarize=summarize_approval_join,
+            output_kind="approval_decision",
+            input_schema=APPROVAL_JOIN_INPUT_SCHEMA,
+        ),
+        build_runtime_approval_capability(
+            capability_id="revise_html_report",
+            label="HTML 渲染 Agent",
+            description="Revise the current HTML from bounded approval feedback.",
+            adapter=lambda tool_input: revise_html_report_node(tool_input),
+            summarize=summarize_revision,
+            output_kind="html_revision",
+            input_schema=HTML_REVISION_INPUT_SCHEMA,
+        ),
+        build_runtime_approval_capability(
+            capability_id="synthesize_artifact",
+            label="生成 Artifact",
+            description="Finalize terminal Artifact publication metadata and output files.",
+            adapter=synthesize_artifact_result,
+            summarize=summarize_artifact,
+            output_kind="artifact_publication",
+            input_schema=ARTIFACT_SYNTHESIS_INPUT_SCHEMA,
+        ),
     ]
 )
 
@@ -7889,19 +7949,35 @@ def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
 
-def execute_runtime_report_capability(
-    capability_id: str, payload: dict[str, Any]
+def execute_runtime_capability(
+    capability_id: str,
+    payload: dict[str, Any],
+    runtime_adapter: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     capability = AGENT_TOOL_CAPABILITY_REGISTRY.get(capability_id)
     if capability.invocation_scope != InvocationScope.RUNTIME_INTERNAL:
         raise ValueError(f"Tool Capability is not runtime-internal: {capability_id}")
-    result = AGENT_TOOL_CAPABILITY_REGISTRY.execute(capability_id, "", payload)
+    adapter_override = (
+        (lambda invocation: runtime_adapter(invocation.tool_input))
+        if runtime_adapter is not None
+        else None
+    )
+    result = AGENT_TOOL_CAPABILITY_REGISTRY.execute(
+        capability_id,
+        "",
+        payload,
+        runtime_adapter=adapter_override,
+    )
     if result.get("status") != "ok":
         raise RuntimeError(str(result.get("summary") or f"{capability_id} failed"))
     data = result.get("data")
     if not isinstance(data, dict):
         raise RuntimeError(f"{capability_id} returned a non-mapping result")
     return data
+
+
+execute_runtime_report_capability = execute_runtime_capability
+
 
 def markdown_section(markdown_text: str, heading: str) -> str:
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
@@ -16295,19 +16371,29 @@ def run_agent(payload: dict[str, Any], emit_event: Any | None = None) -> dict[st
                 tool_catalog=agent_tool_catalog,
                 cache_dir=lambda: CACHE_DIR,
                 render_html_report=render_html_report_tool,
-                analyze_market_report=lambda payload: execute_runtime_report_capability(
+                analyze_market_report=lambda payload: execute_runtime_capability(
                     "analyze_market_report", payload
                 ),
-                synthesize_report_insights=lambda payload: execute_runtime_report_capability(
+                synthesize_report_insights=lambda payload: execute_runtime_capability(
                     "synthesize_report_insights", payload
                 ),
-                render_report_charts=lambda payload: execute_runtime_report_capability(
+                render_report_charts=lambda payload: execute_runtime_capability(
                     "render_report_charts", payload
                 ),
                 available_report_metrics=available_metric_catalog_for_skill,
-                review_html_report=review_html_report_node,
-                red_team_html_report=red_team_html_report_node,
-                revise_html_report=revise_html_report_node,
+                review_html_report=lambda payload: execute_runtime_capability(
+                    "review_html_report", payload
+                ),
+                red_team_html_report=lambda payload: execute_runtime_capability(
+                    "red_team_html_report", payload
+                ),
+                revise_html_report=lambda payload: execute_runtime_capability(
+                    "revise_html_report", payload
+                ),
+                join_report_approval=lambda payload: execute_runtime_capability(
+                    "join_report_approval", payload
+                ),
+                execute_runtime_capability=execute_runtime_capability,
             )
         )
         return runtime.run(payload, emit_event=emit_event)

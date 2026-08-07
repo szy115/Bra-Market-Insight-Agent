@@ -14,7 +14,7 @@ def test_report_preparation_capabilities_are_runtime_internal_only() -> None:
     runtime_catalog = registry.catalog(InvocationScope.RUNTIME_INTERNAL)
     planner_catalog = server_module.planner_agent_tool_catalog()
 
-    assert set(runtime_catalog) == RUNTIME_REPORT_CAPABILITY_IDS
+    assert RUNTIME_REPORT_CAPABILITY_IDS.issubset(runtime_catalog)
     assert RUNTIME_REPORT_CAPABILITY_IDS.isdisjoint(planner_catalog)
     for capability_id in RUNTIME_REPORT_CAPABILITY_IDS:
         metadata = runtime_catalog[capability_id]
@@ -101,7 +101,7 @@ def test_run_agent_internal_nodes_execute_through_runtime_registry(monkeypatch) 
                 "charts": self.deps.render_report_charts({"step": "charts"}),
             }
 
-    monkeypatch.setattr(server_module, "execute_runtime_report_capability", execute)
+    monkeypatch.setattr(server_module, "execute_runtime_capability", execute)
     monkeypatch.setattr(runtime_module, "LangGraphAgentRuntime", CapturingRuntime)
 
     result = server_module.run_agent({"prompt": "fixture"})

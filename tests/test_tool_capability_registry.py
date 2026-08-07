@@ -125,6 +125,32 @@ def test_registry_executes_a_capability_through_the_common_result_envelope() -> 
     }
 
 
+def test_registry_accepts_a_runtime_bound_adapter_for_stateful_operations() -> None:
+    static_calls: list[dict] = []
+    runtime_calls: list[dict] = []
+    registry = ToolCapabilityRegistry(
+        [
+            sample_capability(
+                adapter=lambda invocation: static_calls.append(invocation.tool_input)
+                or {"value": "static"}
+            )
+        ]
+    )
+
+    result = registry.execute(
+        "sample_tool",
+        "fixture",
+        {"limit": 3},
+        runtime_adapter=lambda invocation: runtime_calls.append(invocation.tool_input)
+        or {"value": "runtime"},
+    )
+
+    assert static_calls == []
+    assert runtime_calls == [{"category": "fixture", "limit": 3}]
+    assert result["status"] == "ok"
+    assert result["data"] == {"value": "runtime"}
+
+
 def test_registry_reports_a_result_contract_mismatch() -> None:
     registry = ToolCapabilityRegistry(
         [sample_capability(shape_result=lambda _raw: {"value": 42})]

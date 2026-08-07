@@ -37,6 +37,10 @@ from .market_product_identity import (
     DEFAULT_ASIN_DETAIL_BUDGET,
     find_product_identity_enrichment_candidates,
 )
+from .tool_capabilities.runtime_approval import (
+    artifact_publication_result,
+    join_report_approval_result,
+)
 
 SUCCESS_TOOL_STATUSES = {"ok", "partial_ok"}
 CONVERSATION_CONTEXT_MAX_CHARS = 36_000
@@ -238,6 +242,15 @@ class AgentRuntimeDeps:
     review_html_report: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     red_team_html_report: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     revise_html_report: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    join_report_approval: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    execute_runtime_capability: Callable[
+        [
+            str,
+            dict[str, Any],
+            Callable[[dict[str, Any]], dict[str, Any]] | None,
+        ],
+        dict[str, Any],
+    ] | None = None
 
 
 class LangGraphAgentRuntime:
@@ -2208,17 +2221,23 @@ class LangGraphAgentRuntime:
     ) -> AgentRuntimeState:
         state["report_reviews"] = [*(state.get("report_reviews") or []), review]
         state["report_red_teams"] = [*(state.get("report_red_teams") or []), red_team]
-        factual_approved = bool(review.get("approved"))
-        red_team_approved = bool(red_team.get("approved"))
-        both_approved = factual_approved and red_team_approved
-        failed_labels = [
-            label
-            for label, approved in (
-                ("事实审批", factual_approved),
-                ("红队审批", red_team_approved),
+        if self.deps.join_report_approval:
+            decision = self.deps.join_report_approval(
+                {
+                    "review_round": review_round,
+                    "factual_review": review,
+                    "red_team_review": red_team,
+                }
             )
-            if not approved
-        ]
+        else:
+            decision = join_report_approval_result(
+                {
+                    "review_round": review_round,
+                    "factual_review": review,
+                    "red_team_review": red_team,
+                }
+            )
+        both_approved = bool(decision.get("both_approved"))
         approval: dict[str, Any] = {}
         if both_approved:
             approval = self._finalize_html_report(
@@ -2227,12 +2246,13 @@ class LangGraphAgentRuntime:
                 approved=True,
                 published_without_approval=False,
             )
-            outcome = "parallel_approval_passed"
-            summary = f"第 {review_round} 轮事实审批与红队审批均通过。"
         else:
             state["report_approval_phase"] = "revision"
-            outcome = "revision_requested"
-            summary = f"第 {review_round} 轮并行审批完成，{'、'.join(failed_labels)}要求返工。"
+        outcome = str(
+            decision.get("outcome")
+            or ("parallel_approval_passed" if both_approved else "revision_requested")
+        )
+        summary = str(decision.get("summary") or "并行审批已汇合。")
         self._record_internal_tool_result(
             state,
             name="join_report_approval",
@@ -2443,6 +2463,35 @@ class LangGraphAgentRuntime:
         return state
 
     def _synthesize_artifact_node(self, state: AgentRuntimeState) -> AgentRuntimeState:
+        approval_status = (
+            (state.get("planner") or {}).get("report_approval", {}).get("status")
+        )
+        if self.deps.execute_runtime_capability:
+            operation_state: AgentRuntimeState | None = None
+
+            def execute_operation(_payload: dict[str, Any]) -> dict[str, Any]:
+                nonlocal operation_state
+                operation_state = self._synthesize_artifact_operation(state)
+                response = operation_state.get("response")
+                return artifact_publication_result(
+                    response if isinstance(response, dict) else {}
+                )
+
+            self.deps.execute_runtime_capability(
+                "synthesize_artifact",
+                {
+                    "run_id": str(state.get("run_id") or ""),
+                    "approval_status": approval_status,
+                    "use_llm": bool(state.get("use_llm")),
+                },
+                execute_operation,
+            )
+            if operation_state is None:
+                raise RuntimeError("Artifact synthesis runtime operation did not execute")
+            return operation_state
+        return self._synthesize_artifact_operation(state)
+
+    def _synthesize_artifact_operation(self, state: AgentRuntimeState) -> AgentRuntimeState:
         state["report_pipeline_phase"] = ""
         state["report_approval_phase"] = "complete"
         evidence_gate = self._check_evidence_gate_before_synthesis(state)
@@ -2488,21 +2537,17 @@ class LangGraphAgentRuntime:
         )
         result = self._synthesize(state, llm_enabled=bool(state.get("use_llm")))
         response = result.get("response")
+        publication = artifact_publication_result(
+            response if isinstance(response, dict) else {}
+        )
         output_files = (
-            response.get("output_files")
-            if isinstance(response, dict) and isinstance(response.get("output_files"), list)
+            publication.get("output_files")
+            if isinstance(publication.get("output_files"), list)
             else []
         )
-        published = bool(
-            isinstance(response, dict)
-            and response.get("response_type") == "artifact"
-            and any(
-                isinstance(item, dict) and item.get("path")
-                for item in output_files
-            )
-        )
+        published = bool(publication.get("published"))
         synthesize_meta = {
-            "status": "published" if published else "error",
+            "status": str(publication.get("status") or ("published" if published else "error")),
             "orchestrator": "langgraph_node",
             "graph_node": "synthesize_artifact",
         }
