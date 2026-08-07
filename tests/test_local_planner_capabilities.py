@@ -19,7 +19,9 @@ LOCAL_PLANNER_CAPABILITY_IDS = {
 def test_all_local_planner_capabilities_have_one_registry_catalog_source() -> None:
     registry = server_module.AGENT_TOOL_CAPABILITY_REGISTRY
 
-    assert set(registry.catalog(InvocationScope.PLANNER)) == LOCAL_PLANNER_CAPABILITY_IDS
+    assert LOCAL_PLANNER_CAPABILITY_IDS.issubset(
+        registry.catalog(InvocationScope.PLANNER)
+    )
     assert LOCAL_PLANNER_CAPABILITY_IDS.isdisjoint(server_module.AGENT_TOOL_CATALOG)
     for capability_id in LOCAL_PLANNER_CAPABILITY_IDS:
         metadata = server_module.agent_tool_catalog()[capability_id]

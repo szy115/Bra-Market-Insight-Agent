@@ -1,6 +1,7 @@
 from .registry import (
     InvalidToolCapability,
     InvocationScope,
+    PreservedToolResult,
     RecoveryTraits,
     ResultContract,
     ToolCapability,
@@ -11,6 +12,7 @@ from .registry import (
 __all__ = [
     "InvalidToolCapability",
     "InvocationScope",
+    "PreservedToolResult",
     "RecoveryTraits",
     "ResultContract",
     "ToolCapability",

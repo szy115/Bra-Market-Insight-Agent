@@ -534,7 +534,11 @@ def native_chat_response(tool_call: dict[str, Any]) -> dict[str, Any]:
 
 
 def passthrough_fastmoss_input(
-    _tool_name: str, _category: str, payload: dict[str, Any]
+    _tool_name: str,
+    _category: str,
+    payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         key: copy.deepcopy(payload[key])

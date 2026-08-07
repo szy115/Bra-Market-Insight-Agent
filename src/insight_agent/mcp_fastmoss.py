@@ -330,6 +330,7 @@ def build_fastmoss_tool_catalog(schema_tools: list[dict[str, Any]]) -> dict[str,
             "source": "fastmoss_mcp",
             "mcp_tool": mcp_name,
             "auth_env_names": FASTMOSS_AUTH_ENV_NAMES,
+            "checkpoint_reuse": True,
         }
     return catalog
 
@@ -350,6 +351,13 @@ def get_fastmoss_tool_catalog() -> dict[str, dict[str, Any]]:
     enabled = ",".join(sorted(fastmoss_enabled_tool_names()))
     fingerprint = hashlib.sha256(f"{endpoint}\0{api_key}\0{enabled}".encode()).hexdigest()
     return _get_fastmoss_tool_catalog_for_config(fingerprint)
+
+
+def _resolve_fastmoss_tool_meta(
+    agent_tool_name: str,
+    tool_meta: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return tool_meta or get_fastmoss_tool_catalog().get(agent_tool_name) or {}
 
 
 def _payload_value(payload: dict[str, Any], key: str) -> Any:
@@ -443,8 +451,10 @@ def build_fastmoss_input_payload(
     agent_tool_name: str,
     category: str,
     payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    meta = get_fastmoss_tool_catalog().get(agent_tool_name) or {}
+    meta = _resolve_fastmoss_tool_meta(agent_tool_name, tool_meta)
     schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     allowed_keys = set(properties)
@@ -645,9 +655,11 @@ def summarize_fastmoss_data(agent_tool_name: str, data: dict[str, Any]) -> str:
 def _execute_fastmoss_agent_tool_uncached(
     agent_tool_name: str,
     input_payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.time()
-    meta = get_fastmoss_tool_catalog().get(agent_tool_name) or {}
+    meta = _resolve_fastmoss_tool_meta(agent_tool_name, tool_meta)
     label = str(meta.get("label") or agent_tool_name)
     try:
         input_error = _fastmoss_region_input_error(meta, input_payload)
@@ -701,12 +713,17 @@ def execute_fastmoss_agent_tool(
     input_payload: dict[str, Any],
     *,
     bypass_cache: bool = False,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = execute_with_mcp_result_cache(
         "fastmoss",
         agent_tool_name,
         input_payload,
-        lambda: _execute_fastmoss_agent_tool_uncached(agent_tool_name, input_payload),
+        lambda: _execute_fastmoss_agent_tool_uncached(
+            agent_tool_name,
+            input_payload,
+            tool_meta=tool_meta,
+        ),
         bypass_cache=bypass_cache,
     )
     data = result.get("data") if isinstance(result.get("data"), dict) else {}

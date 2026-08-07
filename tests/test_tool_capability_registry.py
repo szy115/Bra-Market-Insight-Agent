@@ -6,6 +6,7 @@ from insight_agent import server as server_module
 from insight_agent.tool_capabilities import (
     InvalidToolCapability,
     InvocationScope,
+    PreservedToolResult,
     RecoveryTraits,
     ResultContract,
     ToolCapability,
@@ -149,6 +150,40 @@ def test_registry_accepts_a_runtime_bound_adapter_for_stateful_operations() -> N
     assert runtime_calls == [{"category": "fixture", "limit": 3}]
     assert result["status"] == "ok"
     assert result["data"] == {"value": "runtime"}
+
+
+def test_registry_preserves_an_adapter_result_envelope() -> None:
+    registry = ToolCapabilityRegistry(
+        [
+            sample_capability(
+                adapter=lambda invocation: PreservedToolResult(
+                    {
+                        "status": "needs_user_action",
+                        "summary": "Configure provider credentials.",
+                        "duration_ms": 41,
+                        "input": invocation.tool_input,
+                        "data": {"value": "fixture"},
+                        "cache": {"hit": False},
+                    }
+                ),
+                shape_result=lambda result: dict(result["data"]),
+                summarize=lambda result: str(result["summary"]),
+            )
+        ]
+    )
+
+    result = registry.execute("sample_tool", "fixture", {"limit": 3})
+
+    assert result == {
+        "name": "sample_tool",
+        "label": "Sample tool",
+        "status": "needs_user_action",
+        "summary": "Configure provider credentials.",
+        "duration_ms": 41,
+        "input": {"category": "fixture", "limit": 3},
+        "data": {"value": "fixture"},
+        "cache": {"hit": False},
+    }
 
 
 def test_registry_reports_a_result_contract_mismatch() -> None:

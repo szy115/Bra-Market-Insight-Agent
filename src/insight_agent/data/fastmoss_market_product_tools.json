@@ -1,0 +1,1024 @@
+[
+  {
+    "name": "search_category_by_words",
+    "description": "Use when the user knows a product/category term but does not have the category_id yet. Returns matched TikTok product category IDs and Chinese category paths.",
+    "input_schema": {
+      "properties": {
+        "max_total_results": {
+          "default": 15,
+          "description": "Max deduplicated candidates. Default 15.",
+          "type": "integer"
+        },
+        "query": {
+          "description": "Product or category terms, string or array; map natural-language category clues into category_id.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "string"
+          ]
+        },
+        "top_k": {
+          "default": 5,
+          "description": "Candidate categories per keyword. Default 5.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "market_category_ranking",
+    "description": "Use when the user wants category ranking, growth, or concentration. Returns ranking_scope and ranked_categories; no category_id means level-1 category ranking, and a level-1 category_id means level-2 subcategory ranking.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Parent category ID. Only level-1 category IDs are supported; level-2 or level-3 category IDs are not supported. Omit it or set -100 for level-1 ranking, or pass a level-1 category for its level-2 ranking.",
+              "type": "integer"
+            },
+            "date_type": {
+              "description": "Ranking period: day, week, or month; MCN agency rankings support only week/month.",
+              "type": "string"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "lang": {
+          "description": "Language. Default EN_US, optional ZH_CN.",
+          "type": "string"
+        },
+        "orderby": {
+          "description": "Sort options. Only the first sort rule takes effect. Use ranking fields such as category_units_sold.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "category_units_sold",
+                  "category_units_sold_yoy_percent",
+                  "category_gmv_yoy_percent",
+                  "top_50_products_units_sold_share_percent",
+                  "top_10_shops_units_sold_share_percent"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "market_category_analysis",
+    "description": "Use when the user wants category size, growth, competition, or opportunity. analysis_type basic_metrics returns category, scale_metrics, growth_metrics, concentration_metrics; sales_trends returns trend_series; price_distribution returns sales_price_distribution with left-open right-closed price bands and sub_category_units_sold_total.",
+    "input_schema": {
+      "properties": {
+        "analysis_type": {
+          "description": "Analysis type parameter.",
+          "enum": [
+            "basic_metrics",
+            "sales_trends",
+            "price_distribution"
+          ],
+          "type": "string"
+        },
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Product category ID. Only level-1 category IDs are supported; level-2 or level-3 category IDs are not supported. Default -100 means all categories.",
+              "type": "integer"
+            },
+            "date_type": {
+              "description": "Ranking period: day, week, or month; MCN agency rankings support only week/month.",
+              "type": "string"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "lang": {
+          "description": "Language. Default EN_US, optional ZH_CN.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filter",
+        "analysis_type"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "market_category_author_sales_matrix",
+    "description": "Use when the user wants category sales contribution by creator follower_tier. Returns creator_count, category_gmv, gmv_share_percent, units_sold, and avg_creator_gmv.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            },
+            "sold_type": {
+              "description": "Sold type parameter.",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "lang": {
+          "description": "Language. Default EN_US, optional ZH_CN.",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "product_search",
+    "description": "Use when the user has no product_id and provides a name, keyword, price band, category, bestseller clue, or new-product clue. Returns product, sales_summary, distribution_summary, and shop.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_path": {
+              "description": "Category path from level 1 to level 3, e.g. [100, 200, 300].",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "commission_rate_range": {
+              "description": "Commission-rate range: {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "creator_count_range": {
+              "description": "Creator count range range in the form {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "day28_gmv_range": {
+              "description": "Last-28-day GMV range; maps to day28_sale_amount.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "day28_units_sold_range": {
+              "description": "Last-28-day units-sold range; maps to day28_sold_count.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "day7_gmv_range": {
+              "description": "Last-7-day GMV range; maps to day7_sale_amount.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "day7_units_sold_range": {
+              "description": "Last-7-day units-sold range; maps to day7_sold_count.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "floor_price_range": {
+              "description": "Product price range: {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "is_cross_border": {
+              "description": "Whether it is cross-border.",
+              "type": "boolean"
+            },
+            "is_free_shipping": {
+              "description": "Is free shipping parameter.",
+              "type": "boolean"
+            },
+            "is_fully_managed": {
+              "description": "Whether it is fully managed.",
+              "type": "boolean"
+            },
+            "is_local_warehouse": {
+              "description": "Is local warehouse parameter.",
+              "type": "boolean"
+            },
+            "is_new_listed": {
+              "description": "Is new listed parameter.",
+              "type": "boolean"
+            },
+            "is_sshop": {
+              "description": "Whether it is fully managed.",
+              "type": "boolean"
+            },
+            "is_top_selling": {
+              "description": "Is top selling parameter.",
+              "type": "boolean"
+            },
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            },
+            "shop_type": {
+              "description": "Shop type: 1 local, 2 cross-border; deprecated.",
+              "type": "integer"
+            },
+            "total_gmv_range": {
+              "description": "Total GMV range; maps to sale_amount.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "units_sold_range": {
+              "description": "Units sold range range in the form {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "keywords": {
+          "description": "Search keywords: product, shop, creator, video, live, or category terms.",
+          "type": "string"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "day7_units_sold",
+                  "day7_gmv",
+                  "day28_units_sold",
+                  "day28_gmv",
+                  "commission_rate",
+                  "total_units_sold",
+                  "total_gmv",
+                  "creator_count"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "product_rank_top_selling",
+    "description": "Use when the user wants bestsellers or top products. Returns period_gmv/units_sold, total_gmv/units_sold, and units_sold_growth_rate_percent.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "date_type": {
+              "description": "Ranking period: day, week, or month; MCN agency rankings support only week/month.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "date_type",
+            "date_value"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "period_units_sold",
+                  "period_gmv",
+                  "total_units_sold",
+                  "total_gmv",
+                  "units_sold_growth_rate_percent"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "product_rank_new_listed",
+    "description": "Use when the user wants recently listed hot products. Returns FastMoss new-product ranking, first_3d_gmv/units_sold, and lifetime_gmv/total_units_sold; new means listed within 30 days.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "category_l1_id": {
+              "description": "Level-1 product category ID.",
+              "type": "integer"
+            },
+            "category_l2_id": {
+              "description": "Level-2 product category ID.",
+              "type": "integer"
+            },
+            "category_l3_id": {
+              "description": "Level-3 product category ID.",
+              "type": "integer"
+            },
+            "is_cross_border": {
+              "description": "Whether it is cross-border.",
+              "type": "boolean"
+            },
+            "is_fully_managed": {
+              "description": "Whether it is fully managed.",
+              "type": "boolean"
+            },
+            "listing_end_date": {
+              "description": "Product listing end date, YYYY-MM-DD. The latest allowed date is 4 days ago; do not use today or the most recent 1-3 days.",
+              "type": "string"
+            },
+            "listing_start_date": {
+              "description": "Product listing start date, YYYY-MM-DD. The latest allowed date is 4 days ago; do not use today or the most recent 1-3 days.",
+              "type": "string"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "listing_start_date",
+            "listing_end_date"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "day3_units_sold",
+                  "day3_gmv",
+                  "total_units_sold",
+                  "lifetime_gmv"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "product_overview",
+    "description": "Use when the user wants product channel attribution, lifecycle/momentum, or ad-vs-organic structure. Returns period_summary, daily_trend, ads_distribution, channel_distribution, and content_distribution.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "end_date": {
+              "description": "End date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "start_date": {
+              "description": "Start date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_sales_trend",
+    "description": "Use when the user wants a product GMV/units trend or traction check. Returns period_summary and daily_trend with period_gmv, period_units_sold, daily_gmv, and daily_units_sold.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id",
+            "time_range_days"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "product_creator_analysis",
+    "description": "Use when the user wants who sells a product or the creator structure. Returns creator_summary with follower_tier_distribution and creator_category_distribution, plus linked_creators with creator, product_contribution, creator_cumulative_performance, and audience_summary.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "product_gmv",
+                  "product_units_sold",
+                  "creator_total_like_count",
+                  "follower_count"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_video_list",
+    "description": "Use when the user wants videos selling a product, high-play videos, or paid-vs-organic video traffic. Filter with is_ad; returns GMV, plays, video_desc, and fastmoss_url.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "create_time_range": {
+              "description": "Creation/publish time range: {\"min\": unix_timestamp, \"max\": unix_timestamp}.",
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "is_ad": {
+              "description": "Whether it uses ad traffic.",
+              "type": "boolean"
+            },
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "gmv",
+                  "units_sold",
+                  "digg_count",
+                  "play_count",
+                  "share_count"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_detail_info",
+    "description": "Use when the user wants product basics, shop, price, rating, logistics, images, or ad status. Returns product and shop; detail_url points to TikTok.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_sku",
+    "description": "Use when the user wants SKU sales share, inventory share, or SKU health. Returns SKU-level sales and inventory shares.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_investment",
+    "description": "Use when the user asks about product ads, spend, ROAS, or daily paid-traffic changes. Returns ad_performance_summary and daily_ad_performance_trend; ad_gmv is ad-attributed.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "product_review_list",
+    "description": "Use when the user wants product reviews or buyer feedback. Returns review list and count; supports time_range_days and rating/create_time/review_id sorting.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "product_id": {
+              "description": "Product ID; use product_search first if only a product name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "product_id"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "rating",
+                  "create_time",
+                  "review_id"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "video_script_info",
+    "description": "Use when the user wants video subtitles or line-by-line spoken copy. Returns start/end time and text; empty subtitles can fall back to video_desc.",
+    "input_schema": {
+      "properties": {
+        "video_id": {
+          "description": "Video ID; use video_search first if only a title/creator is known.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "video_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "fastmoss_detail_url_examples",
+    "description": "Use when the AI needs FastMoss detail-page links. Takes no arguments and returns product, creator, shop, video, and live URL templates.",
+    "input_schema": {
+      "properties": {},
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "search_fastmoss_documents",
+    "description": "Use when the user asks about FastMoss rules, features, terms, or operations rather than real-time business data. Returns knowledge snippets and documents.",
+    "input_schema": {
+      "properties": {
+        "query": {
+          "description": "Feature terms, terminology, rule questions, or operation questions; string or array.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "string"
+          ]
+        },
+        "source_file": {
+          "description": "Optional source file; use it to narrow the search scope and reduce noise.",
+          "type": "string"
+        },
+        "top_k": {
+          "default": 5,
+          "description": "Knowledge snippets per query. Default 5.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  }
+]

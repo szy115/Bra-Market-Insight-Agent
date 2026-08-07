@@ -557,16 +557,18 @@ def test_server_forwards_bypass_cache_to_mcp_adapter(monkeypatch) -> None:
 def test_server_forwards_bypass_cache_to_fastmoss_adapter(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_execute(tool_name, tool_input, *, bypass_cache=False):
+    def fake_execute(tool_name, tool_input, *, bypass_cache=False, tool_meta=None):
         captured.update({"tool_name": tool_name, "tool_input": tool_input, "bypass_cache": bypass_cache})
-        return {"name": tool_name, "status": "ok", "data": {}}
+        return {
+            "name": tool_name,
+            "label": tool_meta["label"],
+            "status": "ok",
+            "summary": "FastMoss completed.",
+            "duration_ms": 1,
+            "input": tool_input,
+            "data": {},
+        }
 
-    monkeypatch.setattr(server, "agent_tool_catalog", lambda: {})
-    monkeypatch.setattr(
-        server,
-        "agent_tool_input_payload",
-        lambda _name, _category, _payload: {"filter": {"region": "US"}},
-    )
     monkeypatch.setattr(server, "execute_fastmoss_agent_tool", fake_execute)
 
     server.execute_agent_tool(

@@ -154,6 +154,7 @@ from .settings import (
     update_web_search_settings,
 )
 from .tool_capabilities import InvocationScope, ToolCapabilityRegistry
+from .tool_capabilities.fastmoss_market import build_fastmoss_market_product_capabilities
 from .tool_capabilities.local import build_reddit_voc_capability
 from .tool_capabilities.planner_amazon import build_amazon_shelf_capability
 from .tool_capabilities.planner_media import build_media_rankings_capability
@@ -7737,6 +7738,20 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             video_text=tiktok_video_text,
             compact_text=compact_text,
         ),
+        *build_fastmoss_market_product_capabilities(
+            normalize_input=lambda capability_id, category, payload, tool_meta: build_fastmoss_input_payload(
+                capability_id,
+                category,
+                payload,
+                tool_meta=tool_meta,
+            ),
+            adapter=lambda capability_id, tool_input, bypass_cache, tool_meta: execute_fastmoss_agent_tool(
+                capability_id,
+                tool_input,
+                bypass_cache=bypass_cache,
+                tool_meta=tool_meta,
+            ),
+        ),
         build_runtime_report_capability(
             capability_id="build_market_report_data",
             label="MarketReportData builder",
@@ -7937,17 +7952,31 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
 def agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog()
     catalog.update({name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()})
-    catalog.update(get_fastmoss_tool_catalog())
+    catalog.update(
+        {
+            name: meta
+            for name, meta in get_fastmoss_tool_catalog().items()
+            if name not in catalog
+        }
+    )
     catalog.update(get_sif_tool_catalog())
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
 
+
 def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog(InvocationScope.PLANNER)
-    catalog.update(get_fastmoss_tool_catalog())
+    catalog.update(
+        {
+            name: meta
+            for name, meta in get_fastmoss_tool_catalog().items()
+            if name not in catalog
+        }
+    )
     catalog.update(get_sif_tool_catalog())
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
+
 
 def execute_runtime_capability(
     capability_id: str,

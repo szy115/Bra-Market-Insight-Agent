@@ -31,6 +31,14 @@ class ResultContract:
 class ToolInvocation:
     requested_category: str
     tool_input: dict[str, Any]
+    request_payload: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PreservedToolResult:
+    """Adapter result whose existing public envelope must survive registry migration."""
+
+    envelope: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -41,7 +49,7 @@ class ToolCapability:
     input_schema: Mapping[str, Any]
     invocation_scope: InvocationScope
     normalize_input: Callable[[str, dict[str, Any]], dict[str, Any]]
-    adapter: Callable[[ToolInvocation], dict[str, Any]]
+    adapter: Callable[[ToolInvocation], dict[str, Any] | PreservedToolResult]
     shape_result: Callable[[dict[str, Any]], dict[str, Any]]
     shape_error: Callable[[Exception], dict[str, Any]]
     summarize: Callable[[dict[str, Any]], str]
@@ -116,9 +124,21 @@ class ToolCapabilityRegistry:
         tool_input = capability.normalize_input(category, payload)
         try:
             adapter = runtime_adapter or capability.adapter
-            raw_result = adapter(
-                ToolInvocation(requested_category=category, tool_input=tool_input)
+            adapter_result = adapter(
+                ToolInvocation(
+                    requested_category=category,
+                    tool_input=tool_input,
+                    request_payload=MappingProxyType(dict(payload)),
+                )
             )
+            if isinstance(adapter_result, PreservedToolResult):
+                return self._preserved_result_envelope(
+                    capability,
+                    started,
+                    tool_input,
+                    adapter_result.envelope,
+                )
+            raw_result = adapter_result
             shaped_result = capability.shape_result(raw_result)
             try:
                 capability.result_contract.validate(shaped_result)
@@ -162,6 +182,47 @@ class ToolCapabilityRegistry:
             "duration_ms": int((self._clock() - started) * 1000),
             "input": tool_input,
             "data": data,
+        }
+
+    def _preserved_result_envelope(
+        self,
+        capability: ToolCapability,
+        started: float,
+        tool_input: dict[str, Any],
+        source: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        raw_result = dict(source)
+        shaped_result = capability.shape_result(raw_result)
+        try:
+            capability.result_contract.validate(shaped_result)
+        except Exception as exc:  # noqa: BLE001 - contract validators explain mismatches
+            raise ValueError(
+                f"{capability.result_contract.contract_id} contract violation: {exc}"
+            ) from exc
+        duration = raw_result.get("duration_ms")
+        duration_ms = (
+            int(duration)
+            if isinstance(duration, int | float)
+            else int((self._clock() - started) * 1000)
+        )
+        standard_fields = {
+            "name",
+            "label",
+            "status",
+            "summary",
+            "duration_ms",
+            "input",
+            "data",
+        }
+        return {
+            "name": capability.capability_id,
+            "label": capability.label,
+            "status": str(raw_result.get("status") or "ok"),
+            "summary": capability.summarize(raw_result),
+            "duration_ms": duration_ms,
+            "input": tool_input,
+            "data": shaped_result,
+            **{key: value for key, value in raw_result.items() if key not in standard_fields},
         }
 
     def catalog(self, invocation_scope: InvocationScope | None = None) -> dict[str, dict[str, Any]]:

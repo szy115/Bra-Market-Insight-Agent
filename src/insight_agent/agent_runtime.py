@@ -4051,7 +4051,10 @@ class LangGraphAgentRuntime:
                     "Collect or correct the missing evidence before compiling again.",
                     outcome="unchanged_builder_retry_blocked",
                 )
-        if state.get("checkpoint_source_run_id") and tool_name.startswith("mcp__fastmoss__"):
+        capability_metadata = self.deps.tool_catalog().get(tool_name) or {}
+        if state.get("checkpoint_source_run_id") and bool(
+            capability_metadata.get("checkpoint_reuse")
+        ):
             canonical_input = json.dumps(
                 tool_input, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
             )
