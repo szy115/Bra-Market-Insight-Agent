@@ -533,12 +533,17 @@ def test_failed_mcp_result_is_not_cached(monkeypatch) -> None:
 def test_server_forwards_bypass_cache_to_mcp_adapter(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_execute(tool_name, tool_input, *, bypass_cache=False):
-        captured.update({"tool_name": tool_name, "tool_input": tool_input, "bypass_cache": bypass_cache})
+    def fake_execute(tool_name, tool_input, *, bypass_cache=False, tool_meta=None):
+        captured.update(
+            {
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+                "bypass_cache": bypass_cache,
+                "mcp_tool": tool_meta["mcp_tool"],
+            }
+        )
         return {"name": tool_name, "status": "ok", "data": {}}
 
-    monkeypatch.setattr(server, "agent_tool_catalog", lambda: {})
-    monkeypatch.setattr(server, "agent_tool_input_payload", lambda _name, _category, _payload: {"keyword": "bra"})
     monkeypatch.setattr(server, "execute_sif_agent_tool", fake_execute)
 
     server.execute_agent_tool(
@@ -549,8 +554,9 @@ def test_server_forwards_bypass_cache_to_mcp_adapter(monkeypatch) -> None:
 
     assert captured == {
         "tool_name": "sif_market_get_keyword_demand",
-        "tool_input": {"keyword": "bra"},
+        "tool_input": {"country": "US", "keywords": ["minimizer bra"]},
         "bypass_cache": True,
+        "mcp_tool": "market_get_keyword_demand",
     }
 
 

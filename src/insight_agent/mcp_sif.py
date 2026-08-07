@@ -10,20 +10,13 @@ from functools import lru_cache
 from typing import Any
 
 from .mcp_result_cache import execute_with_mcp_result_cache
+from .sif_manifest import SIF_MCP_TOOL_NAMES
 
 SIF_AGENT_TOOL_PREFIX = "sif_"
 SIF_SCHEMA_URL = os.getenv("SIF_MCP_SCHEMA_URL", "https://mcp.sif.com/mcp-api/tool-schema.json")
 SIF_MCP_URL = os.getenv("SIF_MCP_URL", "https://mcp.sif.com/mcp")
 
-DEFAULT_SIF_AGENT_TOOLS = {
-    "market_get_keyword_demand",
-    "market_get_keyword_history",
-    "market_get_keyword_root_trend",
-    "market_get_keyword_competition",
-    "market_get_asin_keyword_signals",
-    "ops_get_asin_sales_list",
-    "ops_get_asin_sales_trend",
-}
+DEFAULT_SIF_AGENT_TOOLS = frozenset(SIF_MCP_TOOL_NAMES)
 
 
 class SifMcpError(RuntimeError):
@@ -136,8 +129,21 @@ def _latest_sunday(value: dt.date | None = None) -> str:
     return (current - dt.timedelta(days=days_since_sunday)).strftime("%Y-%m-%d")
 
 
-def build_sif_input_payload(agent_tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
-    meta = get_sif_tool_catalog().get(agent_tool_name) or {}
+def _resolve_sif_tool_meta(
+    agent_tool_name: str,
+    tool_meta: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return tool_meta or get_sif_tool_catalog().get(agent_tool_name) or {}
+
+
+def build_sif_input_payload(
+    agent_tool_name: str,
+    category: str,
+    payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    meta = _resolve_sif_tool_meta(agent_tool_name, tool_meta)
     schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     allowed_keys = set(properties.keys())
@@ -336,10 +342,14 @@ def summarize_sif_data(agent_tool_name: str, data: dict[str, Any]) -> str:
     return f"Sif MCP tool {agent_tool_name} completed."
 
 
-def _execute_sif_agent_tool_uncached(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
+def _execute_sif_agent_tool_uncached(
+    agent_tool_name: str,
+    input_payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started = time.time()
-    catalog = get_sif_tool_catalog()
-    meta = catalog.get(agent_tool_name) or {}
+    meta = _resolve_sif_tool_meta(agent_tool_name, tool_meta)
     label = str(meta.get("label") or agent_tool_name)
     try:
         mcp_tool_name = str(meta.get("mcp_tool") or sif_mcp_tool_name(agent_tool_name))
@@ -381,11 +391,16 @@ def execute_sif_agent_tool(
     input_payload: dict[str, Any],
     *,
     bypass_cache: bool = False,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return execute_with_mcp_result_cache(
         "sif",
         agent_tool_name,
         input_payload,
-        lambda: _execute_sif_agent_tool_uncached(agent_tool_name, input_payload),
+        lambda: _execute_sif_agent_tool_uncached(
+            agent_tool_name,
+            input_payload,
+            tool_meta=tool_meta,
+        ),
         bypass_cache=bypass_cache,
     )

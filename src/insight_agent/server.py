@@ -195,6 +195,7 @@ from .tool_capabilities.runtime_report import (
     summarize_tiktok_new_product_report_data,
     summarize_trend_report_data,
 )
+from .tool_capabilities.sif import build_sif_capabilities
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(os.getenv("INSIGHT_AGENT_HOME", Path.cwd())).resolve()
@@ -7737,6 +7738,34 @@ def execute_fastmoss_capability_adapter(
         tool_meta=tool_meta,
     )
 
+def normalize_sif_capability_input(
+    capability_id: str,
+    category: str,
+    payload: dict[str, Any],
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return build_sif_input_payload(
+        capability_id,
+        category,
+        payload,
+        tool_meta=tool_meta,
+    )
+
+
+def execute_sif_capability_adapter(
+    capability_id: str,
+    tool_input: dict[str, Any],
+    bypass_cache: bool,
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return execute_sif_agent_tool(
+        capability_id,
+        tool_input,
+        bypass_cache=bypass_cache,
+        tool_meta=tool_meta,
+    )
+
+
 AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
     [
         build_reddit_voc_capability(
@@ -7776,6 +7805,10 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
         *build_fastmoss_shop_creator_capabilities(
             normalize_input=normalize_fastmoss_capability_input,
             adapter=execute_fastmoss_capability_adapter,
+        ),
+        *build_sif_capabilities(
+            normalize_input=normalize_sif_capability_input,
+            adapter=execute_sif_capability_adapter,
         ),
         build_runtime_report_capability(
             capability_id="build_market_report_data",
@@ -7984,7 +8017,9 @@ def agent_tool_catalog() -> dict[str, dict[str, Any]]:
             if name not in catalog
         }
     )
-    catalog.update(get_sif_tool_catalog())
+    catalog.update(
+        {name: meta for name, meta in get_sif_tool_catalog().items() if name not in catalog}
+    )
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
 
@@ -7998,7 +8033,9 @@ def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
             if name not in catalog
         }
     )
-    catalog.update(get_sif_tool_catalog())
+    catalog.update(
+        {name: meta for name, meta in get_sif_tool_catalog().items() if name not in catalog}
+    )
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
 

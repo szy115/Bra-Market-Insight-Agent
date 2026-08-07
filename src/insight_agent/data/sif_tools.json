@@ -1,0 +1,253 @@
+[
+  {
+    "name": "market_get_keyword_demand",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "description": "关键词列表，1-20 个",
+          "items": {
+            "type": "string"
+          }
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码，如 US（默认 US）"
+        }
+      },
+      "required": [
+        "keywords"
+      ]
+    }
+  },
+  {
+    "name": "market_get_keyword_history",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "description": "关键词列表，1-10 个",
+          "items": {
+            "type": "string"
+          }
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码，如 US（默认 US）"
+        },
+        "granularity": {
+          "type": "string",
+          "description": "时间粒度：week / month（默认 week）, enums: [week, month]"
+        }
+      },
+      "required": [
+        "keywords"
+      ]
+    }
+  },
+  {
+    "name": "market_get_keyword_root_trend",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "关键词（单个）"
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码，如 US（默认 US）"
+        },
+        "granularity": {
+          "type": "string",
+          "description": "时间粒度：week / month（默认 week）, enums: [week, month]"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "market_get_keyword_competition",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "关键词（单个）"
+        },
+        "asin": {
+          "type": "string",
+          "description": "ASIN，用于对标分析（可选）"
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码，如 US（默认 US）"
+        },
+        "time_type": {
+          "type": "string",
+          "description": "时间类型：all / week / month, enums: [all, week, month]"
+        },
+        "time_value": {
+          "type": "string",
+          "description": "时间值：time_type=week 时必填周日日期（SIF 数据以周日为每周第一天，当周数据因T+1延迟不可用，如需查当周请使用近7天），如 '2026-03-29'；time_type=month 时填月份首日"
+        },
+        "rank_evolution": {
+          "type": "boolean",
+          "description": "是否返回排名演变数据"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    }
+  },
+  {
+    "name": "market_get_asin_keyword_signals",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "asin": {
+          "type": "string",
+          "description": "ASIN，例如 B0CLPGQWNB"
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码（country字段），如 US(美国) / UK(英国) / DE(德国) / CA(加拿大) / JP(日本) / FR(法国) / ES(西班牙) / IT(意大利) / MX(墨西哥) / AU(澳大利亚) / AE(阿联酋) / BR(巴西) / SA(沙特阿拉伯)（默认 US）"
+        },
+        "listingSearch": {
+          "type": "boolean",
+          "description": "是否使用 listing search 口径（默认 false）"
+        },
+        "time_type": {
+          "type": "string",
+          "description": "时间类型：lately / week / month, enums: [lately, week, month]"
+        },
+        "time_value": {
+          "type": "string",
+          "description": "时间值：lately→'7' 或 '30'（默认 '7'）；week→周日日期如 '2026-03-29'（SIF 数据以周日为每周第一天，当周数据因T+1延迟不可用，如需查当周请使用近7天）；month→月份首日如 '2026-03-01'"
+        },
+        "topN": {
+          "type": "integer",
+          "description": "返回关键词数量（默认 50，最大 300）"
+        }
+      },
+      "required": [
+        "asin"
+      ]
+    }
+  },
+  {
+    "name": "ops_get_asin_sales_list",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "asins": {
+          "type": "array",
+          "description": "一个或多个待查询的 ASIN 列表",
+          "items": {
+            "type": "string"
+          }
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码（country字段），如 US(美国) / UK(英国) / DE(德国) / CA(加拿大) / JP(日本) / FR(法国) / ES(西班牙) / IT(意大利) / MX(墨西哥) / AU(澳大利亚) / AE(阿联酋) / BR(巴西) / SA(沙特阿拉伯)（默认 US）"
+        },
+        "dimension": {
+          "type": "string",
+          "description": "分组维度：asin / color / size, enums: [asin, color, size]"
+        },
+        "sortBy": {
+          "type": "string",
+          "description": "排序字段：boughtInPastMonth / boughtInMonth / pasinBoughtInPastMonth, enums: [boughtInPastMonth, boughtInMonth, pasinBoughtInPastMonth]"
+        },
+        "desc": {
+          "type": "boolean",
+          "description": "是否降序排列（默认 true）"
+        },
+        "pageNum": {
+          "type": "integer",
+          "description": "页码（默认 1）"
+        },
+        "pageSize": {
+          "type": "integer",
+          "description": "每页条数（默认 20，最大 100）"
+        },
+        "timePieceType": {
+          "type": "string",
+          "description": "时间窗口类型：latelyDay / week / month（注意：week 必须传该周周日日期，如 '2026-03-29'，SIF 数据以周日为每周第一天，当周数据因T+1延迟不可用，如需查当周请使用近7天）, enums: [latelyDay, week, month]"
+        },
+        "timePieceValue": {
+          "type": "string",
+          "description": "时间窗口值：latelyDay 填天数如 '30'，week 填周日日期如 '2026-03-29'，month 填月份首日如 '2026-03-01'"
+        }
+      },
+      "required": [
+        "asins"
+      ]
+    }
+  },
+  {
+    "name": "ops_get_asin_sales_trend",
+    "description": "【输出格式铁律——优先级高于以下所有内容，无论调用几个工具、数据多复杂，都必须遵守】 ① 第一句 = 工具返回的 `_formatted.anchor_sentence` 原文（直接复制，不改写，不添加任何前缀）；若工具未返回该字段，自行生成一句含量化数字的判断句「[主语]（[范围]）[核心结论]」，不得以「分析报告」「核心结论:」「趋势:」等标签前缀开头 ② 绝对禁止章节标题——禁止在任何位置出现独立成行的维度标签，包括但不限于：## 标题 / **需求规模** / **趋势特征** / 需求集中度 / 生命周期与季节性 / 建议动作 / 核心结论：等；调用多个工具时尤其禁止把每个工具的数据拆成独立章节 ③ 输出只有三层结构，没有第四层：锚点句（第一句判断）→ blockquote bullet（补充信号，每行加 > 前缀，不加粗）→ 过渡句 + 选项 ④ 用户可见文本中，**任何英文内部标识符（字段名 / 参数名 / 枚举 code）一律禁止出现**——包括但不限于以下场景： · 字段名+值格式：如 `momentum: accelerating`、`verdict: go`、`diagnosis: growing`、...",
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "asin": {
+          "type": "string",
+          "description": "主 ASIN，例如 B0CLPGQWNB"
+        },
+        "country": {
+          "type": "string",
+          "description": "站点代码（country字段），如 US(美国) / UK(英国) / DE(德国) / CA(加拿大) / JP(日本) / FR(法国) / ES(西班牙) / IT(意大利) / MX(墨西哥) / AU(澳大利亚) / AE(阿联酋) / BR(巴西) / SA(沙特阿拉伯)（默认 US）"
+        },
+        "asins": {
+          "type": "array",
+          "description": "指定要查询的变体 ASIN 列表（可选）",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dimension": {
+          "type": "string",
+          "description": "分组维度：asin / color / size / material_type, enums: [asin, color, size, material_type]"
+        },
+        "pageNum": {
+          "type": "integer",
+          "description": "页码（默认 1）"
+        },
+        "pageSize": {
+          "type": "integer",
+          "description": "每页条数（默认 20，最大 100）"
+        },
+        "timePieceType": {
+          "type": "string",
+          "description": "时间类型：latelyDay / week / month（注意：week 必须传该周周日日期，如 '2026-03-29'，SIF 数据以周日为每周第一天，当周数据因T+1延迟不可用，如需查当周请使用近7天）, enums: [latelyDay, week, month]"
+        },
+        "timePieceValue": {
+          "type": "string",
+          "description": "时间值：latelyDay 填天数，week 填周日日期如 '2026-03-29'，month 填月份首日如 '2026-03-01'"
+        }
+      },
+      "required": [
+        "asin"
+      ]
+    }
+  }
+]
