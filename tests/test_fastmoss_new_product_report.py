@@ -8,7 +8,7 @@ import pytest
 
 import insight_agent.server as server_module
 from insight_agent.fastmoss_new_product_report import build_tiktok_new_product_report_data
-from insight_agent.server import AGENT_TOOL_CATALOG, compose_html_report_with_llm
+from insight_agent.server import compose_html_report_with_llm
 
 
 def tool(
@@ -218,7 +218,12 @@ def build_payload(tool_results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def test_builder_is_registered_and_compiles_stable_top_products() -> None:
-    assert "build_tiktok_new_product_report_data" in AGENT_TOOL_CATALOG
+    assert (
+        server_module.agent_tool_catalog()["build_tiktok_new_product_report_data"][
+            "invocation_scope"
+        ]
+        == "runtime_internal"
+    )
 
     report = build_tiktok_new_product_report_data(build_payload(completed_tool_results()))
 

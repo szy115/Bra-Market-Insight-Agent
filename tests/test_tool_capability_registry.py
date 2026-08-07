@@ -28,6 +28,7 @@ def sample_capability(**overrides) -> ToolCapability:
         "normalize_input": lambda category, payload: {"category": category, **payload},
         "adapter": lambda invocation: {"value": invocation.tool_input["category"]},
         "shape_result": lambda raw: raw,
+        "shape_error": lambda _exc: {},
         "summarize": lambda raw: f"Sampled {raw['value']}",
         "result_contract": ResultContract(
             contract_id="sample_result.v1",
@@ -86,6 +87,7 @@ def test_registry_composition_does_not_probe_tool_adapters() -> None:
                 normalize_input=unexpected_call,
                 adapter=unexpected_call,
                 shape_result=unexpected_call,
+                shape_error=unexpected_call,
                 summarize=unexpected_call,
             )
         ]
@@ -176,6 +178,10 @@ def test_registry_preserves_normalized_input_when_an_adapter_fails() -> None:
         (
             [sample_capability(adapter=None)],
             "adapter must be callable",
+        ),
+        (
+            [sample_capability(shape_error=None)],
+            "shape_error must be callable",
         ),
         (
             [sample_capability(output_kind="")],

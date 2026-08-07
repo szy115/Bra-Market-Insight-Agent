@@ -684,8 +684,8 @@ class LangGraphAgentRuntime:
         state["pending_tool_calls"] = tool_calls
         if not tool_calls:
             content = str(message.get("content") or "").strip()
-            if self._uses_langgraph_html_report_pipeline(state):
-                pipeline = self._start_html_report_pipeline(state)
+            if self._uses_langgraph_report_pipeline(state):
+                pipeline = self._start_report_pipeline(state)
                 if pipeline.get("status") == "scheduled":
                     return state
                 if pipeline.get("outcome") == "report_pipeline_not_configured":
@@ -787,7 +787,7 @@ class LangGraphAgentRuntime:
                     state["pending_tool_calls"] = []
                     return state
                 if (
-                    self._uses_langgraph_html_report_pipeline(state)
+                    self._uses_langgraph_report_pipeline(state)
                     and state.get("selected_skill_id")
                     and state.get("tools")
                     and any(
@@ -805,7 +805,7 @@ class LangGraphAgentRuntime:
                         )
                     )
                 ):
-                    pipeline = self._start_html_report_pipeline(state)
+                    pipeline = self._start_report_pipeline(state)
                     if pipeline.get("status") == "scheduled":
                         state["pending_tool_calls"] = []
                         return state
@@ -814,7 +814,7 @@ class LangGraphAgentRuntime:
             elif name == "inspect_agent_capabilities":
                 content = self._inspect_agent_capabilities(state, args)
             elif name == "synthesize_artifact":
-                if self._uses_langgraph_html_report_pipeline(state):
+                if self._uses_langgraph_report_pipeline(state):
                     content = {
                         "status": "ignored",
                         "outcome": "terminal_node_owned_by_langgraph",
@@ -854,9 +854,9 @@ class LangGraphAgentRuntime:
                 state["pending_tool_calls"] = []
                 return state
             elif name in self.deps.tool_catalog():
-                if self._uses_langgraph_html_report_pipeline(state) and name in {
+                if self._uses_langgraph_report_pipeline(state) and name in {
                     self._required_report_data_builder(state),
-                    "render_html_report",
+                    self._required_report_tool(state),
                 }:
                     content = {
                         "status": "ignored",
@@ -925,8 +925,16 @@ class LangGraphAgentRuntime:
         state["pending_tool_calls"] = []
         return state
 
-    def _start_html_report_pipeline(self, state: AgentRuntimeState) -> dict[str, Any]:
+    def _planner_tool_catalog(self) -> dict[str, dict[str, Any]]:
+        return {
+            name: metadata
+            for name, metadata in self.deps.tool_catalog().items()
+            if str(metadata.get("invocation_scope") or "planner") != "runtime_internal"
+        }
+
+    def _start_report_pipeline(self, state: AgentRuntimeState) -> dict[str, Any]:
         builder_name = self._required_report_data_builder(state)
+        renderer_name = self._required_report_tool(state)
         if not builder_name:
             return {
                 "status": "blocked",
@@ -944,26 +952,35 @@ class LangGraphAgentRuntime:
             state["report_pipeline_phase"] = ""
             return gate
         state["report_pipeline_builder"] = builder_name
-        state["report_pipeline_renderer"] = "render_html_report"
+        state["report_pipeline_renderer"] = renderer_name
         state["report_pipeline_phase"] = (
-            "analysis" if self._builder_is_current(state, builder_name) else "builder"
+            ("analysis" if renderer_name == "render_html_report" else "render")
+            if self._builder_is_current(state, builder_name)
+            else "builder"
         )
+        html_pipeline = renderer_name == "render_html_report"
         content = {
             "status": "scheduled",
             "outcome": "langgraph_report_pipeline_started",
             "summary": (
                 "Data collection is complete. LangGraph will now execute the declared report-data "
-                "builder, deterministic metric analysis, evidence-linked insight synthesis, local "
-                "MCP chart rendering, and HTML renderer as independent nodes."
+                + (
+                    "builder, deterministic metric analysis, evidence-linked insight synthesis, "
+                    "local MCP chart rendering, and HTML renderer as independent nodes."
+                    if html_pipeline
+                    else "builder and Markdown renderer as independent runtime nodes."
+                )
             ),
             "builder": builder_name,
             "analysis": "analyze_market_report",
             "insight_synthesis": "synthesize_report_insights",
             "chart_renderer": "render_report_charts",
-            "renderer": "render_html_report",
+            "renderer": renderer_name,
             "next_node": (
                 "data_analysis"
                 if state["report_pipeline_phase"] == "analysis"
+                else "html_render"
+                if state["report_pipeline_phase"] == "render"
                 else "report_data_builder"
             ),
         }
@@ -981,7 +998,7 @@ class LangGraphAgentRuntime:
                 "analysis": "analyze_market_report",
                 "insight_synthesis": "synthesize_report_insights",
                 "chart_renderer": "render_report_charts",
-                "renderer": "render_html_report",
+                "renderer": renderer_name,
             },
             output=content,
         )
@@ -1068,7 +1085,12 @@ class LangGraphAgentRuntime:
                 }
             ]
             return state
-        state["report_pipeline_phase"] = "analysis"
+        state["report_pipeline_phase"] = (
+            "analysis"
+            if str(state.get("report_pipeline_renderer") or "render_html_report")
+            == "render_html_report"
+            else "render"
+        )
         return state
 
     def _analysis_is_current(self, state: AgentRuntimeState, builder_name: str) -> bool:
@@ -1562,48 +1584,57 @@ class LangGraphAgentRuntime:
         builder_name = str(
             state.get("report_pipeline_builder") or self._required_report_data_builder(state)
         )
+        renderer_name = str(
+            state.get("report_pipeline_renderer") or self._required_report_tool(state)
+        )
         if not builder_name or not self._latest_successful_tool(state, builder_name):
             state["report_pipeline_phase"] = "builder"
             return state
-        if not self._analysis_is_current(state, builder_name):
+        if renderer_name == "render_html_report" and not self._analysis_is_current(
+            state, builder_name
+        ):
             state["report_pipeline_phase"] = "analysis"
             return state
-        if not self._chart_render_is_current(state, builder_name):
+        if renderer_name == "render_html_report" and not self._chart_render_is_current(
+            state, builder_name
+        ):
             state["report_pipeline_phase"] = "charts"
             return state
         result = self._run_data_tool(
             state,
-            "render_html_report",
+            renderer_name,
             {},
             runtime_node="html_render",
         )
         status = str(result.get("status") or "")
         if status == "needs_user_action":
             state["report_pipeline_phase"] = ""
-            return self._pause_for_external_action(state, "render_html_report", result)
+            return self._pause_for_external_action(state, renderer_name, result)
         if status not in SUCCESS_TOOL_STATUSES:
             state["report_pipeline_phase"] = ""
             if state.get("selected_skill_id") == "tiktok_us_bra_competitor_shop_analysis":
                 return self._pause_for_external_action(
                     state,
-                    "render_html_report",
+                    renderer_name,
                     result,
                     reason_type="retryable_tool_failure",
                 )
-            summary = str(result.get("summary") or "HTML report rendering failed.")
+            report_label = "HTML" if renderer_name == "render_html_report" else "Markdown"
+            summary = str(result.get("summary") or f"{report_label} report rendering failed.")
             return self._respond_to_user(
                 state,
                 (
-                    "HTML 报告生成失败，已停止本轮任务，避免重复调用 renderer。"
+                    f"{report_label} 报告生成失败，已停止本轮任务，避免重复调用 renderer。"
                     f"失败原因：{summary}"
                 ),
                 response_status="error",
                 event_status="error",
             )
         rendered_data = result.get("data") if isinstance(result.get("data"), dict) else {}
+        content_key = "html" if renderer_name == "render_html_report" else "markdown"
         if not (
-            isinstance(rendered_data.get("html"), str)
-            and rendered_data.get("html")
+            isinstance(rendered_data.get(content_key), str)
+            and rendered_data.get(content_key)
             and rendered_data.get("report_file_path")
         ):
             state["report_pipeline_phase"] = ""
@@ -1611,8 +1642,8 @@ class LangGraphAgentRuntime:
                 state,
                 "artifact",
                 "error",
-                "HTML renderer 未生成可发布产物",
-                "renderer 返回成功状态，但没有生成 HTML 内容或报告文件。",
+                f"{renderer_name} 未生成可发布产物",
+                f"renderer 返回成功状态，但没有生成 {content_key} 内容或报告文件。",
                 data={"langgraph_node": True, "graph_node": "html_render"},
                 output={
                     "status": status,
@@ -1623,13 +1654,15 @@ class LangGraphAgentRuntime:
             return self._respond_to_user(
                 state,
                 (
-                    "HTML 报告生成失败：renderer 虽返回成功状态，但没有生成可发布的 HTML 文件。"
+                    f"{content_key.upper()} 报告生成失败：renderer 虽返回成功状态，但没有生成可发布文件。"
                     "已停止本轮任务，避免把空产物标记为成功，也不会再改用固定模板。"
                 ),
                 response_status="error",
                 event_status="error",
             )
-        state["report_pipeline_phase"] = ""
+        state["report_pipeline_phase"] = (
+            "" if renderer_name == "render_html_report" else "synthesize"
+        )
         return state
 
     def _latest_html_report_tool(
@@ -3380,7 +3413,7 @@ class LangGraphAgentRuntime:
         selected_skill = state.get("selected_skill")
         if not isinstance(selected_skill, dict):
             return {"status": "pass", "gaps": [], "block_gaps": [], "warn_gaps": []}
-        pipeline_tools = {builder_name, "render_html_report"}
+        pipeline_tools = {builder_name, self._required_report_tool(state)}
         source_rules = [
             rule
             for rule in selected_skill.get("evidence_contract") or []
@@ -3700,7 +3733,9 @@ class LangGraphAgentRuntime:
             for rule in rules
             if isinstance(rule, dict)
             and str(rule.get("tool") or "").startswith("build_")
-            and str(rule.get("tool") or "").endswith("report_data")
+            and str(rule.get("tool") or "").endswith(
+                ("report_data", "brief_data")
+            )
             and str(rule.get("severity") or "").lower() == "block"
         }
         if len(candidates) != 1:
@@ -3713,6 +3748,11 @@ class LangGraphAgentRuntime:
 
     def _uses_langgraph_html_report_pipeline(self, state: AgentRuntimeState) -> bool:
         return bool(self._required_html_report_tool(state))
+
+    def _uses_langgraph_report_pipeline(self, state: AgentRuntimeState) -> bool:
+        return bool(self._required_report_data_builder(state)) and self._required_report_tool(
+            state
+        ) in {"render_html_report", "render_markdown_report"}
 
     def _required_report_tool(self, state: AgentRuntimeState) -> str:
         skill = state.get("selected_skill")
@@ -4497,7 +4537,7 @@ class LangGraphAgentRuntime:
         return any(term in lowered for term in terms)
 
     def _capability_snapshot(self, state: AgentRuntimeState, focus: str = "") -> dict[str, Any]:
-        catalog = self.deps.tool_catalog()
+        catalog = self._planner_tool_catalog()
         skills = [
             {
                 "skill_id": str(item.get("skill_id") or ""),
@@ -4713,7 +4753,7 @@ class LangGraphAgentRuntime:
             f"- {item.get('skill_id')}: {item.get('name')} — {item.get('description')}"
             for item in self.deps.skill_manifests()
         ]
-        tool_catalog = self.deps.tool_catalog()
+        tool_catalog = self._planner_tool_catalog()
         available_data_tools = allowed_data_tools_for_skill(
             state.get("selected_skill"),
             list(tool_catalog.keys()),
@@ -4785,7 +4825,7 @@ class LangGraphAgentRuntime:
             "- For TikTok Shop US bra competitor-shop analysis, resolve the exact L3 Bras category and first try the US completed-month L3 shop ranking. If and only if that preferred scope returns empty, use the US Women's Underwear L2 completed-week ranking as a clearly labeled candidate-universe fallback; never call an unscoped ranking. Finish the 50-shop candidate pool before running the same base, L3 Bras product, 28-day trend, channel, and creator tools for the fixed 10 seller_ids. Then stop issuing tool calls. Never send raw FastMoss results to the renderer.\n"
             "- For fashion trend reports, call trend_platforms, then stop issuing tool calls. The automatic builder and renderer treat the result as a visual design-inspiration editorial: use WGSN and Diexun for macro direction, use Pinterest for visual development, keep source/date notes compact, and preserve the visual URL whitelist.\n"
             "- For hot-product pain analysis, resolve the SellerSprite product node, use the category-validated concentration candidate pool, collect one successful recent balanced review result per requested product, then require Sif sales-list and keyword-competition evidence before ending data collection.\n"
-            "- For product-design research, validate more than one keyword entrance, resolve the category node, collect at least five distinct reviewed products, then call build_product_design_brief_data and render_markdown_report.\n"
+            "- For product-design research, validate more than one keyword entrance, resolve the category node, and collect at least five distinct reviewed products. Then stop issuing tool calls; LangGraph owns build_product_design_brief_data and render_markdown_report.\n"
             "- Do not directly generate a final report in chat; the renderer declared by the loaded Skill owns final report composition.\n"
             "- Do not call ask_user merely to confirm parameters that load_skill already resolved.\n"
             "- Use only tool evidence for conclusions. Do not invent sales volume, search volume, demographics, or market size.\n"
@@ -4931,7 +4971,7 @@ class LangGraphAgentRuntime:
                 },
             },
         ]
-        tool_catalog = self.deps.tool_catalog()
+        tool_catalog = self._planner_tool_catalog()
         available_data_tools = allowed_data_tools_for_skill(
             state.get("selected_skill"),
             list(tool_catalog.keys()),

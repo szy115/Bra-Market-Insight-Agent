@@ -152,7 +152,7 @@ from .settings import (
     update_research_settings,
     update_web_search_settings,
 )
-from .tool_capabilities import ToolCapabilityRegistry
+from .tool_capabilities import InvocationScope, ToolCapabilityRegistry
 from .tool_capabilities.local import build_reddit_voc_capability
 from .tool_capabilities.planner_amazon import build_amazon_shelf_capability
 from .tool_capabilities.planner_media import build_media_rankings_capability
@@ -161,6 +161,20 @@ from .tool_capabilities.planner_trend import (
     TREND_MAX_IMAGES_PER_PLATFORM,
     TREND_MAX_REPORT_IMAGES,
     build_trend_platforms_capability,
+)
+from .tool_capabilities.runtime_report import (
+    build_runtime_report_capability,
+    html_error_data,
+    markdown_error_data,
+    summarize_evidence_report_data,
+    summarize_html_report,
+    summarize_internal_data,
+    summarize_markdown_report,
+    summarize_market_report_data,
+    summarize_product_design_brief_data,
+    summarize_tiktok_competitor_report_data,
+    summarize_tiktok_new_product_report_data,
+    summarize_trend_report_data,
 )
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -7674,85 +7688,7 @@ def rotate_ids(ids: list[str], index: int) -> list[str]:
     return [ids[index % len(ids)]]
 
 
-AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {
-    "build_market_report_data": {
-        "label": "MarketReportData builder",
-        "description": "Compile collected tool results into a stable MarketReportData JSON structure before rendering a market insight report.",
-    },
-    "build_tiktok_new_product_report_data": {
-        "label": "TikTok new-product report data builder",
-        "description": (
-            "Compile FastMoss US L3 Bras new-product ranking, hard-filter non-bra and out-of-range "
-            "price rows before ranking, retain shop name/shop_id, and join product details plus "
-            "complete daily sales trends into stable TikTokNewProductReportData before rendering."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
-    "build_tiktok_bra_competitor_shop_report_data": {
-        "label": "TikTok bra competitor-shop report data builder",
-        "description": (
-            "Compile a 50-shop FastMoss US L3 Bras candidate pool and join the selected 10 "
-            "shops' base, product, channel, trend, and creator evidence by seller_id into stable "
-            "TikTokBraCompetitorShopReportData before rendering."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
-    "build_trend_report_data": {
-        "label": "TrendReportData builder",
-        "description": (
-            "Compile WGSN, Diexun, and Pinterest collection results into a dated, deduplicated, "
-            "source-linked TrendReportData structure with a visual-evidence whitelist."
-        ),
-    },
-    "build_competitor_product_report_data": {
-        "label": "CompetitorProductReportData builder",
-        "description": (
-            "Compile one-ASIN SellerSprite, Sif, review, and Reddit evidence into a versioned, "
-            "bounded CompetitorProductReportData structure before HTML rendering."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
-    "build_hot_product_pain_report_data": {
-        "label": "HotProductPainReportData builder",
-        "description": (
-            "Compile category-validated head-product, review, Sif sales-proxy, and keyword evidence "
-            "into versioned, bounded HotProductPainReportData before HTML rendering."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
-    "build_product_design_brief_data": {
-        "label": "ProductDesignBriefData builder",
-        "description": "Compile product-design research evidence into stable, cited ProductDesignBriefData before rendering.",
-    },
-    "render_html_report": {
-        "label": "HTML 渲染 Agent",
-        "description": "Use the LLM to author the final evidence-based HTML report for the loaded Skill.",
-    },
-    "render_markdown_report": {
-        "label": "Markdown report renderer",
-        "description": "Use the LLM to author an evidence-linked Markdown R&D brief from compiled ProductDesignBriefData.",
-    },
-}
+AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {}
 
 AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
     [
@@ -7786,6 +7722,154 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             video_text=tiktok_video_text,
             compact_text=compact_text,
         ),
+        build_runtime_report_capability(
+            capability_id="build_market_report_data",
+            label="MarketReportData builder",
+            description=(
+                "Compile collected tool results into a stable MarketReportData JSON structure "
+                "before rendering a market insight report."
+            ),
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_market_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(build_market_report_data(tool_input)),
+            summarize=summarize_market_report_data,
+            output_kind="market_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_tiktok_new_product_report_data",
+            label="TikTok new-product report data builder",
+            description=(
+                "Compile the filtered ranking, product details, and daily trends into stable "
+                "TikTokNewProductReportData."
+            ),
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_tiktok_new_product_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(
+                build_tiktok_new_product_report_data(tool_input)
+            ),
+            summarize=summarize_tiktok_new_product_report_data,
+            output_kind="tiktok_new_product_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_tiktok_bra_competitor_shop_report_data",
+            label="TikTok bra competitor-shop report data builder",
+            description=(
+                "Compile the candidate pool and selected shop evidence into stable "
+                "TikTokBraCompetitorShopReportData."
+            ),
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_tiktok_bra_competitor_shop_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(
+                build_tiktok_bra_competitor_shop_report_data(tool_input)
+            ),
+            summarize=summarize_tiktok_competitor_report_data,
+            output_kind="tiktok_competitor_shop_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_trend_report_data",
+            label="TrendReportData builder",
+            description=(
+                "Compile WGSN, Diexun, and Pinterest evidence into dated, source-linked "
+                "TrendReportData with a visual whitelist."
+            ),
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_trend_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(build_trend_report_data(tool_input)),
+            summarize=summarize_trend_report_data,
+            output_kind="trend_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_competitor_product_report_data",
+            label="CompetitorProductReportData builder",
+            description="Compile bounded competitor-product evidence before HTML rendering.",
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_competitor_product_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(
+                build_competitor_product_report_data(tool_input)
+            ),
+            summarize=summarize_evidence_report_data,
+            output_kind="competitor_product_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_hot_product_pain_report_data",
+            label="HotProductPainReportData builder",
+            description="Compile bounded product, review, sales-proxy, and keyword evidence.",
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_hot_product_pain_report_data", category, payload
+            ),
+            adapter=lambda tool_input: attach_metric_facts(
+                build_hot_product_pain_report_data(tool_input)
+            ),
+            summarize=summarize_evidence_report_data,
+            output_kind="hot_product_pain_report_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="build_product_design_brief_data",
+            label="ProductDesignBriefData builder",
+            description="Compile product-design evidence into stable, cited ProductDesignBriefData.",
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "build_product_design_brief_data", category, payload
+            ),
+            adapter=lambda tool_input: build_product_design_brief_data(tool_input),
+            summarize=summarize_product_design_brief_data,
+            output_kind="product_design_brief_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="analyze_market_report",
+            label="数据分析 Agent",
+            description="Calculate validated deterministic secondary metrics from bounded report data.",
+            normalize_input=lambda _category, payload: dict(payload),
+            adapter=lambda tool_input: analyze_market_report_node(tool_input),
+            summarize=summarize_internal_data,
+            output_kind="derived_metric_data",
+        ),
+        build_runtime_report_capability(
+            capability_id="synthesize_report_insights",
+            label="洞察生成 Agent",
+            description="Synthesize evidence-linked report and chart insights from bounded data.",
+            normalize_input=lambda _category, payload: dict(payload),
+            adapter=lambda tool_input: synthesize_report_insights_node(tool_input),
+            summarize=summarize_internal_data,
+            output_kind="report_insight_narrative",
+        ),
+        build_runtime_report_capability(
+            capability_id="render_report_charts",
+            label="图表渲染",
+            description="Render bounded chart specifications through the local Flint MCP.",
+            normalize_input=lambda _category, payload: dict(payload),
+            adapter=lambda tool_input: render_report_charts_via_flint(tool_input),
+            summarize=summarize_internal_data,
+            output_kind="chart_render_bundle",
+        ),
+        build_runtime_report_capability(
+            capability_id="render_html_report",
+            label="HTML 渲染 Agent",
+            description="Author the final evidence-based HTML report for the loaded Skill.",
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "render_html_report", category, payload
+            ),
+            adapter=lambda tool_input: render_html_report_tool(tool_input),
+            summarize=summarize_html_report,
+            output_kind="html_document",
+            shape_error=html_error_data,
+        ),
+        build_runtime_report_capability(
+            capability_id="render_markdown_report",
+            label="Markdown report renderer",
+            description="Author an evidence-linked Markdown R&D brief from ProductDesignBriefData.",
+            normalize_input=lambda category, payload: adapt_agent_params_for_tool(
+                "render_markdown_report", category, payload
+            ),
+            adapter=lambda tool_input: render_markdown_report_tool(tool_input),
+            summarize=summarize_markdown_report,
+            output_kind="markdown_document",
+            shape_error=markdown_error_data,
+        ),
     ]
 )
 
@@ -7798,6 +7882,26 @@ def agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog.update(get_sellersprite_tool_catalog())
     return catalog
 
+def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
+    catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog(InvocationScope.PLANNER)
+    catalog.update(get_fastmoss_tool_catalog())
+    catalog.update(get_sif_tool_catalog())
+    catalog.update(get_sellersprite_tool_catalog())
+    return catalog
+
+def execute_runtime_report_capability(
+    capability_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    capability = AGENT_TOOL_CAPABILITY_REGISTRY.get(capability_id)
+    if capability.invocation_scope != InvocationScope.RUNTIME_INTERNAL:
+        raise ValueError(f"Tool Capability is not runtime-internal: {capability_id}")
+    result = AGENT_TOOL_CAPABILITY_REGISTRY.execute(capability_id, "", payload)
+    if result.get("status") != "ok":
+        raise RuntimeError(str(result.get("summary") or f"{capability_id} failed"))
+    data = result.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{capability_id} returned a non-mapping result")
+    return data
 
 def markdown_section(markdown_text: str, heading: str) -> str:
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
@@ -8008,18 +8112,6 @@ def compact_agent_result(tool_name: str, result: dict[str, Any]) -> dict[str, An
         return result
     if is_sellersprite_agent_tool(tool_name):
         return result
-    if tool_name in {
-        "build_market_report_data",
-        "build_tiktok_new_product_report_data",
-        "build_tiktok_bra_competitor_shop_report_data",
-        "build_trend_report_data",
-        "build_competitor_product_report_data",
-        "build_hot_product_pain_report_data",
-        "build_product_design_brief_data",
-    }:
-        return result
-    if tool_name in {"render_html_report", "render_markdown_report"}:
-        return result
     return result
 
 
@@ -8032,70 +8124,6 @@ def agent_tool_summary(tool_name: str, result: dict[str, Any]) -> str:
         return "Sif MCP returned structured evidence."
     if is_sellersprite_agent_tool(tool_name):
         return result.get("summary") or "SellerSprite MCP returned structured evidence."
-    if tool_name == "build_market_report_data":
-        summary = (
-            result.get("source_summary") if isinstance(result.get("source_summary"), dict) else {}
-        )
-        return (
-            f"MarketReportData compiled from {summary.get('successful_tool_count', 0)} successful tool(s), "
-            f"{len(result.get('market_kpis') or [])} KPI(s), {len(result.get('evidence_map') or [])} evidence item(s)."
-        )
-    if tool_name == "build_tiktok_new_product_report_data":
-        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
-        return (
-            "TikTokNewProductReportData compiled "
-            f"{summary.get('candidate_count', 0)} candidate(s) and "
-            f"{summary.get('head_product_count', 0)} head product(s); "
-            f"details {summary.get('detail_success_count', 0)}/"
-            f"{summary.get('head_product_count', 0)}, trends "
-            f"{summary.get('trend_success_count', 0)}/"
-            f"{summary.get('head_product_count', 0)}."
-        )
-    if tool_name == "build_tiktok_bra_competitor_shop_report_data":
-        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
-        return (
-            "TikTokBraCompetitorShopReportData compiled "
-            f"{summary.get('candidate_count', 0)} competitor candidate(s) and "
-            f"{summary.get('analyzed_shop_count', 0)} standard shop analysis row(s); "
-            f"{summary.get('complete_shop_count', 0)} complete."
-        )
-    if tool_name == "build_trend_report_data":
-        summary = (
-            result.get("source_summary") if isinstance(result.get("source_summary"), dict) else {}
-        )
-        visual_coverage = (
-            result.get("visual_coverage") if isinstance(result.get("visual_coverage"), dict) else {}
-        )
-        return (
-            f"TrendReportData compiled from {summary.get('readable_pages', 0)} readable page(s), "
-            f"{summary.get('recent_pages', 0)} within the requested window, "
-            f"and {visual_coverage.get('selected_for_report', 0)} visual evidence item(s)."
-        )
-    if tool_name in {
-        "build_competitor_product_report_data",
-        "build_hot_product_pain_report_data",
-    }:
-        summary = result.get("source_summary") if isinstance(result.get("source_summary"), dict) else {}
-        return (
-            f"{result.get('schema_version') or 'ReportData'} compiled from "
-            f"{summary.get('successful_tool_count', 0)} successful tool result(s) and "
-            f"{len(result.get('evidence_sources') or [])} bounded evidence source(s)."
-        )
-    if tool_name == "build_product_design_brief_data":
-        summary = (
-            result.get("source_summary") if isinstance(result.get("source_summary"), dict) else {}
-        )
-        volume = result.get("data_volume") if isinstance(result.get("data_volume"), dict) else {}
-        actual = volume.get("actual") if isinstance(volume.get("actual"), dict) else {}
-        return (
-            f"ProductDesignBriefData compiled from {summary.get('successful_tool_count', 0)} successful tool(s), "
-            f"{actual.get('unique_products', 0)} product(s), {actual.get('reviews', 0)} review(s), "
-            f"and {len(result.get('evidence_map') or [])} evidence item(s)."
-        )
-    if tool_name == "render_html_report":
-        return f"Rendered HTML report: {result.get('title') or 'HTML report'}."
-    if tool_name == "render_markdown_report":
-        return f"Rendered Markdown report: {result.get('title') or 'Markdown report'}."
     return "Tool completed."
 
 
@@ -8122,37 +8150,7 @@ def execute_agent_tool(tool_name: str, category: str, payload: dict[str, Any]) -
             bypass_cache=bool(payload.get("bypassCache")),
         )
     try:
-        if tool_name == "build_market_report_data":
-            raw = build_market_report_data(tool_input)
-        elif tool_name == "build_tiktok_new_product_report_data":
-            raw = build_tiktok_new_product_report_data(tool_input)
-        elif tool_name == "build_tiktok_bra_competitor_shop_report_data":
-            raw = build_tiktok_bra_competitor_shop_report_data(tool_input)
-        elif tool_name == "build_trend_report_data":
-            raw = build_trend_report_data(tool_input)
-        elif tool_name == "build_competitor_product_report_data":
-            raw = build_competitor_product_report_data(tool_input)
-        elif tool_name == "build_hot_product_pain_report_data":
-            raw = build_hot_product_pain_report_data(tool_input)
-        elif tool_name == "build_product_design_brief_data":
-            raw = build_product_design_brief_data(tool_input)
-        elif tool_name == "render_html_report":
-            raw = render_html_report_tool(tool_input)
-        elif tool_name == "render_markdown_report":
-            raw = render_markdown_report_tool(tool_input)
-        else:
-            raise ValueError(f"Unknown agent tool: {tool_name}")
-        if tool_name in HTML_REPORT_DATA_BUILDERS and isinstance(raw, dict):
-            raw = attach_metric_facts(raw)
-        return {
-            "name": tool_name,
-            "label": catalog[tool_name]["label"],
-            "status": "ok",
-            "summary": agent_tool_summary(tool_name, raw),
-            "duration_ms": int((time.time() - started) * 1000),
-            "input": tool_input,
-            "data": compact_agent_result(tool_name, raw),
-        }
+        raise ValueError(f"Unknown agent tool: {tool_name}")
     except HtmlReportGenerationError as exc:
         return {
             "name": tool_name,
@@ -16297,9 +16295,15 @@ def run_agent(payload: dict[str, Any], emit_event: Any | None = None) -> dict[st
                 tool_catalog=agent_tool_catalog,
                 cache_dir=lambda: CACHE_DIR,
                 render_html_report=render_html_report_tool,
-                analyze_market_report=analyze_market_report_node,
-                synthesize_report_insights=synthesize_report_insights_node,
-                render_report_charts=render_report_charts_via_flint,
+                analyze_market_report=lambda payload: execute_runtime_report_capability(
+                    "analyze_market_report", payload
+                ),
+                synthesize_report_insights=lambda payload: execute_runtime_report_capability(
+                    "synthesize_report_insights", payload
+                ),
+                render_report_charts=lambda payload: execute_runtime_report_capability(
+                    "render_report_charts", payload
+                ),
                 available_report_metrics=available_metric_catalog_for_skill,
                 review_html_report=review_html_report_node,
                 red_team_html_report=red_team_html_report_node,

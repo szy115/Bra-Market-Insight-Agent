@@ -1479,8 +1479,6 @@ def test_product_design_agent_publishes_persistent_markdown_report(monkeypatch, 
         *[("sellersprite_review", {"asin": asin}) for asin in asins],
         ("tiktok_social", {}),
         ("media_rankings", {}),
-        ("build_product_design_brief_data", {}),
-        ("render_markdown_report", {}),
     ]
     chat_responses = [
         native_chat_response(

@@ -43,6 +43,7 @@ class ToolCapability:
     normalize_input: Callable[[str, dict[str, Any]], dict[str, Any]]
     adapter: Callable[[ToolInvocation], dict[str, Any]]
     shape_result: Callable[[dict[str, Any]], dict[str, Any]]
+    shape_error: Callable[[Exception], dict[str, Any]]
     summarize: Callable[[dict[str, Any]], str]
     result_contract: ResultContract
     recovery: RecoveryTraits
@@ -132,7 +133,7 @@ class ToolCapabilityRegistry:
                 tool_input,
                 status="error",
                 summary=str(exc),
-                data={},
+                data=capability.shape_error(exc),
             )
 
     def _result_envelope(
@@ -226,6 +227,7 @@ class ToolCapabilityRegistry:
             "normalize_input": capability.normalize_input,
             "adapter": capability.adapter,
             "shape_result": capability.shape_result,
+            "shape_error": capability.shape_error,
             "summarize": capability.summarize,
         }
         for field_name, value in callables.items():

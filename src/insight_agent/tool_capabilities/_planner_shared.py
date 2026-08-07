@@ -49,6 +49,7 @@ def planner_capability(
         normalize_input=normalize_input,
         adapter=adapter,
         shape_result=shape_result,
+        shape_error=lambda _exc: {},
         summarize=summarize,
         result_contract=ResultContract(
             contract_id=f"{capability_id}_result.v1",

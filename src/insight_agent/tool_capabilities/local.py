@@ -102,6 +102,7 @@ def build_reddit_voc_capability(
         ),
         adapter=lambda invocation: adapter(invocation.tool_input),
         shape_result=shape_reddit_voc_result,
+        shape_error=lambda _exc: {},
         summarize=summarize_reddit_voc_result,
         result_contract=ResultContract(
             contract_id="reddit_voc_result.v1",
