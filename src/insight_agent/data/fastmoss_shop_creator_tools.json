@@ -1,0 +1,668 @@
+[
+  {
+    "name": "shop_search",
+    "description": "Use when the user has no seller_id and provides a shop name, keyword, or region. Returns matching shops.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "brand_name": {
+              "description": "Brand name parameter.",
+              "type": "string"
+            },
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "creator_range": {
+              "description": "Creator count range: {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "creator_uid": {
+              "description": "Creator UID; use creator_search first if only a handle/nickname is known.",
+              "type": "string"
+            },
+            "creator_unique_id": {
+              "description": "Creator unique id.",
+              "type": "string"
+            },
+            "is_fully_managed": {
+              "description": "Whether it is fully managed.",
+              "type": "boolean"
+            },
+            "is_local": {
+              "description": "Is local parameter.",
+              "type": "boolean"
+            },
+            "rating_range": {
+              "description": "Rating range range in the form {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            },
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            },
+            "shop_name": {
+              "description": "Shop name parameter.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "keywords": {
+          "description": "Search keywords: product, shop, creator, video, live, or category terms.",
+          "type": "string"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "day7_units_sold",
+                  "day7_gmv",
+                  "total_units_sold",
+                  "total_gmv"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "shop_rank_top_selling",
+    "description": "Use when the user wants top shops in a market or category. Returns shop ranking and ecommerce metrics.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "date_type": {
+              "description": "Ranking period: day, week, or month; MCN agency rankings support only week/month.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "is_cross_border": {
+              "description": "Whether it is cross-border.",
+              "type": "boolean"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            },
+            "shop_type": {
+              "description": "Shop type: 1 brand shop, 2 retail shop.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date_type",
+            "date_value"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "units_sold",
+                  "usd_gmv"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "shop_base_info",
+    "description": "Use when the user wants a shop snapshot, store type, rating, or profile. Returns cumulative GMV/units, ranks, age, product count, and creator/video/live counts.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seller_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "shop_product_analysis",
+    "description": "Use when the user wants shop categories, price bands, product mix, or product details. Returns distributions and product list.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "category_id": {
+              "description": "Category ID; confirm category first if only a category name is known.",
+              "type": "integer"
+            },
+            "listing_end_date": {
+              "description": "Product listing end date, YYYY-MM-DD. The latest allowed date is 4 days ago; do not use today or the most recent 1-3 days.",
+              "type": "string"
+            },
+            "listing_start_date": {
+              "description": "Product listing start date, YYYY-MM-DD. The latest allowed date is 4 days ago; do not use today or the most recent 1-3 days.",
+              "type": "string"
+            },
+            "listing_time_range_days": {
+              "description": "Listing age in days, commonly 7/14/28/90.",
+              "enum": [
+                7,
+                14,
+                28,
+                90
+              ],
+              "type": "integer"
+            },
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "enum": [
+                7,
+                28,
+                90
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "seller_id"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "launch_time",
+                  "commission_rate_percent",
+                  "day7_units_sold",
+                  "day28_units_sold",
+                  "day90_units_sold",
+                  "day7_gmv",
+                  "day28_gmv",
+                  "day90_gmv",
+                  "total_units_sold",
+                  "total_gmv"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "shop_sale_analysis",
+    "description": "Use when the user wants shop sales by short video, live, product card, creator, or self-operated channels. Returns channel_distribution and content_distribution.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "default": 28,
+              "description": "Sales analysis period in days. Allowed values: 7, 28, 90. Default 28.",
+              "enum": [
+                7,
+                28,
+                90
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "seller_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "shop_creator_analysis",
+    "description": "Use when the user wants shop collaborators, creator tiers, or video-vs-live selling structure. Returns creator list and distributions.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "author_product_type": {
+              "description": "Selling mode: 1 video, 2 live.",
+              "enum": [
+                1,
+                2
+              ],
+              "type": "integer"
+            },
+            "follower_count_range": {
+              "description": "Follower count range: {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            },
+            "sold_count_range": {
+              "description": "Units sold range: {\"min\": number, \"max\": number}.",
+              "properties": {
+                "max": {
+                  "description": "Maximum value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Minimum value.",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "enum": [
+                7,
+                28,
+                90,
+                -1
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "seller_id"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "follower_count",
+                  "sold_count",
+                  "sale_amount"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "shop_data_trends",
+    "description": "Use when the user wants recent shop GMV, units, creator, live, video, or active-product trends. Returns daily trends.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "end_date": {
+              "description": "End date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "seller_id": {
+              "description": "Shop seller_id; use shop_search first if only a shop name is known.",
+              "type": "string"
+            },
+            "start_date": {
+              "description": "Start date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "time_range_days": {
+              "description": "Days: 7/14/28/90; recent=28; -1=cumulative.",
+              "enum": [
+                7,
+                28,
+                90
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "seller_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "creator_rank_top_ecommerce",
+    "description": "Use when the user wants top ecommerce creators. Returns creator and ranking_metrics; date_value is returned as YYYY-Www for weekly rankings.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "account_type": {
+              "description": "Account type parameter.",
+              "type": "integer"
+            },
+            "creator_category_id": {
+              "description": "Creator category ID.",
+              "type": "integer"
+            },
+            "date_type": {
+              "description": "Ranking period: day, week, or month; MCN agency rankings support only week/month.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            },
+            "date_value": {
+              "description": "Completed period only: yesterday YYYY-MM-DD, last week YYYY-ww or YYYY-Www, last month YYYY-MM; do not use the current period.",
+              "type": "string"
+            },
+            "ecommerce_type": {
+              "description": "Ecommerce type parameter.",
+              "type": "integer"
+            },
+            "product_category_id": {
+              "description": "Product category ID.",
+              "type": "integer"
+            },
+            "region": {
+              "description": "Country or region code, e.g. US, UK, ID.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "date_type",
+            "date_value"
+          ],
+          "type": "object"
+        },
+        "orderby": {
+          "description": "Sort options.",
+          "items": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "creator_usd_gmv",
+                  "video_usd_gmv",
+                  "live_usd_gmv"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number. Default 1, max 500.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "pagesize": {
+          "default": 10,
+          "description": "Page size. Default 10, max 10.",
+          "maximum": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": []
+    }
+  },
+  {
+    "name": "creator_profile_overview",
+    "description": "Use when the user wants a creator snapshot or partnership check. Returns profile and performance_overview; GMV/rankings are mostly historical cumulative, so use creator_search day28_gmv for current activity.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "lang": {
+              "description": "Language. Default EN_US, optional ZH_CN.",
+              "type": "string"
+            },
+            "uid": {
+              "description": "Creator UID; use creator_search first if only a handle/nickname is known.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uid"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "creator_fans_distribution",
+    "description": "Use when the user wants to check whether a creator audience matches a target market. Returns age, gender, location, and top segments.",
+    "input_schema": {
+      "properties": {
+        "filter": {
+          "description": "Filter parameters.",
+          "properties": {
+            "uid": {
+              "description": "Creator UID; use creator_search first if only a handle/nickname is known.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uid"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    }
+  }
+]

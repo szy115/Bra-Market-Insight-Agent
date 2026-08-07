@@ -44,13 +44,13 @@ def test_fastmoss_registry_composition_does_not_touch_provider_runtime() -> None
 
 def test_dynamic_fastmoss_catalog_cannot_override_migrated_capabilities(monkeypatch) -> None:
     migrated_id = "mcp__fastmoss__product_search"
-    legacy_id = "mcp__fastmoss__shop_search"
+    legacy_id = "mcp__fastmoss__video_search"
     monkeypatch.setattr(
         server_module,
         "get_fastmoss_tool_catalog",
         lambda: {
             migrated_id: {"label": "dynamic duplicate"},
-            legacy_id: {"label": "FastMoss: shop_search"},
+            legacy_id: {"label": "FastMoss: video_search"},
         },
     )
 
@@ -58,7 +58,7 @@ def test_dynamic_fastmoss_catalog_cannot_override_migrated_capabilities(monkeypa
 
     assert catalog[migrated_id]["label"] == "FastMoss: product_search"
     assert catalog[migrated_id]["result_contract"] == "fastmoss_result.v1"
-    assert catalog[legacy_id] == {"label": "FastMoss: shop_search"}
+    assert catalog[legacy_id] == {"label": "FastMoss: video_search"}
 
 
 def test_fastmoss_capability_normalizes_provider_input_from_static_schema() -> None:

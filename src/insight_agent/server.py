@@ -155,6 +155,9 @@ from .settings import (
 )
 from .tool_capabilities import InvocationScope, ToolCapabilityRegistry
 from .tool_capabilities.fastmoss_market import build_fastmoss_market_product_capabilities
+from .tool_capabilities.fastmoss_shop_creator import (
+    build_fastmoss_shop_creator_capabilities,
+)
 from .tool_capabilities.local import build_reddit_voc_capability
 from .tool_capabilities.planner_amazon import build_amazon_shelf_capability
 from .tool_capabilities.planner_media import build_media_rankings_capability
@@ -7706,6 +7709,34 @@ def rotate_ids(ids: list[str], index: int) -> list[str]:
 
 AGENT_TOOL_CATALOG: dict[str, dict[str, Any]] = {}
 
+
+def normalize_fastmoss_capability_input(
+    capability_id: str,
+    category: str,
+    payload: dict[str, Any],
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return build_fastmoss_input_payload(
+        capability_id,
+        category,
+        payload,
+        tool_meta=tool_meta,
+    )
+
+
+def execute_fastmoss_capability_adapter(
+    capability_id: str,
+    tool_input: dict[str, Any],
+    bypass_cache: bool,
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return execute_fastmoss_agent_tool(
+        capability_id,
+        tool_input,
+        bypass_cache=bypass_cache,
+        tool_meta=tool_meta,
+    )
+
 AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
     [
         build_reddit_voc_capability(
@@ -7739,18 +7770,12 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
             compact_text=compact_text,
         ),
         *build_fastmoss_market_product_capabilities(
-            normalize_input=lambda capability_id, category, payload, tool_meta: build_fastmoss_input_payload(
-                capability_id,
-                category,
-                payload,
-                tool_meta=tool_meta,
-            ),
-            adapter=lambda capability_id, tool_input, bypass_cache, tool_meta: execute_fastmoss_agent_tool(
-                capability_id,
-                tool_input,
-                bypass_cache=bypass_cache,
-                tool_meta=tool_meta,
-            ),
+            normalize_input=normalize_fastmoss_capability_input,
+            adapter=execute_fastmoss_capability_adapter,
+        ),
+        *build_fastmoss_shop_creator_capabilities(
+            normalize_input=normalize_fastmoss_capability_input,
+            adapter=execute_fastmoss_capability_adapter,
         ),
         build_runtime_report_capability(
             capability_id="build_market_report_data",
