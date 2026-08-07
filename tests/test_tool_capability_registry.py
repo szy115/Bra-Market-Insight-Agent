@@ -186,6 +186,29 @@ def test_registry_preserves_an_adapter_result_envelope() -> None:
     }
 
 
+def test_registry_preserves_an_adapter_public_input_projection() -> None:
+    registry = ToolCapabilityRegistry(
+        [
+            sample_capability(
+                adapter=lambda _invocation: PreservedToolResult(
+                    {
+                        "status": "ok",
+                        "summary": "Provider completed.",
+                        "input": {"category": "fixture"},
+                        "data": {"value": "fixture"},
+                    }
+                ),
+                shape_result=lambda result: dict(result["data"]),
+                summarize=lambda result: str(result["summary"]),
+            )
+        ]
+    )
+
+    result = registry.execute("sample_tool", "fixture", {"limit": 3})
+
+    assert result["input"] == {"category": "fixture"}
+
+
 def test_registry_reports_a_result_contract_mismatch() -> None:
     registry = ToolCapabilityRegistry(
         [sample_capability(shape_result=lambda _raw: {"value": 42})]

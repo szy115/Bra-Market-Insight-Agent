@@ -816,8 +816,21 @@ def _build_sellersprite_request(
     return request
 
 
-def build_sellersprite_input_payload(agent_tool_name: str, category: str, payload: dict[str, Any]) -> dict[str, Any]:
-    meta = get_sellersprite_tool_catalog().get(agent_tool_name) or {}
+def _resolve_sellersprite_tool_meta(
+    agent_tool_name: str,
+    tool_meta: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return tool_meta or get_sellersprite_tool_catalog().get(agent_tool_name) or {}
+
+
+def build_sellersprite_input_payload(
+    agent_tool_name: str,
+    category: str,
+    payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    meta = _resolve_sellersprite_tool_meta(agent_tool_name, tool_meta)
     schema = meta.get("input_schema") if isinstance(meta.get("input_schema"), dict) else {}
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     allowed_keys = set(properties.keys())
@@ -1687,10 +1700,14 @@ def _execute_exhaustive_review(
     )
 
 
-def _execute_sellersprite_agent_tool_uncached(agent_tool_name: str, input_payload: dict[str, Any]) -> dict[str, Any]:
+def _execute_sellersprite_agent_tool_uncached(
+    agent_tool_name: str,
+    input_payload: dict[str, Any],
+    *,
+    tool_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started = time.time()
-    catalog = get_sellersprite_tool_catalog()
-    meta = catalog.get(agent_tool_name) or {}
+    meta = _resolve_sellersprite_tool_meta(agent_tool_name, tool_meta)
     label = str(meta.get("label") or agent_tool_name)
     public_input_payload = _sellersprite_mcp_arguments(input_payload)
     try:
@@ -1988,6 +2005,7 @@ def _execute_exhaustive_review_with_asin_cache(
     input_payload: dict[str, Any],
     *,
     bypass_cache: bool,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     cache_params = _sellersprite_review_asin_cache_params(input_payload)
@@ -2013,7 +2031,11 @@ def _execute_exhaustive_review_with_asin_cache(
                     duration_ms=int((time.perf_counter() - started) * 1000),
                 )
 
-        result = _execute_sellersprite_agent_tool_uncached("sellersprite_review", input_payload)
+        result = _execute_sellersprite_agent_tool_uncached(
+            "sellersprite_review",
+            input_payload,
+            tool_meta=tool_meta,
+        )
         if cacheable_mcp_result(result):
             metadata = write_mcp_result_cache(
                 "sellersprite",
@@ -2052,6 +2074,7 @@ def execute_sellersprite_agent_tool(
     input_payload: dict[str, Any],
     *,
     bypass_cache: bool = False,
+    tool_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     insight_context = input_payload.get(INSIGHT_CONTEXT_KEY)
     exhaustive_review = isinstance(insight_context, dict) and bool(insight_context.get("exhaustive_review"))
@@ -2060,12 +2083,17 @@ def execute_sellersprite_agent_tool(
         return _execute_exhaustive_review_with_asin_cache(
             input_payload,
             bypass_cache=bypass_cache,
+            tool_meta=tool_meta,
         )
     cache_params = _sellersprite_cache_params(input_payload)
     return execute_with_mcp_result_cache(
         "sellersprite",
         agent_tool_name,
         cache_params,
-        lambda: _execute_sellersprite_agent_tool_uncached(agent_tool_name, input_payload),
+        lambda: _execute_sellersprite_agent_tool_uncached(
+            agent_tool_name,
+            input_payload,
+            tool_meta=tool_meta,
+        ),
         bypass_cache=bypass_cache,
     )

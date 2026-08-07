@@ -195,6 +195,9 @@ from .tool_capabilities.runtime_report import (
     summarize_tiktok_new_product_report_data,
     summarize_trend_report_data,
 )
+from .tool_capabilities.sellersprite_product_keyword import (
+    build_sellersprite_product_keyword_traffic_capabilities,
+)
 from .tool_capabilities.sif import build_sif_capabilities
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -7766,6 +7769,34 @@ def execute_sif_capability_adapter(
     )
 
 
+def normalize_sellersprite_capability_input(
+    capability_id: str,
+    category: str,
+    payload: dict[str, Any],
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return build_sellersprite_input_payload(
+        capability_id,
+        category,
+        payload,
+        tool_meta=tool_meta,
+    )
+
+
+def execute_sellersprite_capability_adapter(
+    capability_id: str,
+    tool_input: dict[str, Any],
+    bypass_cache: bool,
+    tool_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return execute_sellersprite_agent_tool(
+        capability_id,
+        tool_input,
+        bypass_cache=bypass_cache,
+        tool_meta=tool_meta,
+    )
+
+
 AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
     [
         build_reddit_voc_capability(
@@ -7809,6 +7840,10 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
         *build_sif_capabilities(
             normalize_input=normalize_sif_capability_input,
             adapter=execute_sif_capability_adapter,
+        ),
+        *build_sellersprite_product_keyword_traffic_capabilities(
+            normalize_input=normalize_sellersprite_capability_input,
+            adapter=execute_sellersprite_capability_adapter,
         ),
         build_runtime_report_capability(
             capability_id="build_market_report_data",
@@ -8007,36 +8042,28 @@ AGENT_TOOL_CAPABILITY_REGISTRY = ToolCapabilityRegistry(
 )
 
 
+def merge_legacy_capability_catalog(
+    catalog: dict[str, dict[str, Any]],
+    legacy_catalog: dict[str, dict[str, Any]],
+) -> None:
+    for capability_id, metadata in legacy_catalog.items():
+        catalog.setdefault(capability_id, metadata)
+
+
 def agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog()
     catalog.update({name: dict(meta) for name, meta in AGENT_TOOL_CATALOG.items()})
-    catalog.update(
-        {
-            name: meta
-            for name, meta in get_fastmoss_tool_catalog().items()
-            if name not in catalog
-        }
-    )
-    catalog.update(
-        {name: meta for name, meta in get_sif_tool_catalog().items() if name not in catalog}
-    )
-    catalog.update(get_sellersprite_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_fastmoss_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_sif_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_sellersprite_tool_catalog())
     return catalog
 
 
 def planner_agent_tool_catalog() -> dict[str, dict[str, Any]]:
     catalog = AGENT_TOOL_CAPABILITY_REGISTRY.catalog(InvocationScope.PLANNER)
-    catalog.update(
-        {
-            name: meta
-            for name, meta in get_fastmoss_tool_catalog().items()
-            if name not in catalog
-        }
-    )
-    catalog.update(
-        {name: meta for name, meta in get_sif_tool_catalog().items() if name not in catalog}
-    )
-    catalog.update(get_sellersprite_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_fastmoss_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_sif_tool_catalog())
+    merge_legacy_capability_catalog(catalog, get_sellersprite_tool_catalog())
     return catalog
 
 

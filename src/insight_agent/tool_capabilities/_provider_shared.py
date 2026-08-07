@@ -59,13 +59,34 @@ def build_provider_catalog(
     family: ProviderCapabilityFamily,
     family_label: str,
 ) -> dict[str, dict[str, Any]]:
-    catalog: dict[str, dict[str, Any]] = {}
-    for spec in load_provider_specs(
+    specs = load_provider_specs(
         spec_path,
         expected_names,
         provider_label=family.provider_label,
         family_label=family_label,
-    ):
+    )
+    return build_provider_catalog_from_specs(
+        specs,
+        expected_names,
+        family=family,
+        family_label=family_label,
+    )
+
+
+def build_provider_catalog_from_specs(
+    specs: Sequence[Mapping[str, Any]],
+    expected_names: Sequence[str],
+    *,
+    family: ProviderCapabilityFamily,
+    family_label: str,
+) -> dict[str, dict[str, Any]]:
+    names = tuple(str(item.get("name") or "") for item in specs)
+    if names != tuple(expected_names):
+        raise ValueError(
+            f"{family.provider_label} {family_label} capability specs are incomplete or reordered"
+        )
+    catalog: dict[str, dict[str, Any]] = {}
+    for spec in specs:
         provider_tool_name = str(spec["name"])
         capability_id = f"{family.agent_tool_prefix}{provider_tool_name}"
         input_schema = dict(spec.get("input_schema") or {})

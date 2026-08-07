@@ -205,6 +205,10 @@ class ToolCapabilityRegistry:
             if isinstance(duration, int | float)
             else int((self._clock() - started) * 1000)
         )
+        source_input = raw_result.get("input")
+        public_input = (
+            dict(source_input) if isinstance(source_input, Mapping) else tool_input
+        )
         standard_fields = {
             "name",
             "label",
@@ -220,7 +224,7 @@ class ToolCapabilityRegistry:
             "status": str(raw_result.get("status") or "ok"),
             "summary": capability.summarize(raw_result),
             "duration_ms": duration_ms,
-            "input": tool_input,
+            "input": public_input,
             "data": shaped_result,
             **{key: value for key, value in raw_result.items() if key not in standard_fields},
         }
